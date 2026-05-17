@@ -51,7 +51,7 @@ export function PromptEditor({
       <div className="flex items-center gap-2">
         <select
           value={type}
-          onChange={(e) => setType(e.target.value)}
+          onChange={(e) => setType(e.target.value as typeof type)}
           className="text-sm border rounded px-2 py-1"
         >
           {PROMPT_TYPES.map((t) => (
