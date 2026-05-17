@@ -7,8 +7,7 @@ import { getDeepSeekClient } from "./clients/deepseek";
 import { aiJsonSafeParse } from "ai-json-safe-parse";
 import OpenAI from "openai";
 import { getModelPricing, getProviderForModel, requireModelDefinition } from "./providers";
-import { createRunLog, updateRunLog } from "@/lib/db/queries/runs";
-import type { TrackedStage } from "@/lib/config/models";
+type TrackedStage = string;
 
 const STAGE_TIMEOUT_MS = 300_000; // 5 minutes
 
@@ -257,16 +256,6 @@ function getCompletionCostUsd(model: string, usage: ProviderUsage): number {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
-}
-
-async function updateRunLogSafely(logId: string, data: Parameters<typeof updateRunLog>[1]) {
-  try {
-    await updateRunLog(logId, data);
-  } catch (error) {
-    console.warn(
-      `[completion] Failed to update run log ${logId}: ${getErrorMessage(error)}`,
-    );
-  }
 }
 
 function getProviderUsageFromError(error: unknown): ProviderUsage | undefined {
@@ -684,18 +673,6 @@ export async function generateCompletion<T extends z.ZodType>(
   } = options;
   requireModelDefinition(model);
 
-  let logId: string | undefined;
-  if (tracking) {
-    const log = await createRunLog({
-      runId: tracking.runId,
-      unitId: tracking.unitId,
-      stage: tracking.stage,
-      model,
-      provider: getProviderForModel(model),
-    });
-    logId = log.id;
-  }
-
   const startTime = Date.now();
 
   const fullSystemPrompt = joinSystemPrompts(cachedSystemPrompt, systemPrompt);
@@ -744,17 +721,6 @@ export async function generateCompletion<T extends z.ZodType>(
     const durationMs = Date.now() - startTime;
     const costUsd = getCompletionCostUsd(model, result);
 
-    if (logId) {
-      await updateRunLogSafely(logId, {
-        tokensIn: result.promptTokens,
-        tokensOut: result.completionTokens,
-        cacheCreationTokens: result.cacheCreationTokens ?? null,
-        cacheReadTokens: result.cacheReadTokens ?? null,
-        costUsd: costUsd.toFixed(6),
-        latencyMs: durationMs,
-      });
-    }
-
     return {
       data: result.data,
       usage: {
@@ -766,26 +732,8 @@ export async function generateCompletion<T extends z.ZodType>(
         cacheReadTokens: result.cacheReadTokens,
       },
       durationMs,
-      logId,
     };
   } catch (error) {
-    const usage = getProviderUsageFromError(error);
-
-    if (logId) {
-      await updateRunLogSafely(logId, {
-        ...(usage
-          ? {
-              tokensIn: usage.promptTokens,
-              tokensOut: usage.completionTokens,
-              cacheCreationTokens: usage.cacheCreationTokens ?? null,
-              cacheReadTokens: usage.cacheReadTokens ?? null,
-              costUsd: getCompletionCostUsd(model, usage).toFixed(6),
-            }
-          : {}),
-        error: { message: getErrorMessage(error) },
-        latencyMs: Date.now() - startTime,
-      });
-    }
     throw error;
   }
 }
