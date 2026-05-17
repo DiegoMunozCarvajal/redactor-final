@@ -64,7 +64,8 @@ export async function extractPdf(buffer: Buffer): Promise<string> {
     isEvalSupported: false,
     stopAtErrors: false,
     verbosity: 0,
-  });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
 
   const document = await loadingTask.promise;
 

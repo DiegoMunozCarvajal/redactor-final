@@ -8,7 +8,8 @@ if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const MIGRATIONS_DIR = join(import.meta.dirname, "..", "supabase", "migrations");
 
 async function main() {
-  const sql = postgres(databaseUrl, { max: 1 });
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const sql = postgres(databaseUrl!, { max: 1 });
 
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
