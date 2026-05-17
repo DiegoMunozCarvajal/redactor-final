@@ -13,6 +13,7 @@
     "db:migrate": "tsx scripts/apply-supabase-migrations.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx scripts/seed.ts",
     "trigger:login": "trigger login",
     "trigger:dev": "trigger dev --skip-update-check",
     "trigger:deploy": "trigger deploy"
