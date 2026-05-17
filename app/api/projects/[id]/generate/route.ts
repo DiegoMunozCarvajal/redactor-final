@@ -4,6 +4,7 @@ import { projects, runs } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { generateBook } from "@/trigger/generate-book";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -31,9 +32,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       .values({ projectId, status: "pending" })
       .returning();
 
-    // NOTE: Trigger.dev job will be triggered here once the generate-book task is created in Phase 8.
-    // For now, we create the run and leave it in pending state.
-    // The Trigger.dev trigger will be: await generateBook.trigger({ runId: run.id });
+    // Trigger the generate job
+    await generateBook.trigger({ runId: run.id });
 
     return run;
   });
