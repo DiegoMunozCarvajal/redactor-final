@@ -4,7 +4,7 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 
 async function seed() {
-  const sql = postgres(databaseUrl, { max: 1 });
+  const sql = postgres(databaseUrl!, { max: 1 });
 
   const bookId = crypto.randomUUID();
 
