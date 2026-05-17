@@ -1,6 +1,12 @@
-import type { SectionRole } from "@/lib/prompts/shared/section-roles";
-import type { UnitBriefSmallBook } from "@/lib/prompts/unit-brief-small-book";
-import type { UnitBriefSmallBookEs } from "@/lib/prompts/unit-brief-small-book-es";
+type SectionRole = "hook" | "opening" | "mechanism" | "evidence" | "scene" | "turn" | "reflection" | "practice" | "landing";
+
+interface UnitBriefSmallBook {
+  coreLesson?: string | null;
+}
+
+interface UnitBriefSmallBookEs {
+  coreLesson?: string | null;
+}
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
