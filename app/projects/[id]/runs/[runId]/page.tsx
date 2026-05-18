@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
 
 interface ChapterRunData {
   id: string;
@@ -13,9 +15,41 @@ interface ChapterRunData {
   fragments: { id: string; content: string | null }[];
 }
 
+interface RunData {
+  id: string;
+  status: string;
+  title: string | null;
+  subtitle: string | null;
+  projectName?: string;
+  chapterRuns: ChapterRunData[];
+}
+
+function statusBadge(status: string) {
+  switch (status) {
+    case "completed":
+      return (
+        <Badge className="bg-success/10 text-success border-success/20">
+          Completado
+        </Badge>
+      );
+    case "running":
+      return (
+        <Badge className="bg-info/10 text-info border-info/20">
+          Generando
+        </Badge>
+      );
+    case "failed":
+      return <Badge variant="destructive">Fallido</Badge>;
+    case "pending":
+      return <Badge variant="outline">Pendiente</Badge>;
+    default:
+      return <Badge variant="secondary">{status}</Badge>;
+  }
+}
+
 export default function RunPage() {
   const params = useParams<{ id: string; runId: string }>();
-  const [run, setRun] = useState<any>(null);
+  const [run, setRun] = useState<RunData | null>(null);
   const [chapterRuns, setChapterRuns] = useState<ChapterRunData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,42 +72,63 @@ export default function RunPage() {
       const data = await res.json();
       setRun(data);
       setChapterRuns(data.chapterRuns ?? []);
-      if (data.status === "completed" || data.status === "failed") clearInterval(interval);
+      if (data.status === "completed" || data.status === "failed")
+        clearInterval(interval);
     }, 3000);
     return () => clearInterval(interval);
   }, [run?.status, params.runId]);
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+
+  if (!run) return null;
+
+  const completedChapters = chapterRuns.filter(
+    (cr) => cr.status === "completed"
+  ).length;
 
   return (
     <div className="max-w-4xl mx-auto p-6">
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
-          { label: run.projectName ?? params.id, href: `/projects/${params.id}` },
+          {
+            label: run.projectName ?? params.id,
+            href: `/projects/${params.id}`,
+          },
           { label: `Run ${params.runId.slice(0, 8)}...` },
         ]}
       />
-      <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-xl font-bold">Run {params.runId.slice(0, 8)}...</h1>
-        <span className={`text-xs px-2 py-0.5 rounded ${
-          run.status === "completed" ? "bg-green-100 text-green-800" :
-          run.status === "failed" ? "bg-red-100 text-red-800" :
-          run.status === "running" ? "bg-blue-100 text-blue-800" :
-          "bg-muted"
-        }`}>
-          {run.status}
-        </span>
+
+      <div className="flex items-center gap-3 mb-6 mt-4">
+        <h1 className="text-xl font-bold">
+          Run {params.runId.slice(0, 8)}...
+        </h1>
+        {statusBadge(run.status)}
       </div>
 
       {run.title && <h2 className="text-lg font-medium mb-2">{run.title}</h2>}
-      {run.subtitle && <p className="text-muted-foreground mb-4">{run.subtitle}</p>}
+      {run.subtitle && (
+        <p className="text-muted-foreground mb-4">{run.subtitle}</p>
+      )}
+
+      <div className="flex items-center gap-2 mb-6 text-sm text-muted-foreground">
+        <span>
+          {completedChapters}/{chapterRuns.length} chapters completed
+        </span>
+      </div>
 
       <div className="space-y-6">
         {chapterRuns.map((cr) => (
           <div key={cr.id} className="border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
-              <span className="font-medium text-sm">Chapter {cr.position + 1}</span>
+              <span className="font-medium text-sm">
+                Chapter {cr.position + 1}
+              </span>
               <span className="text-xs text-muted-foreground">{cr.status}</span>
             </div>
 
@@ -84,8 +139,12 @@ export default function RunPage() {
             ) : (
               <div className="space-y-2">
                 {cr.fragments.map((f, i) => (
-                  <div key={f.id} className="text-xs text-muted-foreground">
-                    Fragment {i + 1}: {f.content ? `${f.content.slice(0, 100)}...` : "pending"}
+                  <div
+                    key={f.id}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Fragment {i + 1}:{" "}
+                    {f.content ? `${f.content.slice(0, 100)}...` : "pending"}
                   </div>
                 ))}
               </div>
