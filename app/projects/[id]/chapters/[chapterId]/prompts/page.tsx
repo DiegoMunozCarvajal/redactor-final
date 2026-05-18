@@ -1,0 +1,296 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+
+interface ProjectPrompt {
+  id: string;
+  chapterId: string;
+  position: number;
+  type: string;
+  title: string;
+  content: string;
+  styleRules: string | null;
+  knowledgeAreas: string | null;
+  suggestedLength: string | null;
+}
+
+const PROMPT_TYPE_LABELS: Record<string, string> = {
+  apertura: "Apertura",
+  modelo: "Modelo",
+  contraste: "Contraste",
+  amplificacion: "Amplificación",
+  anecdota: "Anécdota",
+  acumulacion: "Acumulación",
+  proceso: "Proceso",
+  cierre: "Cierre",
+  ensamblaje: "Ensamblaje",
+};
+
+export default function PromptsPage() {
+  const params = useParams<{ id: string; chapterId: string }>();
+  const [prompts, setPrompts] = useState<ProjectPrompt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [showNew, setShowNew] = useState(false);
+  const [newPrompt, setNewPrompt] = useState({
+    type: "apertura",
+    title: "",
+    content: "",
+  });
+
+  useEffect(() => {
+    fetchPrompts();
+  }, [params.id, params.chapterId]);
+
+  async function fetchPrompts() {
+    try {
+      const res = await fetch(
+        `/api/projects/${params.id}/prompts?chapterId=${params.chapterId}`,
+      );
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      setPrompts(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function savePrompt(promptId: string, field: string, value: string) {
+    setSaving((s) => ({ ...s, [promptId]: true }));
+    await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    setSaving((s) => ({ ...s, [promptId]: false }));
+  }
+
+  async function addPrompt() {
+    const res = await fetch(`/api/projects/${params.id}/prompts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...newPrompt, chapterId: params.chapterId }),
+    });
+    if (res.ok) {
+      setShowNew(false);
+      setNewPrompt({ type: "apertura", title: "", content: "" });
+      fetchPrompts();
+    }
+  }
+
+  async function deletePrompt(promptId: string) {
+    await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+      method: "DELETE",
+    });
+    fetchPrompts();
+  }
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+        <p className="text-destructive">{error}</p>
+        <Link
+          href={`/projects/${params.id}`}
+          className="text-sm text-primary hover:underline"
+        >
+          Back to project
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <Breadcrumbs
+        items={[
+          { label: "Projects", href: "/projects" },
+          { label: "Project", href: `/projects/${params.id}` },
+          { label: "Prompts" },
+        ]}
+      />
+
+      <div className="flex items-center justify-between mt-4 mb-6">
+        <h1 className="text-xl font-bold">Prompts del Capítulo</h1>
+        <Button onClick={() => setShowNew(true)} disabled={showNew}>
+          <Plus className="h-4 w-4 mr-1" /> Añadir Prompt
+        </Button>
+      </div>
+
+      {showNew && (
+        <Card className="mb-4 border-brand-200">
+          <CardContent className="pt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Tipo</Label>
+                <Select
+                  value={newPrompt.type}
+                  onValueChange={(v) =>
+                    setNewPrompt((p) => ({ ...p, type: v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PROMPT_TYPE_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Título</Label>
+                <Input
+                  value={newPrompt.title}
+                  onChange={(e) =>
+                    setNewPrompt((p) => ({ ...p, title: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Contenido</Label>
+              <Textarea
+                value={newPrompt.content}
+                onChange={(e) =>
+                  setNewPrompt((p) => ({ ...p, content: e.target.value }))
+                }
+                rows={4}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={addPrompt}>Guardar</Button>
+              <Button variant="ghost" onClick={() => setShowNew(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-4">
+        {prompts.map((prompt) => (
+          <Card key={prompt.id}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">
+                  <span className="text-muted-foreground">
+                    {prompt.position + 1}.
+                  </span>{" "}
+                  {PROMPT_TYPE_LABELS[prompt.type] ?? prompt.type}:{" "}
+                  {prompt.title}
+                </CardTitle>
+                <div className="flex items-center gap-1">
+                  {saving[prompt.id] && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deletePrompt(prompt.id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  Contenido
+                </Label>
+                <Textarea
+                  defaultValue={prompt.content}
+                  onBlur={(e) => {
+                    if (e.target.value !== prompt.content)
+                      savePrompt(prompt.id, "content", e.target.value);
+                  }}
+                  rows={3}
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  Reglas de Estilo
+                </Label>
+                <Textarea
+                  defaultValue={prompt.styleRules ?? ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (prompt.styleRules ?? ""))
+                      savePrompt(prompt.id, "styleRules", e.target.value);
+                  }}
+                  rows={2}
+                  className="text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Áreas de Conocimiento
+                  </Label>
+                  <Input
+                    defaultValue={prompt.knowledgeAreas ?? ""}
+                    onBlur={(e) => {
+                      if (e.target.value !== (prompt.knowledgeAreas ?? ""))
+                        savePrompt(prompt.id, "knowledgeAreas", e.target.value);
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Extensión Sugerida
+                  </Label>
+                  <Input
+                    defaultValue={prompt.suggestedLength ?? ""}
+                    onBlur={(e) => {
+                      if (e.target.value !== (prompt.suggestedLength ?? ""))
+                        savePrompt(
+                          prompt.id,
+                          "suggestedLength",
+                          e.target.value,
+                        );
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
