@@ -11,7 +11,7 @@ import {
   CommandItem,
   CommandShortcut,
 } from "@/components/ui/command"
-import { BookOpen, FileText, Settings, Layout, Search } from "lucide-react"
+import { BookOpen, Settings, Layout } from "lucide-react"
 
 export function CommandPalette() {
   const router = useRouter()

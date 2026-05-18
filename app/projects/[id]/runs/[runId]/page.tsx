@@ -53,30 +53,51 @@ export default function RunPage() {
   const [chapterRuns, setChapterRuns] = useState<ChapterRunData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
+    let cancelled = false;
     async function fetchRun() {
-      const res = await fetch(`/api/runs/${params.runId}`);
-      const data = await res.json();
-      setRun(data);
-      setChapterRuns(data.chapterRuns ?? []);
-      setLoading(false);
+      try {
+        const res = await fetch(`/api/runs/${params.runId}`);
+        if (!res.ok) throw new Error(`Failed to load run (${res.status})`);
+        const data = await res.json();
+        if (!cancelled) {
+          setRun(data);
+          setChapterRuns(data.chapterRuns ?? []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load run");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
     fetchRun();
+    return () => { cancelled = true; };
   }, [params.runId]);
 
   // Poll if running
   useEffect(() => {
     if (!run || run.status === "completed" || run.status === "failed") return;
+    let cancelled = false;
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/runs/${params.runId}`);
-      const data = await res.json();
-      setRun(data);
-      setChapterRuns(data.chapterRuns ?? []);
-      if (data.status === "completed" || data.status === "failed")
-        clearInterval(interval);
+      try {
+        const res = await fetch(`/api/runs/${params.runId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setRun(data);
+        setChapterRuns(data.chapterRuns ?? []);
+        if (data.status === "completed" || data.status === "failed")
+          clearInterval(interval);
+      } catch {
+        // polling continues — transient failures are tolerated
+      }
     }, 3000);
-    return () => clearInterval(interval);
-  }, [run?.status, params.runId]);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [run, params.runId]);
 
   if (loading)
     return (
@@ -85,7 +106,16 @@ export default function RunPage() {
       </div>
     );
 
-  if (!run) return null;
+  if (error || !run) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+        <p className="text-destructive mb-4">{error ?? "Run not found"}</p>
+        <a href={`/projects/${params.id}`} className="text-sm text-primary hover:underline">
+          Back to project
+        </a>
+      </div>
+    );
+  }
 
   const completedChapters = chapterRuns.filter(
     (cr) => cr.status === "completed"

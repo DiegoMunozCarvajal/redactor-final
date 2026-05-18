@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -51,17 +52,21 @@ export function CreateProjectDialog({
   })
 
   async function onSubmit(data: FormData) {
-    const res = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    })
-    const json = await res.json()
-    if (res.ok) {
-      setOpen(false)
-      router.push(`/projects/${json.id}`)
-    } else {
-      alert(json.error ?? "Error creating project")
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        router.push(`/projects/${json.id}`)
+        setOpen(false)
+      } else {
+        alert(json.error ?? "Error creating project")
+      }
+    } catch {
+      alert("Network error. Please try again.")
     }
   }
 
@@ -76,6 +81,7 @@ export function CreateProjectDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New Project</DialogTitle>
+          <DialogDescription>Create a new book generation project.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
@@ -103,13 +109,14 @@ export function CreateProjectDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Book Template</Label>
+            <Label htmlFor="bookTemplateId">Book Template</Label>
             <Select
-              onValueChange={(v) => setValue("bookTemplateId", v)}
+              onValueChange={(v) => setValue("bookTemplateId", v, { shouldValidate: true })}
               defaultValue={templates[0]?.id}
+              disabled={templates.length === 0}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a template..." />
+              <SelectTrigger id="bookTemplateId">
+                <SelectValue placeholder={templates.length === 0 ? "No templates available" : "Select a template..."} />
               </SelectTrigger>
               <SelectContent>
                 {templates.map((t) => (

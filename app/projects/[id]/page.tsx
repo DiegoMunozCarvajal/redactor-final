@@ -1,22 +1,45 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { db } from "@/lib/db";
-import { projects, runs } from "@/lib/db/schema";
-import { createClient } from "@/lib/supabase/server";
-import { eq, desc } from "drizzle-orm";
-import { GenerateButton } from "@/components/projects/generate-button";
+import ReactMarkdown from "react-markdown";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { ArrowRight, BookOpen, Clock } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
+import { GenerateChapterButton } from "@/components/projects/generate-chapter-button";
+import { Loader2, Pencil, Check, X, BookOpen } from "lucide-react";
+
+interface GenerationData {
+  id: string;
+  status: string;
+  assembledContent: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+interface ChapterData {
+  id: string;
+  position: number;
+  title: string;
+  latestGeneration: GenerationData | null;
+}
+
+interface ProjectData {
+  id: string;
+  name: string;
+  topic: string;
+  title: string | null;
+  subtitle: string | null;
+  chapters: ChapterData[];
+}
 
 function statusBadge(status: string) {
   switch (status) {
@@ -26,7 +49,7 @@ function statusBadge(status: string) {
           Completado
         </Badge>
       );
-    case "running":
+    case "generating":
       return (
         <Badge className="bg-info/10 text-info border-info/20">
           Generando
@@ -34,40 +57,93 @@ function statusBadge(status: string) {
       );
     case "failed":
       return <Badge variant="destructive">Fallido</Badge>;
-    case "pending":
-      return <Badge variant="outline">Pendiente</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
 }
 
-export default async function ProjectPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { id } = await params;
+export default function ProjectPage() {
+  const params = useParams<{ id: string }>();
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingSubtitle, setEditingSubtitle] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSubtitle, setEditSubtitle] = useState("");
 
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(id)) notFound();
+  async function fetchProject() {
+    try {
+      const res = await fetch(`/api/projects/${params.id}`);
+      if (!res.ok) throw new Error(`Failed to load (${res.status})`);
+      const data = await res.json();
+      setProject(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, id))
-    .limit(1);
-  if (!project || project.userId !== user?.id) notFound();
+  useEffect(() => {
+    fetchProject();
+  }, [params.id]);
 
-  const runList = await db
-    .select()
-    .from(runs)
-    .where(eq(runs.projectId, id))
-    .orderBy(desc(runs.createdAt));
+  // Poll if any chapter is generating
+  useEffect(() => {
+    if (!project) return;
+    const hasGenerating = project.chapters.some(
+      (ch) => ch.latestGeneration?.status === "generating",
+    );
+    if (!hasGenerating) return;
+
+    const interval = setInterval(fetchProject, 3000);
+    return () => clearInterval(interval);
+  }, [project]);
+
+  async function saveTitle() {
+    if (!project) return;
+    await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editTitle }),
+    });
+    setProject({ ...project, title: editTitle });
+    setEditingTitle(false);
+  }
+
+  async function saveSubtitle() {
+    if (!project) return;
+    await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subtitle: editSubtitle }),
+    });
+    setProject({ ...project, subtitle: editSubtitle });
+    setEditingSubtitle(false);
+  }
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+
+  if (error || !project) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+        <p className="text-destructive mb-4">{error ?? "Project not found"}</p>
+        <Link href="/projects" className="text-sm text-primary hover:underline">
+          Back to projects
+        </Link>
+      </div>
+    );
+  }
+
+  const completedCount = project.chapters.filter(
+    (ch) => ch.latestGeneration?.status === "completed",
+  ).length;
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -78,66 +154,155 @@ export default async function ProjectPage({
         ]}
       />
 
-      <Card className="mt-4">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-2xl">{project.name}</CardTitle>
-              <CardDescription className="mt-1.5 text-base">
-                {project.topic}
-              </CardDescription>
-            </div>
-            <BookOpen className="h-6 w-6 text-muted-foreground shrink-0 mt-1" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <GenerateButton projectId={id} />
-        </CardContent>
-      </Card>
-
-      <h2 className="text-lg font-semibold mt-8 mb-4">
-        Historial de Ejecuciones
-      </h2>
-
-      {runList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg">
-          <Clock className="h-8 w-8 text-muted-foreground/40 mb-3" />
-          <p className="text-sm text-muted-foreground">
-            No runs yet. Generate your first book to see it here.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {runList.map((run) => (
-            <Link
-              key={run.id}
-              href={`/projects/${id}/runs/${run.id}`}
-              className="block"
+      {/* Title section */}
+      <div className="mt-4 mb-6">
+        {editingTitle ? (
+          <div className="flex items-center gap-2 mb-1">
+            <Input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="text-2xl font-bold h-auto py-1"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveTitle();
+                if (e.key === "Escape") setEditingTitle(false);
+              }}
+            />
+            <Button size="icon" variant="ghost" onClick={saveTitle}>
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setEditingTitle(false)}
             >
-              <Card className="hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200 group">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {statusBadge(run.status)}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {run.title ?? `Run ${run.id.slice(0, 8)}...`}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Clock className="h-3 w-3" />
-                        {formatDistanceToNow(run.createdAt, {
-                          addSuffix: true,
-                          locale: es,
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">
+              {project.title ?? project.name}
+            </h1>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                setEditTitle(project.title ?? "");
+                setEditingTitle(true);
+              }}
+            >
+              <Pencil className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
+
+        {editingSubtitle ? (
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              value={editSubtitle}
+              onChange={(e) => setEditSubtitle(e.target.value)}
+              className="text-muted-foreground h-auto py-1"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveSubtitle();
+                if (e.key === "Escape") setEditingSubtitle(false);
+              }}
+            />
+            <Button size="icon" variant="ghost" onClick={saveSubtitle}>
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setEditingSubtitle(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {project.subtitle && (
+              <p className="text-muted-foreground">{project.subtitle}</p>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                setEditSubtitle(project.subtitle ?? "");
+                setEditingSubtitle(true);
+              }}
+            >
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Progress */}
+      <div className="flex items-center gap-2 mb-6 text-sm text-muted-foreground">
+        <BookOpen className="h-4 w-4" />
+        <span>
+          {completedCount}/{project.chapters.length} capítulos completados
+        </span>
+      </div>
+
+      {/* Chapters */}
+      <div className="space-y-4">
+        {project.chapters.map((ch) => (
+          <Card key={ch.id}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-base">
+                    Capítulo {ch.position + 1}: {ch.title}
+                  </CardTitle>
+                  {ch.latestGeneration &&
+                    statusBadge(ch.latestGeneration.status)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <GenerateChapterButton
+                    projectId={project.id}
+                    chapterId={ch.id}
+                    hasGeneration={ch.latestGeneration !== null}
+                  />
+                  <Link
+                    href={`/projects/${project.id}/chapters/${ch.id}/prompts`}
+                  >
+                    <Button variant="ghost" size="icon">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardHeader>
+            {ch.latestGeneration?.assembledContent && (
+              <CardContent>
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>
+                    {ch.latestGeneration.assembledContent}
+                  </ReactMarkdown>
+                </div>
+              </CardContent>
+            )}
+            {ch.latestGeneration?.status === "generating" && (
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generando fragmentos...
+                </div>
+              </CardContent>
+            )}
+            {ch.latestGeneration?.status === "failed" && (
+              <CardContent>
+                <p className="text-sm text-destructive">
+                  {ch.latestGeneration.error ?? "Error desconocido"}
+                </p>
+              </CardContent>
+            )}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

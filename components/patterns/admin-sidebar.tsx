@@ -26,7 +26,7 @@ export function AdminSidebar({ chapters, bookId }: {
       transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
         "sticky top-14 h-[calc(100vh-3.5rem)] shrink-0",
-        "border-r border-neutral-200 dark:border-neutral-800",
+        "border-r border-border",
         "bg-background overflow-hidden"
       )}
     >

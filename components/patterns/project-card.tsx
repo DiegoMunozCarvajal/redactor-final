@@ -1,31 +1,30 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { motion } from "motion/react"
+import Link from "next/link";
+import { motion } from "motion/react";
 import {
   Card,
   CardHeader,
   CardTitle,
   CardDescription,
   CardContent,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { BookOpen, Clock } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import { es } from "date-fns/locale"
+} from "@/components/ui/card";
+import { BookOpen, Clock } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 
 export function ProjectCard({
   project,
   index,
 }: {
   project: {
-    id: string
-    name: string
-    topic: string
-    createdAt: Date
-    runCount: number
-  }
-  index: number
+    id: string;
+    name: string;
+    topic: string;
+    title: string | null;
+    createdAt: Date;
+  };
+  index: number;
 }) {
   return (
     <motion.div
@@ -42,7 +41,7 @@ export function ProjectCard({
           <CardHeader>
             <div className="flex items-start justify-between gap-2">
               <CardTitle className="group-hover:text-primary transition-colors">
-                {project.name}
+                {project.title ?? project.name}
               </CardTitle>
               <BookOpen className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
             </div>
@@ -58,13 +57,9 @@ export function ProjectCard({
                 locale: es,
               })}
             </span>
-            <Badge variant="secondary" className="text-xs">
-              {project.runCount}{" "}
-              {project.runCount === 1 ? "ejecución" : "ejecuciones"}
-            </Badge>
           </CardContent>
         </Card>
       </Link>
     </motion.div>
-  )
+  );
 }

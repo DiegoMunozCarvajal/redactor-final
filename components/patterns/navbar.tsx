@@ -59,7 +59,7 @@ export function Navbar() {
   const isAdmin = pathname.startsWith("/admin");
 
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-200 dark:border-neutral-800 backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-between">
+    <header className="sticky top-0 z-50 border-b border-border backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-between">
       <div className="flex items-center gap-4">
         <Link
           href="/projects"
@@ -109,8 +109,10 @@ export function Navbar() {
         <div ref={menuRef} className="relative">
           <button
             onClick={() => setMenuOpen(!menuOpen)}
+            onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); }}
             aria-expanded={menuOpen}
             aria-haspopup="true"
+            aria-controls="user-menu"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             {user?.email ?? ""}
@@ -119,7 +121,8 @@ export function Navbar() {
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-full mt-1 bg-background border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-lg py-1 z-50 min-w-[120px]"
+              id="user-menu"
+              className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg py-1 z-50 min-w-[120px]"
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   setMenuOpen(false);
