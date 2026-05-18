@@ -8,16 +8,16 @@
 
 @theme {
   /* Slate Blue — hue 250 */
-  --color-brand-50: oklch(96% 0.005 250);
-  --color-brand-100: oklch(90% 0.01 250);
-  --color-brand-200: oklch(82% 0.02 250);
-  --color-brand-300: oklch(72% 0.04 250);
-  --color-brand-400: oklch(62% 0.08 250);
-  --color-brand-500: oklch(52% 0.12 250);
-  --color-brand-600: oklch(42% 0.14 250);
-  --color-brand-700: oklch(32% 0.12 250);
-  --color-brand-800: oklch(24% 0.08 250);
-  --color-brand-900: oklch(16% 0.04 250);
+  --color-brand-50: oklch(96% 0.01 250);
+  --color-brand-100: oklch(90% 0.03 250);
+  --color-brand-200: oklch(82% 0.06 250);
+  --color-brand-300: oklch(72% 0.10 250);
+  --color-brand-400: oklch(62% 0.14 250);
+  --color-brand-500: oklch(50% 0.18 250);
+  --color-brand-600: oklch(40% 0.17 250);
+  --color-brand-700: oklch(30% 0.14 250);
+  --color-brand-800: oklch(22% 0.10 250);
+  --color-brand-900: oklch(14% 0.06 250);
 
   /* Neutral gray — hue 0 */
   --color-neutral-50: oklch(98% 0 0);
@@ -101,7 +101,7 @@
   --secondary-foreground: var(--color-neutral-50);
   --muted: var(--color-neutral-800);
   --muted-foreground: var(--color-neutral-400);
-  --accent: oklch(25% 0.06 250);
+  --accent: oklch(25% 0.10 250);
   --accent-foreground: var(--color-brand-200);
   --destructive: oklch(35% 0.18 20);
   --destructive-foreground: white;
