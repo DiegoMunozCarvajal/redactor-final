@@ -1,31 +1,76 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { bookTemplates } from "@/lib/db/schema";
+import { bookTemplates, chapters } from "@/lib/db/schema";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { BookOpen } from "lucide-react";
+import { eq, sql, asc } from "drizzle-orm";
 
 export default async function AdminBooksPage() {
-  const templates = await db.select().from(bookTemplates).orderBy(bookTemplates.createdAt);
+  const templates = await db
+    .select({
+      id: bookTemplates.id,
+      name: bookTemplates.name,
+      description: bookTemplates.description,
+      createdAt: bookTemplates.createdAt,
+      chapterCount: sql<number>`cast(count(${chapters.id}) as int)`.as(
+        "chapter_count",
+      ),
+    })
+    .from(bookTemplates)
+    .leftJoin(chapters, eq(bookTemplates.id, chapters.bookTemplateId))
+    .groupBy(bookTemplates.id)
+    .orderBy(asc(bookTemplates.createdAt));
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
-        <Link href="/admin/books/new" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm">
-          New Template
-        </Link>
+        <Button asChild>
+          <Link href="/admin/books/new">
+            <BookOpen className="h-4 w-4" />
+            New Template
+          </Link>
+        </Button>
       </div>
 
       {templates.length === 0 ? (
-        <p className="text-muted-foreground">No templates yet.</p>
+        <div className="text-center py-16 space-y-4">
+          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground" />
+          <p className="text-muted-foreground">
+            No templates yet. Create your first book template.
+          </p>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <Link
-              key={t.id}
-              href={`/admin/books/${t.id}`}
-              className="block p-4 border rounded-lg hover:bg-accent transition-colors"
-            >
-              <h2 className="font-medium">{t.name}</h2>
-              {t.description && <p className="text-sm text-muted-foreground mt-1">{t.description}</p>}
+            <Link key={t.id} href={`/admin/books/${t.id}`}>
+              <Card className="h-full hover:bg-accent transition-colors">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{t.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {t.description ? (
+                    <CardDescription className="line-clamp-3">
+                      {t.description}
+                    </CardDescription>
+                  ) : (
+                    <CardDescription className="italic">
+                      No description
+                    </CardDescription>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t.chapterCount}{" "}
+                    {t.chapterCount === 1 ? "capítulo" : "capítulos"}
+                  </p>
+                </CardContent>
+              </Card>
             </Link>
           ))}
         </div>
