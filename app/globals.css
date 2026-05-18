@@ -183,6 +183,15 @@ body {
 }
 
 /* =============================================
+   Layer 3 — Button Press Feedback
+   ============================================= */
+
+button:active:not([disabled]) {
+  transform: scale(0.97);
+  transition: transform 100ms var(--ease-out);
+}
+
+/* =============================================
    Layer 3 — Reduced Motion
    ============================================= */
 
