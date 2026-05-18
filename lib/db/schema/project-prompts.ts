@@ -10,7 +10,7 @@ export const projectPrompts = pgTable("project_prompts", {
     .references(() => projects.id, { onDelete: "cascade" }),
   chapterId: uuid("chapter_id")
     .notNull()
-    .references(() => chapters.id, { onDelete: "cascade" }),
+    .references(() => chapters.id, { onDelete: "restrict" }),
   position: integer("position").notNull(),
   type: promptTypeEnum("type").notNull(),
   title: text("title").notNull(),
