@@ -2,47 +2,150 @@
 
 @plugin "@tailwindcss/typography";
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
-  --radius: 0.5rem;
+/* =============================================
+   Layer 1 — Base Tokens (OKLCH Primitives)
+   ============================================= */
+
+@theme {
+  /* Slate Blue — hue 250 */
+  --color-brand-50: oklch(96% 0.005 250);
+  --color-brand-100: oklch(90% 0.01 250);
+  --color-brand-200: oklch(82% 0.02 250);
+  --color-brand-300: oklch(72% 0.04 250);
+  --color-brand-400: oklch(62% 0.08 250);
+  --color-brand-500: oklch(52% 0.12 250);
+  --color-brand-600: oklch(42% 0.14 250);
+  --color-brand-700: oklch(32% 0.12 250);
+  --color-brand-800: oklch(24% 0.08 250);
+  --color-brand-900: oklch(16% 0.04 250);
+
+  /* Neutral gray — hue 0 */
+  --color-neutral-50: oklch(98% 0 0);
+  --color-neutral-100: oklch(95% 0 0);
+  --color-neutral-200: oklch(90% 0 0);
+  --color-neutral-300: oklch(82% 0 0);
+  --color-neutral-400: oklch(68% 0 0);
+  --color-neutral-500: oklch(55% 0 0);
+  --color-neutral-600: oklch(42% 0 0);
+  --color-neutral-700: oklch(30% 0 0);
+  --color-neutral-800: oklch(20% 0 0);
+  --color-neutral-900: oklch(12% 0 0);
+
+  /* Semantic colors */
+  --color-success: oklch(55% 0.18 145);
+  --color-warning: oklch(65% 0.16 85);
+  --color-error: oklch(50% 0.2 25);
+  --color-info: oklch(55% 0.12 250);
 }
 
+/* =============================================
+   Layer 2 — Semantic Tokens (Light Mode)
+   ============================================= */
+
+:root {
+  --background: var(--color-neutral-50);
+  --foreground: var(--color-neutral-900);
+  --card: var(--color-neutral-50);
+  --card-foreground: var(--color-neutral-900);
+  --popover: var(--color-neutral-50);
+  --popover-foreground: var(--color-neutral-900);
+  --primary: var(--color-brand-500);
+  --primary-foreground: white;
+  --secondary: var(--color-neutral-100);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-neutral-100);
+  --muted-foreground: var(--color-neutral-500);
+  --accent: var(--color-brand-50);
+  --accent-foreground: var(--color-brand-700);
+  --destructive: var(--color-error);
+  --destructive-foreground: white;
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-200);
+  --ring: var(--color-brand-400);
+  --radius: 0.5rem;
+
+  /* Font stacks */
+  --font-sans: "Geist", var(--font-geist), system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", var(--font-geist-mono), "JetBrains Mono", ui-monospace, monospace;
+
+  /* Motion durations */
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  /* Motion easings */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Animation presets */
+  --animate-fade-in: fade-in var(--duration-normal) var(--ease-out);
+  --animate-slide-up: slide-up var(--duration-normal) var(--ease-out);
+}
+
+/* =============================================
+   Layer 2 — Semantic Tokens (Dark Mode)
+   ============================================= */
+
 .dark {
-  --background: 0 0% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
-  --accent: 0 0% 14.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 0 0% 83.1%;
+  --background: var(--color-neutral-900);
+  --foreground: var(--color-neutral-50);
+  --card: oklch(15% 0 0);
+  --card-foreground: var(--color-neutral-50);
+  --popover: oklch(15% 0 0);
+  --popover-foreground: var(--color-neutral-50);
+  --primary: var(--color-brand-400);
+  --primary-foreground: var(--color-neutral-900);
+  --secondary: var(--color-neutral-800);
+  --secondary-foreground: var(--color-neutral-50);
+  --muted: var(--color-neutral-800);
+  --muted-foreground: var(--color-neutral-400);
+  --accent: oklch(25% 0.06 250);
+  --accent-foreground: var(--color-brand-200);
+  --destructive: oklch(45% 0.18 25);
+  --destructive-foreground: white;
+  --border: var(--color-neutral-700);
+  --input: var(--color-neutral-700);
+  --ring: var(--color-brand-500);
+}
+
+/* =============================================
+   Layer 3 — Base Element Styles
+   ============================================= */
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numbers for data/metrics — Linear/Stripe signature */
+.tnum {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* =============================================
+   Layer 3 — Keyframe Definitions
+   ============================================= */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* =============================================
+   Layer 3 — Reduced Motion
+   ============================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
