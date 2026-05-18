@@ -142,7 +142,21 @@ generateChapter({ generationId, projectId })
 
 ### Reusable: `generatePromptContent()` and `generateChapterAssembly()`
 
-Both functions stay in `lib/generate.ts`. They now accept `ProjectPrompt` type instead of `Prompt` — or a common interface `{ content, styleRules, knowledgeAreas, suggestedLength }`.
+Both functions stay in `lib/generate.ts`. Accept a common interface:
+```ts
+interface PromptLike {
+  content: string;
+  styleRules: string | null;
+  knowledgeAreas: string | null;
+  suggestedLength: string | null;
+}
+```
+Both `Prompt` (template) and `ProjectPrompt` satisfy this. No type changes needed in callers — only the param type narrows.
+
+### Rate Limiting
+
+Keep existing `checkProjectRateLimit` + `withProjectLock` from `lib/api/rate-limit.ts`.
+Apply to `POST /api/projects/[id]/chapters/[chapterId]/generate` — same sliding window per project (max 1 generation running per project per 60s).
 
 ## Enums
 
@@ -153,9 +167,11 @@ Both functions stay in `lib/generate.ts`. They now accept `ProjectPrompt` type i
 
 1. Create enum `generation_status`
 2. Create new tables: `project_prompts`, `chapter_generations`
-3. Modify `fragments`: add `chapter_generation_id`, `project_prompt_id` (nullable initially), drop old FKs + columns later
-4. Add `title`, `subtitle` to `projects`
-4. Backfill: for existing projects with runs, create project_prompts from template
-5. Drop `runs`, `chapter_runs`
-6. Deploy new API routes + UI
-7. Deploy new Trigger.dev task `generate-chapter`
+3. Modify `fragments`: add `chapter_generation_id` + `project_prompt_id` (nullable), backfill from existing chapter_runs, then drop old FKs + columns (`chapter_run_id`, `prompt_id`)
+4. Replace index: `idx_fragments_chapter_run` → `idx_fragments_chapter_generation` on `chapter_generation_id`
+5. Add `title`, `subtitle` to `projects`, backfill from latest completed run per project
+6. Backfill `project_prompts` for existing projects from their templates
+7. Drop `runs`, `chapter_runs` tables
+8. Drop `run_status` enum (after tables gone)
+9. Deploy new API routes + UI
+10. Deploy new Trigger.dev task `generate-chapter`
