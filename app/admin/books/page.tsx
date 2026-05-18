@@ -6,7 +6,7 @@ export default async function AdminBooksPage() {
   const templates = await db.select().from(bookTemplates).orderBy(bookTemplates.createdAt);
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
         <Link href="/admin/books/new" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm">
