@@ -1,3 +1,4 @@
+import { Navbar } from "@/components/ui/navbar";
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
@@ -13,7 +14,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+          <Navbar />
+          <main className="min-h-screen">{children}</main>
           <Toaster />
         </ThemeProvider>
       </body>
