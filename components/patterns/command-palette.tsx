@@ -23,10 +23,14 @@ export function CommandPalette() {
         e.preventDefault()
         setOpen((open) => !open)
       }
+      if (e.key === "p" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        router.push("/projects")
+      }
     }
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
-  }, [])
+  }, [router])
 
   function runCommand(callback: () => void) {
     setOpen(false)
