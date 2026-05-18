@@ -42,12 +42,17 @@ export function ChapterEditor({
             onBlur={saveTitle}
             className="flex-1 border-0 border-b border-transparent hover:border-border focus-visible:border-primary focus-visible:ring-0 rounded-none px-1 h-8 text-sm font-medium bg-transparent"
           />
-          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-            {chapter.prompts.map((p) => (
-              <Badge key={p.id} variant="secondary" className="text-xs">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0 overflow-hidden">
+            {chapter.prompts.slice(0, 4).map((p) => (
+              <Badge key={p.id} variant="secondary" className="text-xs shrink-0">
                 {p.type}
               </Badge>
             ))}
+            {chapter.prompts.length > 4 && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                +{chapter.prompts.length - 4}
+              </span>
+            )}
           </div>
           <Link
             href={`/admin/books/${bookId}/chapters/${chapter.id}`}
