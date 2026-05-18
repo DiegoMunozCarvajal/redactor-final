@@ -1,18 +1,14 @@
 import postgres from "postgres";
 import { db } from "@/lib/db/drizzle";
-import { runs } from "@/lib/db/schema";
+import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
 const WINDOW_SECONDS = 60;
-const MAX_RUNS_PER_WINDOW = 1;
+const MAX_GENERATIONS_PER_WINDOW = 1;
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL environment variable is required");
 
-// Dedicated client for advisory locks. begin() reserves a single connection
-// for the entire lock+callback+release span, preventing connection-pool reuse
-// within the critical section. Pool size allows concurrent requests to
-// different projects (advisory lock serializes same-project at PG level).
 const lockClient = postgres(databaseUrl, {
   prepare: false,
   max: 10,
@@ -22,7 +18,6 @@ const lockClient = postgres(databaseUrl, {
 
 function projectIdToLockKey(projectId: string): [number, number] {
   const hex = projectId.replace(/-/g, "");
-  // | 0 converts to signed 32-bit to fit PostgreSQL int4 range
   const key1 = parseInt(hex.substring(0, 8), 16) | 0;
   const key2 = parseInt(hex.substring(8, 16), 16) | 0;
   return [key1, key2];
@@ -60,18 +55,18 @@ export async function checkProjectRateLimit(
 
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(runs)
+    .from(chapterGenerations)
     .where(
       and(
-        eq(runs.projectId, projectId),
-        gte(runs.createdAt, windowStart),
-        inArray(runs.status, ["running"])
+        eq(chapterGenerations.projectId, projectId),
+        gte(chapterGenerations.createdAt, windowStart),
+        inArray(chapterGenerations.status, ["generating"])
       )
     );
 
-  const recentRuns = row?.count ?? 0;
+  const recentGenerations = row?.count ?? 0;
 
-  if (recentRuns >= MAX_RUNS_PER_WINDOW) {
+  if (recentGenerations >= MAX_GENERATIONS_PER_WINDOW) {
     return { allowed: false, retryAfter: WINDOW_SECONDS };
   }
 
