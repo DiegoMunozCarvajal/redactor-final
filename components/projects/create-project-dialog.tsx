@@ -1,86 +1,135 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { BookTemplate } from "@/lib/db/schema";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { BookOpen, Loader2 } from "lucide-react"
 
-export function CreateProjectDialog({ templates }: { templates: BookTemplate[] }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [topic, setTopic] = useState("");
-  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+const schema = z.object({
+  name: z.string().min(1, "Required").max(100),
+  topic: z.string().min(1, "Required").max(200),
+  bookTemplateId: z.string().min(1, "Required"),
+})
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
+type FormData = z.infer<typeof schema>
+
+export function CreateProjectDialog({
+  templates,
+}: {
+  templates: { id: string; name: string }[]
+}) {
+  const [open, setOpen] = useState(false)
+  const router = useRouter()
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { bookTemplateId: templates[0]?.id ?? "" },
+  })
+
+  async function onSubmit(data: FormData) {
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, topic, bookTemplateId: templateId }),
-    });
-    const project = await res.json();
-    router.push(`/projects/${project.id}`);
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (res.ok) {
+      setOpen(false)
+      router.push(`/projects/${json.id}`)
+    } else {
+      alert(json.error ?? "Error creating project")
+    }
   }
 
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm"
-      >
-        New Project
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-4">New Project</h2>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Project name"
-                required
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-              <input
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="Topic (e.g. conquistar mujeres)"
-                required
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              >
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="px-4 py-2 text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm disabled:opacity-50"
-                >
-                  {loading ? "Creating..." : "Create"}
-                </button>
-              </div>
-            </form>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <BookOpen className="h-4 w-4" />
+          New Project
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New Project</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Project Name</Label>
+            <Input
+              id="name"
+              placeholder="My Book"
+              {...register("name")}
+            />
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name.message}</p>
+            )}
           </div>
-        </div>
-      )}
-    </>
-  );
+
+          <div className="space-y-2">
+            <Label htmlFor="topic">Topic</Label>
+            <Input
+              id="topic"
+              placeholder="History of Artificial Intelligence"
+              {...register("topic")}
+            />
+            {errors.topic && (
+              <p className="text-xs text-destructive">{errors.topic.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Book Template</Label>
+            <Select
+              onValueChange={(v) => setValue("bookTemplateId", v)}
+              defaultValue={templates[0]?.id}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a template..." />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.bookTemplateId && (
+              <p className="text-xs text-destructive">Required</p>
+            )}
+          </div>
+
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            Create Project
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }
