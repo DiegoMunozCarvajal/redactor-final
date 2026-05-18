@@ -1,8 +1,8 @@
 -- Create enums
-CREATE TYPE generation_status AS ENUM ('generating', 'completed', 'failed');
+CREATE TYPE IF NOT EXISTS generation_status AS ENUM ('generating', 'completed', 'failed');
 
 -- Create project_prompts table
-CREATE TABLE project_prompts (
+CREATE TABLE IF NOT EXISTS project_prompts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   chapter_id uuid NOT NULL REFERENCES chapters(id) ON DELETE RESTRICT,
@@ -17,7 +17,7 @@ CREATE TABLE project_prompts (
 );
 
 -- Create chapter_generations table
-CREATE TABLE chapter_generations (
+CREATE TABLE IF NOT EXISTS chapter_generations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   chapter_id uuid NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
@@ -28,17 +28,21 @@ CREATE TABLE chapter_generations (
   completed_at timestamp with time zone
 );
 
-CREATE INDEX idx_chapter_generations_project ON chapter_generations(project_id, chapter_id);
+CREATE INDEX IF NOT EXISTS idx_chapter_generations_project ON chapter_generations(project_id, chapter_id);
 
 -- Add title/subtitle to projects
-ALTER TABLE projects ADD COLUMN title text;
-ALTER TABLE projects ADD COLUMN subtitle text;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS subtitle text;
+
+-- Relax old FK columns to nullable (ORM no longer enforces NOT NULL)
+ALTER TABLE fragments ALTER COLUMN chapter_run_id DROP NOT NULL;
+ALTER TABLE fragments ALTER COLUMN prompt_id DROP NOT NULL;
 
 -- Add new FK columns to fragments (nullable for transition)
-ALTER TABLE fragments ADD COLUMN chapter_generation_id uuid REFERENCES chapter_generations(id) ON DELETE CASCADE;
-ALTER TABLE fragments ADD COLUMN project_prompt_id uuid REFERENCES project_prompts(id) ON DELETE RESTRICT;
+ALTER TABLE fragments ADD COLUMN IF NOT EXISTS chapter_generation_id uuid REFERENCES chapter_generations(id) ON DELETE CASCADE;
+ALTER TABLE fragments ADD COLUMN IF NOT EXISTS project_prompt_id uuid REFERENCES project_prompts(id) ON DELETE RESTRICT;
 
-CREATE INDEX idx_fragments_chapter_generation ON fragments(chapter_generation_id);
+CREATE INDEX IF NOT EXISTS idx_fragments_chapter_generation ON fragments(chapter_generation_id);
 
 -- Backfill project_prompts for existing projects
 INSERT INTO project_prompts (project_id, chapter_id, position, type, title, content, style_rules, knowledge_areas, suggested_length)
