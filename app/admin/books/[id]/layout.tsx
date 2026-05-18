@@ -26,9 +26,9 @@ export default async function BookLayout({
     <div className="flex min-h-[calc(100vh-3.5rem)]">
       <AdminSidebar chapters={bookChapters} bookId={id} />
       <div className="flex-1 min-w-0">
-        <main className="px-6 pb-12">
+        <div className="px-6 pb-12">
           {children}
-        </main>
+        </div>
       </div>
     </div>
   )
