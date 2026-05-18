@@ -123,7 +123,7 @@ export default function ResetPasswordPage() {
               </Button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
               <div className="space-y-2">
                 <Label htmlFor="password">New Password</Label>
                 <Input
@@ -134,7 +134,7 @@ export default function ResetPasswordPage() {
                   {...register("password")}
                 />
                 {errors.password && (
-                  <p className="text-xs text-destructive">
+                  <p role="alert" className="text-xs text-destructive">
                     {errors.password.message}
                   </p>
                 )}
@@ -150,13 +150,13 @@ export default function ResetPasswordPage() {
                   {...register("confirmPassword")}
                 />
                 {errors.confirmPassword && (
-                  <p className="text-xs text-destructive">
+                  <p role="alert" className="text-xs text-destructive">
                     {errors.confirmPassword.message}
                   </p>
                 )}
               </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
               <Button
                 type="submit"

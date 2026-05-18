@@ -16,34 +16,47 @@ export default function ChapterPromptEditorPage() {
   const [bookName, setBookName] = useState("")
   const [loading, setLoading] = useState(true)
 
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
+    let cancelled = false
     Promise.all([
       fetch(`/api/chapters/${params.chapterId}/prompts`)
-        .then((r) => r.json())
-        .then(setPrompts),
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((data) => { if (!cancelled) setPrompts(data) }),
       fetch(`/api/chapters/${params.chapterId}`)
-        .then((r) => r.json())
-        .then((ch) => setChapterTitle(ch.title ?? "")),
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((ch) => { if (!cancelled) setChapterTitle(ch.title ?? "") }),
       fetch(`/api/books/${params.id}`)
-        .then((r) => r.json())
-        .then((b) => setBookName(b.name ?? "")),
-    ]).finally(() => setLoading(false))
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((b) => { if (!cancelled) setBookName(b.name ?? "") }),
+    ])
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [params.chapterId, params.id])
 
+  const [adding, setAdding] = useState(false)
+
   async function addPrompt() {
-    const pos = prompts.length
-    const res = await fetch(`/api/chapters/${params.chapterId}/prompts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "apertura",
-        title: "Nuevo prompt",
-        content: "[TEMA]",
-        position: pos,
-      }),
-    })
-    const p = await res.json()
-    if (res.ok) setPrompts([...prompts, p])
+    setAdding(true)
+    try {
+      const pos = prompts.length
+      const res = await fetch(`/api/chapters/${params.chapterId}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "apertura",
+          title: "Nuevo prompt",
+          content: "[TEMA]",
+          position: pos,
+        }),
+      })
+      const p = await res.json()
+      if (res.ok) setPrompts([...prompts, p])
+    } finally {
+      setAdding(false)
+    }
   }
 
   if (loading) {
@@ -56,6 +69,14 @@ export default function ChapterPromptEditorPage() {
             <div className="h-4 bg-muted rounded w-1/4" />
           </div>
         ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+        <p className="text-destructive mb-4">{error}</p>
       </div>
     )
   }
@@ -78,7 +99,7 @@ export default function ChapterPromptEditorPage() {
 
       <div className="space-y-4">
         <AnimatePresence mode="popLayout">
-          {prompts.map((p, i) => (
+          {prompts.map((p) => (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, height: 0 }}
@@ -101,8 +122,13 @@ export default function ChapterPromptEditorPage() {
           variant="outline"
           className="w-full border-dashed"
           onClick={addPrompt}
+          disabled={adding}
         >
-          <Plus className="h-4 w-4" />
+          {adding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
           Add Prompt
         </Button>
       </div>

@@ -1,6 +1,11 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadEnvFile } from "node:process";
 import postgres from "postgres";
+
+if (!process.env.DATABASE_URL && existsSync(".env")) {
+  loadEnvFile(".env");
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");

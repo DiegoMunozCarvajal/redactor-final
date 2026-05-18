@@ -51,7 +51,6 @@ export default function LoginPage() {
         setError(error.message);
       } else {
         router.push("/projects");
-        router.refresh();
       }
     } catch (err) {
       setError(
@@ -71,7 +70,7 @@ export default function LoginPage() {
           <CardDescription>Book creation workflow engine</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -81,7 +80,7 @@ export default function LoginPage() {
                 {...register("email")}
               />
               {errors.email && (
-                <p className="text-xs text-destructive">
+                <p role="alert" className="text-xs text-destructive">
                   {errors.email.message}
                 </p>
               )}
@@ -104,13 +103,13 @@ export default function LoginPage() {
                 {...register("password")}
               />
               {errors.password && (
-                <p className="text-xs text-destructive">
+                <p role="alert" className="text-xs text-destructive">
                   {errors.password.message}
                 </p>
               )}
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting && (

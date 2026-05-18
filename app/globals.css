@@ -110,46 +110,47 @@
    ============================================= */
 
 .dark {
-  --background: var(--color-neutral-900);
-  --foreground: var(--color-neutral-50);
-  --card: oklch(15% 0 0);
-  --card-foreground: var(--color-neutral-50);
-  --popover: oklch(15% 0 0);
-  --popover-foreground: var(--color-neutral-50);
+  /* Surfaces — layered from deep bg → elevated cards */
+  --background: oklch(18% 0.01 250);
+  --foreground: oklch(90% 0.01 250);
+  --card: oklch(22% 0.015 250);
+  --card-foreground: oklch(90% 0.01 250);
+  --popover: oklch(22% 0.015 250);
+  --popover-foreground: oklch(90% 0.01 250);
   --primary: var(--color-brand-400);
   --primary-foreground: var(--color-neutral-900);
-  --secondary: var(--color-neutral-800);
-  --secondary-foreground: var(--color-neutral-50);
-  --muted: var(--color-neutral-800);
-  --muted-foreground: var(--color-neutral-400);
-  --accent: oklch(25% 0.10 250);
+  --secondary: oklch(24% 0.02 250);
+  --secondary-foreground: oklch(90% 0.01 250);
+  --muted: oklch(22% 0.02 250);
+  --muted-foreground: oklch(65% 0.02 250);
+  --accent: oklch(24% 0.08 250);
   --accent-foreground: var(--color-brand-200);
-  --destructive: oklch(35% 0.18 20);
+  --destructive: oklch(35% 0.15 20);
   --destructive-foreground: white;
-  --border: var(--color-neutral-700);
-  --input: var(--color-neutral-700);
-  --ring: var(--color-brand-500);
+  --border: oklch(26% 0.02 250);
+  --input: oklch(26% 0.02 250);
+  --ring: var(--color-brand-400);
 
   /* shadcn/ui utility overrides for dark mode */
-  --color-background: var(--color-neutral-900);
-  --color-foreground: var(--color-neutral-50);
-  --color-card: oklch(15% 0 0);
-  --color-card-foreground: var(--color-neutral-50);
-  --color-popover: oklch(15% 0 0);
-  --color-popover-foreground: var(--color-neutral-50);
+  --color-background: oklch(18% 0.01 250);
+  --color-foreground: oklch(90% 0.01 250);
+  --color-card: oklch(22% 0.015 250);
+  --color-card-foreground: oklch(90% 0.01 250);
+  --color-popover: oklch(22% 0.015 250);
+  --color-popover-foreground: oklch(90% 0.01 250);
   --color-primary: var(--color-brand-400);
   --color-primary-foreground: var(--color-neutral-900);
-  --color-secondary: var(--color-neutral-800);
-  --color-secondary-foreground: var(--color-neutral-50);
-  --color-muted: var(--color-neutral-800);
-  --color-muted-foreground: var(--color-neutral-400);
-  --color-accent: oklch(25% 0.10 250);
+  --color-secondary: oklch(24% 0.02 250);
+  --color-secondary-foreground: oklch(90% 0.01 250);
+  --color-muted: oklch(22% 0.02 250);
+  --color-muted-foreground: oklch(65% 0.02 250);
+  --color-accent: oklch(24% 0.08 250);
   --color-accent-foreground: var(--color-brand-200);
-  --color-destructive: oklch(35% 0.18 20);
+  --color-destructive: oklch(35% 0.15 20);
   --color-destructive-foreground: white;
-  --color-border: var(--color-neutral-700);
-  --color-input: var(--color-neutral-700);
-  --color-ring: var(--color-brand-500);
+  --color-border: oklch(26% 0.02 250);
+  --color-input: oklch(26% 0.02 250);
+  --color-ring: var(--color-brand-400);
 }
 
 /* =============================================
@@ -186,7 +187,7 @@ body {
    Layer 3 — Button Press Feedback
    ============================================= */
 
-button:active:not([disabled]) {
+.btn-press:active:not([disabled]) {
   transform: scale(0.97);
   transition: transform 100ms var(--ease-out);
 }

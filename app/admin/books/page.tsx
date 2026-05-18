@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { bookTemplates, chapters } from "@/lib/db/schema";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -32,12 +31,6 @@ export default async function AdminBooksPage() {
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
-        <Button asChild>
-          <Link href="/admin/books/new">
-            <BookOpen className="h-4 w-4" />
-            New Template
-          </Link>
-        </Button>
       </div>
 
       {templates.length === 0 ? (

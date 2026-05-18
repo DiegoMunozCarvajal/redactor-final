@@ -46,6 +46,7 @@ export function PromptEditor({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const { register, handleSubmit, setValue, watch, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -72,14 +73,23 @@ export function PromptEditor({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Save failed" }))
+      setError(err.error ?? "Save failed")
+      return
+    }
     const updated = await res.json()
     onSave(updated)
   }
 
   async function handleDelete() {
     setDeleting(true)
-    await fetch(`/api/prompts/${prompt.id}`, { method: "DELETE" })
-    onDelete(prompt.id)
+    try {
+      await fetch(`/api/prompts/${prompt.id}`, { method: "DELETE" })
+      onDelete(prompt.id)
+    } catch {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -87,7 +97,7 @@ export function PromptEditor({
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
           <Select
-            defaultValue={prompt.type}
+            value={currentType}
             onValueChange={(v) => setValue("type", v as (typeof PROMPT_TYPES)[number])}
           >
             <SelectTrigger className="w-[160px]">
@@ -110,9 +120,10 @@ export function PromptEditor({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Content</label>
+            <label htmlFor={`content-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Content</label>
             <button
               type="button"
               onClick={insertTopic}
@@ -121,7 +132,7 @@ export function PromptEditor({
               Insert [TEMA]
             </button>
           </div>
-          <Textarea {...register("content")} rows={10} className="font-mono text-sm" />
+          <Textarea id={`content-${prompt.id}`} {...register("content")} rows={10} className="font-mono text-sm" />
         </div>
 
         <button
@@ -136,16 +147,16 @@ export function PromptEditor({
         {expanded && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Style Rules</label>
-              <Textarea {...register("styleRules")} rows={3} className="text-sm" />
+              <label htmlFor={`styleRules-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Style Rules</label>
+              <Textarea id={`styleRules-${prompt.id}`} {...register("styleRules")} rows={3} className="text-sm" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Knowledge Areas</label>
-              <Textarea {...register("knowledgeAreas")} rows={3} className="text-sm" />
+              <label htmlFor={`knowledgeAreas-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Knowledge Areas</label>
+              <Textarea id={`knowledgeAreas-${prompt.id}`} {...register("knowledgeAreas")} rows={3} className="text-sm" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Suggested Length</label>
-              <Input {...register("suggestedLength")} className="text-sm" />
+              <label htmlFor={`suggestedLength-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Suggested Length</label>
+              <Input id={`suggestedLength-${prompt.id}`} {...register("suggestedLength")} className="text-sm" />
             </div>
           </div>
         )}
@@ -162,12 +173,16 @@ export function PromptEditor({
             <Trash2 className="h-4 w-4" />
             Delete
           </Button>
-          <Button type="button" size="sm" onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            <Save className="h-4 w-4" />
-            Save
-          </Button>
+          <div className="flex items-center gap-2">
+            {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+            <Button type="submit" size="sm" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Save className="h-4 w-4" />
+              Save
+            </Button>
+          </div>
         </div>
+        </form>
       </CardContent>
     </Card>
   )

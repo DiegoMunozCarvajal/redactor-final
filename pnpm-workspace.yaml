@@ -1,4 +1,6 @@
 allowBuilds:
+  '@depot/cli': false
+  '@google/genai': false
   esbuild: true
   protobufjs: true
   sharp: true
