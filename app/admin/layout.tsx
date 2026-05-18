@@ -1,7 +1,3 @@
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen">
-      <main className="p-6">{children}</main>
-    </div>
-  );
+  return <div className="min-h-[calc(100vh-3.5rem)]">{children}</div>
 }
