@@ -2,99 +2,132 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/auth/supabase-browser";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { createClient } from "@/lib/auth/supabase-browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { BookOpen, Loader2 } from "lucide-react";
+
+const schema = z.object({
+  email: z.string().email("Ingresa un correo electrónico válido."),
+  password: z.string().min(1, "Ingresa tu contraseña."),
+});
+
+type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
+  async function onSubmit(data: FormData) {
     setError(null);
 
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: data.email,
+        password: data.password,
       });
 
       if (error) {
         setError(error.message);
-        setLoading(false);
       } else {
         router.push("/projects");
         router.refresh();
       }
-    } catch (error) {
+    } catch (err) {
       setError(
-        error instanceof Error ? error.message : "Failed to initialize authentication",
+        err instanceof Error
+          ? err.message
+          : "Failed to initialize authentication",
       );
-      setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm space-y-6 px-4">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Redactor</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Book creation workflow engine
-          </p>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1"
-              required
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link
-                href="/forgot-password"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Forgot password?
-              </Link>
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center pb-4">
+          <BookOpen className="h-8 w-8 mx-auto text-primary mb-2" />
+          <CardTitle>Redactor</CardTitle>
+          <CardDescription>Book creation workflow engine</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                {...register("email")}
+              />
+              {errors.email && (
+                <p className="text-xs text-destructive">
+                  {errors.email.message}
+                </p>
+              )}
             </div>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1"
-              required
-            />
-          </div>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-xs text-destructive">
+                  {errors.password.message}
+                </p>
+              )}
+            </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
-      </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Sign in
+            </Button>
+          </form>
+
+          <p className="text-center text-sm text-muted-foreground mt-4">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="text-primary hover:underline">
+              Sign up
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
