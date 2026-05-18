@@ -1,4 +1,4 @@
-import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { projects } from "./projects";
 import { chapters } from "./chapters";
 import { promptTypeEnum } from "./prompts";
@@ -19,7 +19,9 @@ export const projectPrompts = pgTable("project_prompts", {
   knowledgeAreas: text("knowledge_areas"),
   suggestedLength: text("suggested_length"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("idx_project_prompts_chapter_position").on(table.chapterId, table.position),
+]);
 
 export type ProjectPrompt = typeof projectPrompts.$inferSelect;
 export type NewProjectPrompt = typeof projectPrompts.$inferInsert;

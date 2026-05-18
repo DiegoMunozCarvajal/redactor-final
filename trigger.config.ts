@@ -1,35 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { defineConfig } from "@trigger.dev/sdk";
+import { loadEnvFile } from "./lib/env";
 
-function loadLocalEnvFile(fileName: string) {
-  const filePath = resolve(process.cwd(), fileName);
-  if (!existsSync(filePath)) return;
-
-  const contents = readFileSync(filePath, "utf8");
-  for (const line of contents.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex === -1) continue;
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    if (!key || process.env[key] !== undefined) continue;
-
-    const rawValue = trimmed.slice(separatorIndex + 1).trim();
-    const value =
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-        ? rawValue.slice(1, -1)
-        : rawValue;
-
-    process.env[key] = value;
-  }
-}
-
-loadLocalEnvFile(".env.local");
-loadLocalEnvFile(".env");
+loadEnvFile(".env");
 
 const projectRef = process.env.TRIGGER_PROJECT_REF;
 
@@ -42,5 +14,5 @@ if (!projectRef) {
 export default defineConfig({
   project: projectRef,
   dirs: ["./trigger"],
-  maxDuration: 900,
+  maxDuration: 1800,
 });

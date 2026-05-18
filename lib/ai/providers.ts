@@ -1,5 +1,7 @@
 export type AIProvider = "openai" | "anthropic" | "google" | "deepseek";
 
+export const DEFAULT_GENERATION_MODEL = "deepseek-v4-flash";
+
 export interface ModelDefinition {
   id: string;
   label: string;

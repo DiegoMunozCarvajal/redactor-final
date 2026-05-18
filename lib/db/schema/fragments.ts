@@ -1,4 +1,5 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { z } from "zod";
 import { chapterGenerations } from "./chapter-generations";
 import { projectPrompts } from "./project-prompts";
 
@@ -26,3 +27,14 @@ export const fragments = pgTable(
 
 export type Fragment = typeof fragments.$inferSelect;
 export type NewFragment = typeof fragments.$inferInsert;
+
+/**
+ * Schema for the `metadata` jsonb column on fragments.
+ * Currently holds the AI provider used to generate the content.
+ * Optional and nullable — most fragments won't have metadata set.
+ */
+export const fragmentMetadataSchema = z.object({
+  provider: z.string().optional(),
+}).optional().nullable();
+
+export type FragmentMetadata = z.infer<typeof fragmentMetadataSchema>;

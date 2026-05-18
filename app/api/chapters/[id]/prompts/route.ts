@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql } from "drizzle-orm";
+import { csrfCheck } from "@/lib/api/csrf";
+import { requireAdmin } from "@/lib/auth/admin";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -19,9 +22,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   const body = await req.json();
@@ -51,5 +56,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       position: pos,
     })
     .returning();
+
+  logAudit({
+    userId: admin.user.id,
+    action: "prompt.create",
+    resourceType: "prompt",
+    resourceId: prompt.id,
+    metadata: { title: prompt.title, type: prompt.type, chapterId: id },
+  });
+
   return NextResponse.json(prompt);
 }

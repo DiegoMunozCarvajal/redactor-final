@@ -1,4 +1,5 @@
 import { task } from "@trigger.dev/sdk";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   chapterGenerations,
@@ -13,10 +14,32 @@ import {
   generateChapterAssembly,
 } from "@/lib/generate";
 
+const titleResponseSchema = z.object({
+  title: z.string().min(1),
+  subtitle: z.string().optional(),
+});
+
+export function sanitizeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "Unknown error";
+  // Redact common secret patterns before truncation
+  const redacted = message
+    .replace(/sk-[a-zA-Z0-9]{24,}/g, "sk-***")
+    .replace(/Bearer\s+[a-zA-Z0-9_\-.]{20,}/g, "Bearer ***")
+    .replace(/ghp_[a-zA-Z0-9]{36}/g, "ghp_***")
+    .replace(/gho_[a-zA-Z0-9]{36}/g, "gho_***");
+  return redacted.slice(0, 500);
+}
+
 export const generateChapter = task({
   id: "generate-chapter",
-  run: async (payload: { generationId: string; projectId: string }) => {
-    const { generationId, projectId } = payload;
+  retry: {
+    maxAttempts: 3,
+    factor: 2,
+    minTimeoutInMs: 5_000,
+    maxTimeoutInMs: 60_000,
+  },
+  run: async (payload: { generationId: string; projectId: string; model?: string }) => {
+    const { generationId, projectId, model } = payload;
 
     // Load generation
     const [gen] = await db
@@ -25,6 +48,21 @@ export const generateChapter = task({
       .where(eq(chapterGenerations.id, generationId))
       .limit(1);
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
+
+    // Idempotency guard — if already completed, skip
+    if (gen.status === "completed") {
+      return;
+    }
+
+    // If fragments already exist (partial retry), clean them up before regenerating
+    const existingFragments = await db
+      .select({ id: fragments.id })
+      .from(fragments)
+      .where(eq(fragments.chapterGenerationId, generationId));
+
+    if (existingFragments.length > 0) {
+      await db.delete(fragments).where(eq(fragments.chapterGenerationId, generationId));
+    }
 
     // Load project
     const [project] = await db
@@ -69,6 +107,8 @@ export const generateChapter = task({
         const result = await generatePromptContent({
           prompt,
           topic: project.topic,
+          subtitle: project.subtitle,
+          ...(model ? { model } : {}),
         });
 
         await db
@@ -99,6 +139,8 @@ export const generateChapter = task({
           assemblyPrompt,
           fragmentContents,
           project.topic,
+          project.subtitle,
+          model,
         );
 
         await db
@@ -123,7 +165,7 @@ export const generateChapter = task({
       const allChapters = await db
         .select()
         .from(chapters)
-        .where(eq(chapters.bookTemplateId, project.bookTemplateId))
+        .where(eq(chapters.projectId, projectId))
         .orderBy(asc(chapters.position));
 
       const completedGens = await db
@@ -136,10 +178,11 @@ export const generateChapter = task({
           ),
         );
 
-      if (
-        completedGens.length >= allChapters.length &&
-        !project.title
-      ) {
+      const chapterIds = allChapters.map(c => c.id);
+      const completedChapterIds = new Set(completedGens.map(g => g.chapterId));
+      const allChaptersHaveCompletedGen = chapterIds.every(id => completedChapterIds.has(id));
+
+      if (allChaptersHaveCompletedGen && !project.title) {
         const titleResult = await generatePromptContent({
           prompt: {
             content:
@@ -150,16 +193,21 @@ export const generateChapter = task({
             suggestedLength: null,
           },
           topic: project.topic,
+          ...(model ? { model } : {}),
         });
 
         let title = "";
         let subtitle = "";
         try {
-          const parsed = JSON.parse(titleResult.text);
+          const parsed = titleResponseSchema.parse(JSON.parse(titleResult.text));
           title = parsed.title;
-          subtitle = parsed.subtitle;
-        } catch {
-          // If JSON parse fails, don't set title
+          subtitle = parsed.subtitle ?? "";
+        } catch (err) {
+          console.error(
+            "[generate-chapter] Failed to parse title JSON:",
+            err instanceof Error ? err.message : "Unknown error",
+          );
+          // Don't set title on parse failure
         }
 
         if (title) {
@@ -175,7 +223,7 @@ export const generateChapter = task({
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const message = sanitizeError(err);
       await db
         .update(chapterGenerations)
         .set({ status: "failed", error: message })

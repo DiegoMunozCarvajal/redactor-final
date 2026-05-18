@@ -24,11 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { BookOpen, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 const schema = z.object({
   name: z.string().min(1, "Required").max(100),
   topic: z.string().min(1, "Required").max(200),
-  bookTemplateId: z.string().min(1, "Required"),
 })
 
 type FormData = z.infer<typeof schema>
@@ -39,34 +39,38 @@ export function CreateProjectDialog({
   templates: { id: string; name: string }[]
 }) {
   const [open, setOpen] = useState(false)
+  const [bookTemplateId, setBookTemplateId] = useState<string | null>(null)
   const router = useRouter()
 
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { bookTemplateId: templates[0]?.id ?? "" },
   })
 
   async function onSubmit(data: FormData) {
     try {
+      const body: { name: string; topic: string; bookTemplateId?: string } = data
+      if (bookTemplateId) {
+        body.bookTemplateId = bookTemplateId
+      }
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (res.ok) {
         router.push(`/projects/${json.id}`)
         setOpen(false)
+        setBookTemplateId(null)
       } else {
-        alert(json.error ?? "Error creating project")
+        toast.error(json.error ?? "Error creating project")
       }
     } catch {
-      alert("Network error. Please try again.")
+      toast.error("Network error. Please try again.")
     }
   }
 
@@ -109,16 +113,18 @@ export function CreateProjectDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bookTemplateId">Book Template</Label>
+            <Label htmlFor="bookTemplateId">Book Template (optional)</Label>
             <Select
-              onValueChange={(v) => setValue("bookTemplateId", v, { shouldValidate: true })}
-              defaultValue={templates[0]?.id}
-              disabled={templates.length === 0}
+              value={bookTemplateId ?? "__none__"}
+              onValueChange={(v) =>
+                setBookTemplateId(v === "__none__" ? null : v)
+              }
             >
               <SelectTrigger id="bookTemplateId">
-                <SelectValue placeholder={templates.length === 0 ? "No templates available" : "Select a template..."} />
+                <SelectValue placeholder="No template (start from scratch)" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none__">No template (start from scratch)</SelectItem>
                 {templates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
@@ -126,9 +132,6 @@ export function CreateProjectDialog({
                 ))}
               </SelectContent>
             </Select>
-            {errors.bookTemplateId && (
-              <p className="text-xs text-destructive">Required</p>
-            )}
           </div>
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>

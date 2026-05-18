@@ -9,6 +9,7 @@ import { getSupabasePublicEnv, SupabaseConfigurationError } from "@/lib/auth/sup
 // which tries to refresh the same token → first succeeds, second fails
 // with "Invalid Refresh Token: Already Used" → silent session loss.
 // This map ensures only one refresh is in flight per session at a time.
+const MAX_INFLIGHT = 500;
 const inFlightRefresh = new Map<string, Promise<unknown>>();
 
 async function dedupedGetUser(
@@ -21,6 +22,15 @@ async function dedupedGetUser(
   }
 
   const promise = supabase.auth.getUser();
+  // Prune oldest entries if map grows too large
+  if (inFlightRefresh.size >= MAX_INFLIGHT) {
+    const keys = inFlightRefresh.keys();
+    // Evict roughly 10% of entries
+    for (let i = 0; i < Math.floor(MAX_INFLIGHT / 10); i++) {
+      const { value: key } = keys.next();
+      if (key) inFlightRefresh.delete(key);
+    }
+  }
   inFlightRefresh.set(refreshTokenHint, promise);
 
   try {
@@ -47,7 +57,7 @@ export async function middleware(request: NextRequest) {
       ),
     );
     console.error(error.message);
-    return new NextResponse(error.message, {
+    return new NextResponse("Service Unavailable", {
       status: 503,
       headers: {
         "content-type": "text/plain; charset=utf-8",
@@ -93,7 +103,7 @@ export async function middleware(request: NextRequest) {
   } = await dedupedGetUser(supabase, refreshTokenHint);
 
   // If not authenticated and not on an auth page, redirect to login
-  const publicPaths = new Set(["/login", "/signup", "/register", "/forgot-password", "/reset-password", "/callback"]);
+  const publicPaths = new Set(["/login", "/signup", "/forgot-password", "/reset-password", "/callback"]);
   if (
     !user &&
     !publicPaths.has(request.nextUrl.pathname)
@@ -105,6 +115,29 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
+
+  // Add Content-Security-Policy header
+  const isProduction = process.env.NODE_ENV === "production";
+  const csp = [
+    "default-src 'self'",
+    isProduction
+      ? "script-src 'self' 'unsafe-inline'"
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self'",
+    "connect-src 'self' https:", // API calls
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+
+  supabaseResponse.headers.set(
+    isProduction
+      ? "Content-Security-Policy"
+      : "Content-Security-Policy-Report-Only",
+    csp
+  );
 
   return supabaseResponse;
 }

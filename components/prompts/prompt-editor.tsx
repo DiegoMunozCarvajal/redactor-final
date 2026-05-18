@@ -62,9 +62,9 @@ export function PromptEditor({
 
   const currentType = watch("type")
 
-  function insertTopic() {
+  function insertPlaceholder(placeholder: string) {
     const current = watch("content")
-    setValue("content", current + " [TEMA]")
+    setValue("content", current + " " + placeholder)
   }
 
   async function onSubmit(data: FormData) {
@@ -124,13 +124,22 @@ export function PromptEditor({
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label htmlFor={`content-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Content</label>
-            <button
-              type="button"
-              onClick={insertTopic}
-              className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
-            >
-              Insert [TEMA]
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => insertPlaceholder("[TEMA]")}
+                className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
+              >
+                + [TEMA]
+              </button>
+              <button
+                type="button"
+                onClick={() => insertPlaceholder("[SUBTÍTULO]")}
+                className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
+              >
+                + [SUBTÍTULO]
+              </button>
+            </div>
           </div>
           <Textarea id={`content-${prompt.id}`} {...register("content")} rows={10} className="font-mono text-sm" />
         </div>

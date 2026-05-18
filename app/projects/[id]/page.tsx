@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,10 +11,11 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardContent,
 } from "@/components/ui/card";
 import { GenerateChapterButton } from "@/components/projects/generate-chapter-button";
-import { Loader2, Pencil, Check, X, BookOpen } from "lucide-react";
+import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
+import { Loader2, Pencil, Check, X, BookOpen, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface GenerationData {
   id: string;
@@ -71,22 +71,31 @@ export default function ProjectPage() {
   const [editingSubtitle, setEditingSubtitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editSubtitle, setEditSubtitle] = useState("");
+  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
+  const [editChapterTitle, setEditChapterTitle] = useState("");
+  const fetchingRef = useRef(false);
 
-  async function fetchProject() {
+  async function fetchProject(signal?: AbortSignal) {
     try {
-      const res = await fetch(`/api/projects/${params.id}`);
+      const res = await fetch(`/api/projects/${params.id}`, { signal });
+      if (signal?.aborted) return;
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
       setProject(data);
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    fetchProject();
+    const controller = new AbortController();
+    fetchProject(controller.signal);
+    return () => controller.abort();
   }, [params.id]);
 
   // Poll if any chapter is generating
@@ -97,30 +106,77 @@ export default function ProjectPage() {
     );
     if (!hasGenerating) return;
 
-    const interval = setInterval(fetchProject, 3000);
+    const interval = setInterval(() => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
+      fetchProject().finally(() => { fetchingRef.current = false; });
+    }, 3000);
     return () => clearInterval(interval);
   }, [project]);
 
   async function saveTitle() {
     if (!project) return;
-    await fetch(`/api/projects/${project.id}`, {
+    const res = await fetch(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: editTitle }),
     });
-    setProject({ ...project, title: editTitle });
-    setEditingTitle(false);
+    if (res.ok) {
+      setProject({ ...project, title: editTitle });
+      setEditingTitle(false);
+    } else {
+      toast.error("Error saving title");
+    }
   }
 
   async function saveSubtitle() {
     if (!project) return;
-    await fetch(`/api/projects/${project.id}`, {
+    const res = await fetch(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subtitle: editSubtitle }),
     });
-    setProject({ ...project, subtitle: editSubtitle });
-    setEditingSubtitle(false);
+    if (res.ok) {
+      setProject({ ...project, subtitle: editSubtitle });
+      setEditingSubtitle(false);
+    } else {
+      toast.error("Error saving subtitle");
+    }
+  }
+
+  async function deleteChapter(chapterId: string) {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project.id}/chapters/${chapterId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setProject({
+        ...project,
+        chapters: project.chapters.filter((ch) => ch.id !== chapterId),
+      });
+    } else {
+      toast.error("Error deleting chapter");
+    }
+  }
+
+  async function saveChapterTitle(chapterId: string) {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project.id}/chapters/${chapterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editChapterTitle }),
+    });
+    if (res.ok) {
+      setProject({
+        ...project,
+        chapters: project.chapters.map((ch) =>
+          ch.id === chapterId ? { ...ch, title: editChapterTitle } : ch,
+        ),
+      });
+      setEditingChapterId(null);
+    } else {
+      toast.error("Error saving chapter title");
+    }
   }
 
   if (loading)
@@ -240,11 +296,17 @@ export default function ProjectPage() {
       </div>
 
       {/* Progress */}
-      <div className="flex items-center gap-2 mb-6 text-sm text-muted-foreground">
-        <BookOpen className="h-4 w-4" />
-        <span>
-          {completedCount}/{project.chapters.length} capítulos completados
-        </span>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <BookOpen className="h-4 w-4" />
+          <span>
+            {completedCount}/{project.chapters.length} capítulos completados
+          </span>
+        </div>
+        <AddChapterDialog
+          projectId={project.id}
+          onChapterAdded={fetchProject}
+        />
       </div>
 
       {/* Chapters */}
@@ -254,52 +316,76 @@ export default function ProjectPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <CardTitle className="text-base">
-                    Capítulo {ch.position + 1}: {ch.title}
-                  </CardTitle>
-                  {ch.latestGeneration &&
-                    statusBadge(ch.latestGeneration.status)}
+                  {editingChapterId === ch.id ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editChapterTitle}
+                        onChange={(e) => setEditChapterTitle(e.target.value)}
+                        className="text-base font-semibold h-auto py-1 w-auto"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveChapterTitle(ch.id);
+                          if (e.key === "Escape") setEditingChapterId(null);
+                        }}
+                      />
+                      <Button size="icon" variant="ghost" onClick={() => saveChapterTitle(ch.id)}>
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => setEditingChapterId(null)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <Link
+                        href={`/projects/${project.id}/chapters/${ch.id}`}
+                        className="hover:underline"
+                      >
+                        <CardTitle className="text-base">
+                          {ch.title}
+                        </CardTitle>
+                      </Link>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => {
+                          setEditChapterTitle(ch.title);
+                          setEditingChapterId(ch.id);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                      {ch.latestGeneration &&
+                        statusBadge(ch.latestGeneration.status)}
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <GenerateChapterButton
                     projectId={project.id}
                     chapterId={ch.id}
                     hasGeneration={ch.latestGeneration !== null}
+                    onGenerationStarted={fetchProject}
                   />
                   <Link
                     href={`/projects/${project.id}/chapters/${ch.id}/prompts`}
                   >
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" className="text-muted-foreground">
                       <Pencil className="h-4 w-4" />
                     </Button>
                   </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteChapter(ch.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </CardHeader>
-            {ch.latestGeneration?.assembledContent && (
-              <CardContent>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown>
-                    {ch.latestGeneration.assembledContent}
-                  </ReactMarkdown>
-                </div>
-              </CardContent>
-            )}
-            {ch.latestGeneration?.status === "generating" && (
-              <CardContent>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generando fragmentos...
-                </div>
-              </CardContent>
-            )}
-            {ch.latestGeneration?.status === "failed" && (
-              <CardContent>
-                <p className="text-sm text-destructive">
-                  {ch.latestGeneration.error ?? "Error desconocido"}
-                </p>
-              </CardContent>
-            )}
           </Card>
         ))}
       </div>

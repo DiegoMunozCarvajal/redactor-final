@@ -1,6 +1,8 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { db } from "@/lib/db";
-import { bookTemplates, chapters } from "@/lib/db/schema";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -8,29 +10,134 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen } from "lucide-react";
-import { eq, sql, asc } from "drizzle-orm";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { BookOpen, Loader2, Plus, Trash2 } from "lucide-react";
 
-export default async function AdminBooksPage() {
-  const templates = await db
-    .select({
-      id: bookTemplates.id,
-      name: bookTemplates.name,
-      description: bookTemplates.description,
-      createdAt: bookTemplates.createdAt,
-      chapterCount: sql<number>`cast(count(${chapters.id}) as int)`.as(
-        "chapter_count",
-      ),
-    })
-    .from(bookTemplates)
-    .leftJoin(chapters, eq(bookTemplates.id, chapters.bookTemplateId))
-    .groupBy(bookTemplates.id)
-    .orderBy(asc(bookTemplates.createdAt));
+interface Template {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  chapterCount: number;
+}
+
+export default function AdminBooksPage() {
+  const router = useRouter();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+
+  const fetchTemplates = useCallback(async () => {
+    const res = await fetch("/api/books");
+    if (res.ok) setTemplates(await res.json());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  async function createTemplate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    const res = await fetch("/api/books", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null }),
+    });
+    if (res.ok) {
+      setCreateOpen(false);
+      setNewName("");
+      setNewDescription("");
+      router.refresh();
+      fetchTemplates();
+    }
+    setCreating(false);
+  }
+
+  async function deleteTemplate(id: string) {
+    if (!confirm("Delete this template and all its chapters/prompts?")) return;
+    const res = await fetch(`/api/books/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Failed to delete" }));
+      alert(err.error ?? "Failed to delete");
+      return;
+    }
+    fetchTemplates();
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <div className="animate-pulse space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-muted rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4" />
+              New Template
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Template</DialogTitle>
+              <DialogDescription>
+                Create a new book template. You can add chapters and prompts after creation.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Template name"
+                  onKeyDown={(e) => e.key === "Enter" && createTemplate()}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="desc">Description</Label>
+                <Textarea
+                  id="desc"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Optional description"
+                  rows={3}
+                />
+              </div>
+              <Button onClick={createTemplate} disabled={creating || !newName.trim()} className="w-full">
+                {creating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Create
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {templates.length === 0 ? (
@@ -43,8 +150,8 @@ export default async function AdminBooksPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <Link key={t.id} href={`/admin/books/${t.id}`}>
-              <Card className="h-full hover:bg-accent transition-colors">
+            <Card key={t.id} className="group relative">
+              <Link href={`/admin/books/${t.id}`}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{t.name}</CardTitle>
                 </CardHeader>
@@ -63,8 +170,19 @@ export default async function AdminBooksPage() {
                     {t.chapterCount === 1 ? "capítulo" : "capítulos"}
                   </p>
                 </CardContent>
-              </Card>
-            </Link>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                onClick={(e) => {
+                  e.preventDefault();
+                  deleteTemplate(t.id);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </Card>
           ))}
         </div>
       )}

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { bookTemplates } from "@/lib/db/schema";
+import { bookTemplates, chapters, projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { csrfCheck } from "@/lib/api/csrf";
+import { logAudit } from "@/lib/audit";
+import { requireAdmin } from "@/lib/auth/admin";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -20,14 +23,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(book);
 }
 
+// NOTE: Uses PUT for partial update (PATCH semantics).
+// Kept as PUT for backward compatibility with admin UI.
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { name, description } = body;
+
+  if (name !== undefined && (typeof name !== "string" || name.length > 200)) {
+    return NextResponse.json({ error: "name too long" }, { status: 400 });
+  }
+  if (description !== undefined && (typeof description !== "string" || description.length > 2000)) {
+    return NextResponse.json({ error: "description too long" }, { status: 400 });
+  }
 
   const [template] = await db
     .update(bookTemplates)
@@ -36,15 +50,60 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .returning();
 
   if (!template) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  logAudit({
+    userId: admin.user.id,
+    action: "template.update",
+    resourceType: "book_template",
+    resourceId: template.id,
+    metadata: { name: template.name },
+  });
+
   return NextResponse.json(template);
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const csrfError = csrfCheck(_req);
+  if (csrfError) return csrfError;
+
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
+
+  const [result] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(projects)
+    .where(eq(projects.bookTemplateId, id));
+
+  if (result && result.count > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete: template is used by ${result.count} project(s). Delete those projects first.` },
+      { status: 409 },
+    );
+  }
+
+  // Fetch template name for audit before deleting
+  const [template] = await db
+    .select({ name: bookTemplates.name })
+    .from(bookTemplates)
+    .where(eq(bookTemplates.id, id))
+    .limit(1);
+
   await db.delete(bookTemplates).where(eq(bookTemplates.id, id));
+
+  // Clean up orphaned template chapters (bookTemplateId set to null by FK)
+  await db.delete(chapters).where(
+    and(isNull(chapters.bookTemplateId), isNull(chapters.projectId))
+  );
+
+  logAudit({
+    userId: admin.user.id,
+    action: "template.delete",
+    resourceType: "book_template",
+    resourceId: id,
+    metadata: template ? { name: template.name } : undefined,
+  });
+
   return NextResponse.json({ ok: true });
 }

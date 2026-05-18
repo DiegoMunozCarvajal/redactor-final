@@ -1,5 +1,14 @@
 import { generateCompletion } from "@/lib/ai/completion";
-import { getProviderForModel } from "@/lib/ai/providers";
+import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
+
+function sanitizeTopic(topic: string): string {
+  // Strip control characters and prevent delimiter injection
+  return topic
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/<</g, "‹‹")
+    .replace(/>>/g, "››")
+    .trim();
+}
 
 export interface PromptLike {
   content: string;
@@ -11,6 +20,7 @@ export interface PromptLike {
 export interface GeneratePromptParams {
   prompt: PromptLike;
   topic: string;
+  subtitle?: string | null;
   model?: string;
 }
 
@@ -27,8 +37,11 @@ export interface GenerateResult {
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
-  const { prompt, topic, model = "claude-sonnet-4-6" } = params;
-  const content = prompt.content.replace(/\[TEMA\]/g, topic);
+  const { prompt, topic, subtitle, model = DEFAULT_GENERATION_MODEL } = params;
+  let content = prompt.content.replace(/\[TEMA\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`);
+  if (subtitle) {
+    content = content.replace(/\[SUBTÍTULO\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
+  }
 
   const systemPrompt = [
     prompt.styleRules ? `## Reglas de estilo\n${prompt.styleRules}` : "",
@@ -63,18 +76,22 @@ export async function generateChapterAssembly(
   assemblyPrompt: PromptLike,
   fragments: { content: string; type: string }[],
   topic: string,
-  model = "claude-sonnet-4-6",
+  subtitle?: string | null,
+  model = DEFAULT_GENERATION_MODEL,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
     .map((f, i) => `### Fragmento ${i + 1} (${f.type})\n\n${f.content}`)
     .join("\n\n---\n\n");
 
-  const content = assemblyPrompt.content
-    .replace(/\[TEMA\]/g, topic)
+  let content = assemblyPrompt.content
+    .replace(/\[TEMA\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`)
     .replace(
       /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]/g,
       fragmentsText,
     );
+  if (subtitle) {
+    content = content.replace(/\[SUBTÍTULO\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
+  }
 
   const result = await generateCompletion({
     model,

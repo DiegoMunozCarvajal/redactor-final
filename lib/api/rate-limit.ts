@@ -18,6 +18,7 @@ const lockClient = postgres(databaseUrl, {
 
 function projectIdToLockKey(projectId: string): [number, number] {
   const hex = projectId.replace(/-/g, "");
+  // 8 hex chars fits in 32 bits — safe within JS integer range
   const key1 = parseInt(hex.substring(0, 8), 16) | 0;
   const key2 = parseInt(hex.substring(8, 16), 16) | 0;
   return [key1, key2];

@@ -60,23 +60,30 @@ export default function PromptsPage() {
     content: "",
   });
 
-  useEffect(() => {
-    fetchPrompts();
-  }, [params.id, params.chapterId]);
-
-  async function fetchPrompts() {
+  async function fetchPrompts(signal?: AbortSignal) {
     try {
       const res = await fetch(
         `/api/projects/${params.id}/prompts?chapterId=${params.chapterId}`,
+        { signal },
       );
+      if (signal?.aborted) return;
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       setPrompts(await res.json());
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchPrompts(controller.signal);
+    return () => controller.abort();
+  }, [params.id, params.chapterId]);
 
   async function savePrompt(promptId: string, field: string, value: string) {
     setSaving((s) => ({ ...s, [promptId]: true }));

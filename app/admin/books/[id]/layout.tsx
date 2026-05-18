@@ -1,7 +1,7 @@
 import { AdminSidebar } from "@/components/patterns/admin-sidebar"
 import { db } from "@/lib/db/drizzle"
 import { chapters } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { eq, isNull, and } from "drizzle-orm"
 
 export default async function BookLayout({
   children,
@@ -19,7 +19,12 @@ export default async function BookLayout({
       position: chapters.position,
     })
     .from(chapters)
-    .where(eq(chapters.bookTemplateId, id))
+    .where(
+      and(
+        eq(chapters.bookTemplateId, id),
+        isNull(chapters.projectId),
+      ),
+    )
     .orderBy(chapters.position)
 
   return (

@@ -633,9 +633,6 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
         console.warn(
           `[completion] DeepSeek ZodError (finish_reason=${choice?.finish_reason ?? "unknown"}, attempt=${attempt + 1}), retrying: ${getErrorMessage(parseError)}`,
         );
-        console.warn(
-          `[completion] Raw output (first 200 chars): ${rawText.slice(0, 200)}`,
-        );
         continue;
       }
       throw new ProviderCallError(getErrorMessage(parseError), usage, { cause: parseError });

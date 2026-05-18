@@ -15,9 +15,9 @@ export const projects = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     topic: text("topic").notNull(),
-    bookTemplateId: uuid("book_template_id")
-      .notNull()
-      .references(() => bookTemplates.id, { onDelete: "restrict" }),
+    bookTemplateId: uuid("book_template_id").references(() => bookTemplates.id, {
+      onDelete: "restrict",
+    }),
     title: text("title"),
     subtitle: text("subtitle"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
