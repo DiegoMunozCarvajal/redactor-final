@@ -46,5 +46,5 @@ export async function getFullBookTemplate(bookTemplateId: string) {
     template.chapters.map(async (ch) => getChapterWithPrompts(ch.id))
   );
 
-  return { ...template, chapters: chaptersWithPrompts.filter(Boolean) };
+  return { ...template, chapters: chaptersWithPrompts.filter((ch): ch is NonNullable<typeof ch> => ch !== null) };
 }

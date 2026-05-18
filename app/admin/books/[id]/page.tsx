@@ -21,7 +21,7 @@ export default async function AdminBookPage({ params }: { params: Promise<{ id: 
 
       <div className="space-y-3">
         {template.chapters.map((ch) => (
-          <ChapterEditor key={ch!.id} bookId={id} chapter={ch as any} />
+          <ChapterEditor key={ch!.id} bookId={id} chapter={ch!} />
         ))}
       </div>
     </div>
