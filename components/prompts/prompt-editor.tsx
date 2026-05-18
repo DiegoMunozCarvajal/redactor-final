@@ -1,125 +1,174 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import type { Prompt } from "@/lib/db/schema";
+import { useState } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import type { Prompt } from "@/lib/db/schema"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { ChevronDown, ChevronUp, Loader2, Save, Trash2 } from "lucide-react"
 
 const PROMPT_TYPES = [
   "apertura", "modelo", "contraste", "amplificacion",
   "anecdota", "acumulacion", "proceso", "cierre", "ensamblaje",
-];
+] as const
+
+const schema = z.object({
+  type: z.enum(PROMPT_TYPES),
+  title: z.string().min(1, "Required"),
+  content: z.string().min(1, "Required"),
+  styleRules: z.string().optional(),
+  knowledgeAreas: z.string().optional(),
+  suggestedLength: z.string().optional(),
+})
+
+type FormData = z.infer<typeof schema>
 
 export function PromptEditor({
   prompt,
   onSave,
   onDelete,
 }: {
-  prompt: Prompt;
-  onSave: (p: Prompt) => void;
-  onDelete: (id: string) => void;
+  prompt: Prompt
+  onSave: (p: Prompt) => void
+  onDelete: (id: string) => void
 }) {
-  const [type, setType] = useState(prompt.type);
-  const [title, setTitle] = useState(prompt.title);
-  const [content, setContent] = useState(prompt.content);
-  const [styleRules, setStyleRules] = useState(prompt.styleRules ?? "");
-  const [knowledgeAreas, setKnowledgeAreas] = useState(prompt.knowledgeAreas ?? "");
-  const [suggestedLength, setSuggestedLength] = useState(prompt.suggestedLength ?? "");
-  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const { register, handleSubmit, setValue, watch, formState: { isSubmitting } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      type: prompt.type as (typeof PROMPT_TYPES)[number],
+      title: prompt.title,
+      content: prompt.content,
+      styleRules: prompt.styleRules ?? "",
+      knowledgeAreas: prompt.knowledgeAreas ?? "",
+      suggestedLength: prompt.suggestedLength ?? "",
+    },
+  })
+
+  const currentType = watch("type")
 
   function insertTopic() {
-    setContent((c) => c + " [TEMA]");
+    const current = watch("content")
+    setValue("content", current + " [TEMA]")
   }
 
-  async function handleSave() {
-    setSaving(true);
+  async function onSubmit(data: FormData) {
     const res = await fetch(`/api/prompts/${prompt.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, title, content, styleRules, knowledgeAreas, suggestedLength }),
-    });
-    const updated = await res.json();
-    onSave(updated);
-    setSaving(false);
+      body: JSON.stringify(data),
+    })
+    const updated = await res.json()
+    onSave(updated)
   }
 
   async function handleDelete() {
-    await fetch(`/api/prompts/${prompt.id}`, { method: "DELETE" });
-    onDelete(prompt.id);
+    setDeleting(true)
+    await fetch(`/api/prompts/${prompt.id}`, { method: "DELETE" })
+    onDelete(prompt.id)
   }
 
   return (
-    <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as typeof type)}
-          className="text-sm border rounded px-2 py-1"
-        >
-          {PROMPT_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título del prompt"
-          className="flex-1 bg-transparent border-b px-1 text-sm font-medium focus:outline-none focus:border-primary"
-        />
-        <button onClick={handleDelete} className="text-xs text-destructive">Delete</button>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-muted-foreground">Content</label>
-          <button onClick={insertTopic} type="button" className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent">
-            Insert [TEMA]
-          </button>
-        </div>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={12}
-          className="w-full border rounded-md p-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground">Style Rules</label>
-          <textarea
-            value={styleRules}
-            onChange={(e) => setStyleRules(e.target.value)}
-            rows={3}
-            className="w-full border rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Knowledge Areas</label>
-          <textarea
-            value={knowledgeAreas}
-            onChange={(e) => setKnowledgeAreas(e.target.value)}
-            rows={3}
-            className="w-full border rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Suggested Length</label>
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <Select
+            defaultValue={prompt.type}
+            onValueChange={(v) => setValue("type", v as (typeof PROMPT_TYPES)[number])}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROMPT_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <input
-            value={suggestedLength}
-            onChange={(e) => setSuggestedLength(e.target.value)}
-            className="w-full border rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            {...register("title")}
+            placeholder="Prompt title"
+            className="flex-1 bg-transparent text-sm font-medium border-0 border-b border-transparent hover:border-border focus:border-primary focus:outline-none focus:ring-0 px-1 py-0.5"
           />
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {currentType}
+          </Badge>
         </div>
-      </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Content</label>
+            <button
+              type="button"
+              onClick={insertTopic}
+              className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
+            >
+              Insert [TEMA]
+            </button>
+          </div>
+          <Textarea {...register("content")} rows={10} className="font-mono text-sm" />
+        </div>
 
-      <div className="flex justify-end">
         <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm disabled:opacity-50"
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          {saving ? "Saving..." : "Save"}
+          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          Advanced
         </button>
-      </div>
-    </div>
-  );
+
+        {expanded && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Style Rules</label>
+              <Textarea {...register("styleRules")} rows={3} className="text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Knowledge Areas</label>
+              <Textarea {...register("knowledgeAreas")} rows={3} className="text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Suggested Length</label>
+              <Input {...register("suggestedLength")} className="text-sm" />
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center pt-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
+          <Button type="button" size="sm" onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Save className="h-4 w-4" />
+            Save
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
