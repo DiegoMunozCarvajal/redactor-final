@@ -1,9 +1,15 @@
 import { generateCompletion } from "@/lib/ai/completion";
 import { getProviderForModel } from "@/lib/ai/providers";
-import type { Prompt } from "@/lib/db/schema";
+
+export interface PromptLike {
+  content: string;
+  styleRules: string | null;
+  knowledgeAreas: string | null;
+  suggestedLength: string | null;
+}
 
 export interface GeneratePromptParams {
-  prompt: Prompt;
+  prompt: PromptLike;
   topic: string;
   model?: string;
 }
@@ -54,7 +60,7 @@ export async function generatePromptContent(
 }
 
 export async function generateChapterAssembly(
-  assemblyPrompt: Prompt,
+  assemblyPrompt: PromptLike,
   fragments: { content: string; type: string }[],
   topic: string,
   model = "claude-sonnet-4-6",
