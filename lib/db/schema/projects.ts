@@ -18,6 +18,8 @@ export const projects = pgTable(
     bookTemplateId: uuid("book_template_id")
       .notNull()
       .references(() => bookTemplates.id, { onDelete: "restrict" }),
+    title: text("title"),
+    subtitle: text("subtitle"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_projects_user").on(table.userId)],
