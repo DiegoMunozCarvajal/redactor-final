@@ -73,7 +73,7 @@ export function Navbar() {
           href="/projects"
           className={`text-sm font-medium transition-colors ${
             pathname.startsWith("/projects")
-              ? "text-foreground"
+              ? "text-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -83,7 +83,7 @@ export function Navbar() {
           href="/admin/books"
           className={`text-sm font-medium transition-colors ${
             isAdmin
-              ? "text-foreground"
+              ? "text-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
