@@ -37,6 +37,27 @@
   --color-error: oklch(50% 0.2 25);
   --color-info: oklch(55% 0.12 210);
 
+  /* shadcn/ui semantic tokens — must be in @theme for utility generation */
+  --color-background: var(--color-neutral-50);
+  --color-foreground: var(--color-neutral-900);
+  --color-card: var(--color-neutral-50);
+  --color-card-foreground: var(--color-neutral-900);
+  --color-popover: var(--color-neutral-50);
+  --color-popover-foreground: var(--color-neutral-900);
+  --color-primary: var(--color-brand-500);
+  --color-primary-foreground: white;
+  --color-secondary: var(--color-neutral-100);
+  --color-secondary-foreground: var(--color-neutral-900);
+  --color-muted: var(--color-neutral-100);
+  --color-muted-foreground: var(--color-neutral-500);
+  --color-accent: var(--color-brand-50);
+  --color-accent-foreground: var(--color-brand-700);
+  --color-destructive: var(--color-error);
+  --color-destructive-foreground: white;
+  --color-border: var(--color-neutral-200);
+  --color-input: var(--color-neutral-200);
+  --color-ring: var(--color-brand-400);
+
   /* Font stacks */
   --font-sans: "Geist", var(--font-geist), system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono", var(--font-geist-mono), "JetBrains Mono", ui-monospace, monospace;
@@ -108,6 +129,27 @@
   --border: var(--color-neutral-700);
   --input: var(--color-neutral-700);
   --ring: var(--color-brand-500);
+
+  /* shadcn/ui utility overrides for dark mode */
+  --color-background: var(--color-neutral-900);
+  --color-foreground: var(--color-neutral-50);
+  --color-card: oklch(15% 0 0);
+  --color-card-foreground: var(--color-neutral-50);
+  --color-popover: oklch(15% 0 0);
+  --color-popover-foreground: var(--color-neutral-50);
+  --color-primary: var(--color-brand-400);
+  --color-primary-foreground: var(--color-neutral-900);
+  --color-secondary: var(--color-neutral-800);
+  --color-secondary-foreground: var(--color-neutral-50);
+  --color-muted: var(--color-neutral-800);
+  --color-muted-foreground: var(--color-neutral-400);
+  --color-accent: oklch(25% 0.10 250);
+  --color-accent-foreground: var(--color-brand-200);
+  --color-destructive: oklch(35% 0.18 20);
+  --color-destructive-foreground: white;
+  --color-border: var(--color-neutral-700);
+  --color-input: var(--color-neutral-700);
+  --color-ring: var(--color-brand-500);
 }
 
 /* =============================================
