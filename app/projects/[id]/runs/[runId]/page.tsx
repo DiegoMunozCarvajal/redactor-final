@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 
 interface ChapterRunData {
   id: string;
@@ -46,6 +47,13 @@ export default function RunPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
+      <Breadcrumbs
+        items={[
+          { label: "Projects", href: "/projects" },
+          { label: run.projectName ?? params.id, href: `/projects/${params.id}` },
+          { label: `Run ${params.runId.slice(0, 8)}...` },
+        ]}
+      />
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-xl font-bold">Run {params.runId.slice(0, 8)}...</h1>
         <span className={`text-xs px-2 py-0.5 rounded ${

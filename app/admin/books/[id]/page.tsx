@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getFullBookTemplate } from "@/lib/db/queries/books";
 import { ChapterEditor } from "@/components/prompts/chapter-editor";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 
 export default async function AdminBookPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -9,6 +10,12 @@ export default async function AdminBookPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="max-w-3xl mx-auto">
+      <Breadcrumbs
+        items={[
+          { label: "Admin", href: "/admin/books" },
+          { label: template.name },
+        ]}
+      />
       <h1 className="text-2xl font-bold mb-2">{template.name}</h1>
       {template.description && <p className="text-muted-foreground mb-6">{template.description}</p>}
 

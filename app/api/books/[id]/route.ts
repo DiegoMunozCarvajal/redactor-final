@@ -4,6 +4,22 @@ import { bookTemplates } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const [book] = await db
+    .select()
+    .from(bookTemplates)
+    .where(eq(bookTemplates.id, id))
+    .limit(1);
+
+  if (!book) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json(book);
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

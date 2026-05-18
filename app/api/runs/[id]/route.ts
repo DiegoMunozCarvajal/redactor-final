@@ -49,5 +49,9 @@ export async function GET(
     }),
   );
 
-  return NextResponse.json({ ...run, chapterRuns: chaptersWithFragments });
+  return NextResponse.json({
+    ...run,
+    projectName: project.name,
+    chapterRuns: chaptersWithFragments,
+  });
 }
