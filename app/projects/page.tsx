@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { ProjectCardSkeleton } from "@/components/patterns/project-card-skeleton";
+import { ContinueWritingCard } from "@/components/patterns/continue-writing-card";
+import { QuickStartCard } from "@/components/patterns/quick-start-card";
+import { StatsCard } from "@/components/patterns/stats-card";
 import { BookOpen, Clock, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
@@ -22,6 +26,8 @@ interface ProjectData {
   topic: string;
   title: string | null;
   createdAt: string;
+  chapterCount?: number;
+  completedCount?: number;
 }
 
 interface Template {
@@ -75,17 +81,70 @@ export default function ProjectsPage() {
     }
   }
 
+  // --- Skeleton loading ---
   if (loading) {
     return (
       <div className="py-6">
-        <div className="animate-pulse space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-muted rounded-lg" />
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create and manage your book generation projects
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <ProjectCardSkeleton key={i} index={i} />
           ))}
         </div>
       </div>
     );
   }
+
+  // --- Empty state ---
+  if (projects.length === 0) {
+    return (
+      <div className="py-6">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-6">
+            <BookOpen className="h-8 w-8 text-brand-500" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">
+            Your first book is waiting
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-md mb-8">
+            AI-powered non-fiction books in Spanish. Pick a template, set a
+            topic, and generate a complete book chapter by chapter.
+          </p>
+          <CreateProjectDialog templates={templates} />
+          <div className="flex items-center gap-6 mt-8 text-xs text-muted-foreground/60">
+            <span>1. Pick template</span>
+            <span className="text-border">&#8594;</span>
+            <span>2. Set topic</span>
+            <span className="text-border">&#8594;</span>
+            <span>3. Generate</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Compute stats from API response ---
+  const totalChapters = projects.reduce(
+    (sum, p) => sum + (p.chapterCount ?? 0),
+    0,
+  );
+  const completedChapters = projects.reduce(
+    (sum, p) => sum + (p.completedCount ?? 0),
+    0,
+  );
+
+  // Last active project = first in list
+  const lastProject = projects[0];
+
+  // Remaining projects (skip the first one)
+  const remainingProjects = projects.slice(1);
 
   return (
     <div className="py-6">
@@ -96,21 +155,27 @@ export default function ProjectsPage() {
             Create and manage your book generation projects
           </p>
         </div>
-        <CreateProjectDialog templates={templates} />
       </div>
 
-      {projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <BookOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
-          <h2 className="text-lg font-medium mb-1">No projects yet</h2>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Create your first project to start generating AI-powered books in
-            Spanish.
-          </p>
+      {/* Bento Hero Row */}
+      <div className="grid gap-4 md:grid-cols-3 mb-8">
+        <div className="md:col-span-2 md:row-span-2">
+          <ContinueWritingCard
+            project={lastProject}
+          />
         </div>
-      ) : (
+        <QuickStartCard templates={templates} />
+        <StatsCard
+          totalProjects={projects.length}
+          totalChapters={totalChapters}
+          completedChapters={completedChapters}
+        />
+      </div>
+
+      {/* Regular Project Grid (remaining projects) */}
+      {remainingProjects.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projects.map((p, i) => (
+          {remainingProjects.map((p, i) => (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, y: 12 }}
