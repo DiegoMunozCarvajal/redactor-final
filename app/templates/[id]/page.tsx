@@ -217,7 +217,7 @@ export default function AdminBookPage() {
 
   if (error || !template) {
     return (
-      <div className="max-w-3xl mx-auto p-6 text-center py-20">
+      <div className="py-20 text-center">
         <p className="text-destructive mb-4">{error ?? "Template not found"}</p>
       </div>
     );
@@ -226,7 +226,7 @@ export default function AdminBookPage() {
   const chapterCount = template.chapters.length;
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="py-6">
       <Breadcrumbs
         items={[
           { label: "Templates", href: "/templates" },

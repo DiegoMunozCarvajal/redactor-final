@@ -77,7 +77,7 @@ export default function ProjectsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
+      <div className="py-6">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 bg-muted rounded-lg" />
@@ -88,7 +88,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+    <div className="py-6">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Proyectos</h1>

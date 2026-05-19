@@ -82,7 +82,7 @@ export default function AdminBooksPage() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
+      <div className="py-6">
         <div className="animate-pulse space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 bg-muted rounded-lg" />
@@ -93,7 +93,7 @@ export default function AdminBooksPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+    <div className="py-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -150,10 +150,10 @@ export default function AdminBooksPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <Card key={t.id} className="group relative">
+            <Card key={t.id} className="group relative hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200">
               <Link href={`/templates/${t.id}`}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{t.name}</CardTitle>
+                  <CardTitle className="text-base group-hover:text-primary transition-colors">{t.name}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {t.description ? (

@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <Navbar />
-          <main className="min-h-screen">{children}</main>
+          <main className="min-h-screen max-w-6xl mx-auto px-6">{children}</main>
           <Toaster />
           <CommandPalette />
         </ThemeProvider>

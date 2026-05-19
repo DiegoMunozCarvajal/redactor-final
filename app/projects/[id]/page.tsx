@@ -122,7 +122,7 @@ export default function ProjectPage() {
 
   if (error || !project) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+      <div className="py-20 text-center">
         <p className="text-destructive mb-4">{error ?? "Project not found"}</p>
         <Link href="/projects" className="text-sm text-primary hover:underline">
           Back to projects
@@ -136,7 +136,7 @@ export default function ProjectPage() {
   ).length;
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="py-6">
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },

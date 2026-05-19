@@ -146,7 +146,7 @@ export default function ChapterPromptEditorPage() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center py-20">
+      <div className="py-20 text-center">
         <p className="text-destructive mb-4">{error}</p>
       </div>
     )
@@ -156,7 +156,7 @@ export default function ChapterPromptEditorPage() {
   const assemblyPrompt = prompts.find((p) => p.isAssembly)
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="py-6">
       <Breadcrumbs
         items={[
           { label: "Templates", href: "/templates" },
