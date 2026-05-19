@@ -59,7 +59,8 @@
   --color-ring: var(--color-brand-400);
 
   /* Font stacks */
-  --font-sans: "MesloLGS NF", var(--font-meslo), system-ui, -apple-system, sans-serif;
+  --font-sans: "Geist Sans", var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-serif: "Lora", var(--font-lora), "Georgia", "Times New Roman", serif;
   --font-mono: "MesloLGS NF", var(--font-meslo), "JetBrains Mono", ui-monospace, monospace;
 
   /* Animation presets */
@@ -68,6 +69,9 @@
 
   /* Border radius */
   --radius: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
 }
 
 /* =============================================
@@ -101,6 +105,22 @@
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* =============================================
+   Layer 2 — Density Tokens
+   ============================================= */
+
+:root {
+  --density: 1;
+  --density-card-padding-y: calc(1.5rem * var(--density));
+  --density-card-padding-x: calc(1.5rem * var(--density));
+  --density-card-gap: calc(1rem * var(--density));
+  --density-list-item-padding-y: calc(0.75rem * var(--density));
+}
+
+.density-compact {
+  --density: 0.6;
 }
 
 /* =============================================
@@ -154,9 +174,25 @@
    ============================================= */
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+}
+
+h1 { font-size: clamp(1.5rem, 4vw, 2.25rem); }
+h2 { font-size: clamp(1.25rem, 3vw, 1.5rem); }
+h3 { font-size: clamp(1.125rem, 2vw, 1.25rem); }
+
+.ui-sans {
+  font-family: var(--font-sans);
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
 }
 
 .tnum {
