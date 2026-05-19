@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import type { Prompt } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -17,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { ChevronDown, ChevronUp, Loader2, Save, Trash2 } from "lucide-react"
+import { Loader2, Save, Trash2 } from "lucide-react"
 
 const PROMPT_TYPES = [
   "apertura", "modelo", "contraste", "amplificacion",
@@ -28,9 +27,6 @@ const schema = z.object({
   type: z.enum(PROMPT_TYPES),
   title: z.string().min(1, "Required"),
   content: z.string().min(1, "Required"),
-  styleRules: z.string().optional(),
-  knowledgeAreas: z.string().optional(),
-  suggestedLength: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -44,7 +40,6 @@ export function PromptEditor({
   onSave: (p: Prompt) => void
   onDelete: (id: string) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,9 +49,6 @@ export function PromptEditor({
       type: prompt.type as (typeof PROMPT_TYPES)[number],
       title: prompt.title,
       content: prompt.content,
-      styleRules: prompt.styleRules ?? "",
-      knowledgeAreas: prompt.knowledgeAreas ?? "",
-      suggestedLength: prompt.suggestedLength ?? "",
     },
   })
 
@@ -143,32 +135,6 @@ export function PromptEditor({
           </div>
           <Textarea id={`content-${prompt.id}`} {...register("content")} rows={10} className="font-mono text-sm" />
         </div>
-
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          Advanced
-        </button>
-
-        {expanded && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor={`styleRules-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Style Rules</label>
-              <Textarea id={`styleRules-${prompt.id}`} {...register("styleRules")} rows={3} className="text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor={`knowledgeAreas-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Knowledge Areas</label>
-              <Textarea id={`knowledgeAreas-${prompt.id}`} {...register("knowledgeAreas")} rows={3} className="text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor={`suggestedLength-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Suggested Length</label>
-              <Input id={`suggestedLength-${prompt.id}`} {...register("suggestedLength")} className="text-sm" />
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-between items-center pt-2">
           <Button

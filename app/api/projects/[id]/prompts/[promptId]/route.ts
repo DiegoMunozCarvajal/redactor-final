@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts } from "@/lib/db/schema";
+import { projects, projectPrompts, fragments } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
 
@@ -41,15 +41,12 @@ export async function PUT(
   }
 
   const body = await req.json();
-  const { content, styleRules, knowledgeAreas, suggestedLength } = body;
+  const { content } = body;
 
   const [updated] = await db
     .update(projectPrompts)
     .set({
       ...(content !== undefined && { content }),
-      ...(styleRules !== undefined && { styleRules }),
-      ...(knowledgeAreas !== undefined && { knowledgeAreas }),
-      ...(suggestedLength !== undefined && { suggestedLength }),
     })
     .where(eq(projectPrompts.id, promptId))
     .returning();
@@ -93,6 +90,7 @@ export async function DELETE(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  await db.delete(fragments).where(eq(fragments.projectPromptId, promptId));
   await db.delete(projectPrompts).where(eq(projectPrompts.id, promptId));
 
   return NextResponse.json({ ok: true });

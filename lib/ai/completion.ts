@@ -31,6 +31,8 @@ export class ProviderCallError extends Error {
   }
 }
 
+export type ReasoningEffort = "off" | "minimal" | "low" | "medium" | "high" | "max";
+
 export interface CompletionOptions<T extends z.ZodType> {
   cachedSystemPrompt?: string;
   systemPrompt: string;
@@ -39,6 +41,7 @@ export interface CompletionOptions<T extends z.ZodType> {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  effort?: ReasoningEffort;
   /** When true and the provider is Anthropic, sends the system prompt as a cacheable content block */
   cacheSystemPrompt?: boolean;
   /** If provided, records a run_logs row for this call */
@@ -268,16 +271,70 @@ function getProviderUsageFromError(error: unknown): ProviderUsage | undefined {
 
 const OPENAI_FIXED_TEMPERATURE_MODELS = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
 
+// ---------------------------------------------------------------------------
+// Reasoning effort → provider-specific mappings
+// ---------------------------------------------------------------------------
+
+type EffortConfig =
+  | { kind: "deepseek"; thinkingDisabled: true }
+  | { kind: "deepseek"; thinkingDisabled: false; reasoningEffort: "high" | "max" }
+  | { kind: "openai"; reasoningEffort?: "minimal" | "low" | "medium" | "high" }
+  | { kind: "anthropic"; budgetTokens?: number }
+  | { kind: "google"; thinkingBudget?: number };
+
+function mapEffort(effort: ReasoningEffort | undefined, provider: string): EffortConfig {
+  switch (provider) {
+    case "deepseek": {
+      if (!effort || effort === "off") return { kind: "deepseek", thinkingDisabled: true };
+      // DeepSeek only has "high" and "max". Map minimal/low/medium → high
+      const reasoningEffort = effort === "max" ? "max" : "high";
+      return { kind: "deepseek", thinkingDisabled: false, reasoningEffort };
+    }
+    case "openai": {
+      if (!effort || effort === "off") return { kind: "openai" };
+      // OpenAI doesn't have "max" — map to "high"
+      const level = effort === "max" ? "high" : effort;
+      return { kind: "openai", reasoningEffort: level as "minimal" | "low" | "medium" | "high" };
+    }
+    case "anthropic": {
+      if (!effort || effort === "off") return { kind: "anthropic" };
+      const budgetMap: Record<string, number> = {
+        minimal: 1024, low: 4096, medium: 8192, high: 16000, max: 16000,
+      };
+      return { kind: "anthropic", budgetTokens: budgetMap[effort] ?? 16000 };
+    }
+    case "google": {
+      if (!effort || effort === "off") return { kind: "google" };
+      const budgetMap: Record<string, number> = {
+        minimal: 512, low: 2048, medium: 4096, high: 8192, max: 8192,
+      };
+      return { kind: "google", thinkingBudget: budgetMap[effort] ?? 8192 };
+    }
+    default:
+      return { kind: "openai" };
+  }
+}
+
 async function completeWithOpenAI<T extends z.ZodType>(
   messages: Array<{ role: "system" | "user"; content: string }>,
   model: string,
   temperature: number,
   maxTokens: number | undefined,
   schema: T | undefined,
+  effortConfig: EffortConfig & { kind: "openai" },
   client?: OpenAI,
 ): Promise<ProviderResult<z.infer<T>>> {
   const openaiClient = client ?? getOpenAIClient();
+  const modelDef = requireModelDefinition(model);
   const supportsTemperature = !OPENAI_FIXED_TEMPERATURE_MODELS.has(model);
+
+  // Reasoning models (GPT-5.x) only support temperature=1 when reasoning_effort is active.
+  // GPT-5.5 defaults to medium reasoning, GPT-5.4 defaults to none.
+  // If the model has a fixedTemperature and reasoning is active, lock to that value.
+  const reasoningActive = !!effortConfig.reasoningEffort;
+  const effectiveTemperature = reasoningActive && modelDef.fixedTemperature !== undefined
+    ? modelDef.fixedTemperature
+    : temperature;
 
   if (schema) {
     const rawSchema = zodToJsonSchema(schema, {
@@ -288,9 +345,12 @@ async function completeWithOpenAI<T extends z.ZodType>(
 
     const response = await openaiClient.chat.completions.create({
       model,
-      ...(supportsTemperature ? { temperature } : {}),
+      ...(supportsTemperature ? { temperature: effectiveTemperature } : {}),
       max_completion_tokens: maxTokens,
       messages,
+      ...(reasoningActive
+        ? { reasoning_effort: effortConfig.reasoningEffort } as Record<string, unknown>
+        : {}),
       response_format: {
         type: "json_schema" as const,
         json_schema: {
@@ -330,9 +390,12 @@ async function completeWithOpenAI<T extends z.ZodType>(
   } else {
     const response = await openaiClient.chat.completions.create({
       model,
-      ...(supportsTemperature ? { temperature } : {}),
+      ...(supportsTemperature ? { temperature: effectiveTemperature } : {}),
       max_completion_tokens: maxTokens,
       messages,
+      ...(reasoningActive
+        ? { reasoning_effort: effortConfig.reasoningEffort } as Record<string, unknown>
+        : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.prompt_tokens ?? 0;
@@ -371,6 +434,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
   temperature: number,
   maxTokens: number | undefined,
   schema: T | undefined,
+  effortConfig: EffortConfig & { kind: "anthropic" },
   cacheSystemPrompt?: boolean,
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getAnthropicClient();
@@ -395,6 +459,9 @@ async function completeWithAnthropic<T extends z.ZodType>(
       temperature,
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
+      ...(effortConfig.budgetTokens
+        ? { thinking: { type: "enabled" as const, budget_tokens: effortConfig.budgetTokens } }
+        : {}),
       tools: [
         {
           name: "respond",
@@ -434,6 +501,9 @@ async function completeWithAnthropic<T extends z.ZodType>(
       temperature,
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
+      ...(effortConfig.budgetTokens
+        ? { thinking: { type: "enabled" as const, budget_tokens: effortConfig.budgetTokens } }
+        : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -466,6 +536,7 @@ async function completeWithGoogle<T extends z.ZodType>(
   temperature: number,
   maxTokens: number | undefined,
   schema: T | undefined,
+  effortConfig: EffortConfig & { kind: "google" },
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getGoogleClient();
   const systemPrompt = messages.find((m) => m.role === "system")?.content ?? "";
@@ -489,6 +560,9 @@ async function completeWithGoogle<T extends z.ZodType>(
         maxOutputTokens: maxTokens,
         responseMimeType: "application/json",
         responseSchema: jsonSchema as Record<string, unknown>,
+        ...(effortConfig.thinkingBudget
+          ? { thinkingConfig: { thinkingBudget: effortConfig.thinkingBudget } }
+          : {}),
       },
     });
 
@@ -524,6 +598,9 @@ async function completeWithGoogle<T extends z.ZodType>(
         systemInstruction: systemPrompt,
         temperature,
         maxOutputTokens: maxTokens,
+        ...(effortConfig.thinkingBudget
+          ? { thinkingConfig: { thinkingBudget: effortConfig.thinkingBudget } }
+          : {}),
       },
     });
 
@@ -547,16 +624,30 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
   temperature: number,
   maxTokens: number | undefined,
   schema: T | undefined,
+  effortConfig: EffortConfig & { kind: "deepseek" },
   client?: OpenAI,
 ): Promise<ProviderResult<z.infer<T>>> {
   const deepseekClient = client ?? getDeepSeekClient();
 
   // DeepSeek json_object mode needs temperature=0 to prevent markdown
   // wrapping and hallucinated prose around the JSON output.
+  // When thinking is enabled, temperature/top_p are silently ignored by the API
+  // — omit them to avoid confusion.
   const effectiveTemperature = schema ? 0 : temperature;
+  const thinkingEnabled = !effortConfig.thinkingDisabled;
 
   if (!schema) {
-    return completeWithOpenAI(messages, model, temperature, maxTokens, undefined, deepseekClient);
+    // For non-structured DeepSeek, use OpenAI-compatible path with effort.
+    // DeepSeek reasoning_effort values ("high"/"max") are passed through to
+    // DeepSeek's OpenAI-compatible endpoint. Cast needed because OpenAI SDK
+    // types don't include "max".
+    const reasoningEffort = effortConfig.thinkingDisabled
+      ? undefined
+      : (effortConfig.reasoningEffort as "minimal" | "low" | "medium" | "high");
+    return completeWithOpenAI(messages, model, temperature, maxTokens, undefined, {
+      kind: "openai" as const,
+      reasoningEffort,
+    }, deepseekClient);
   }
 
   const rawSchema = zodToJsonSchema(schema, {
@@ -575,22 +666,39 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
   let completionTokens = 0;
 
   for (let attempt = 0; attempt <= 1; attempt++) {
+    const deepseekParams: Record<string, unknown> = {
+      model,
+      max_completion_tokens: maxTokens,
+      messages: userMessages,
+      response_format: { type: "json_object" },
+    };
+    // Temperature has no effect when thinking is enabled in V4.
+    // Only include it when thinking is disabled.
+    if (!thinkingEnabled) {
+      deepseekParams.temperature = effectiveTemperature;
+    }
+    if (!effortConfig.thinkingDisabled) {
+      deepseekParams.reasoning_effort = effortConfig.reasoningEffort;
+      deepseekParams.extra_body = { thinking: { type: "enabled" } };
+    } else {
+      deepseekParams.extra_body = { thinking: { type: "disabled" } };
+    }
+
     const response = await deepseekClient.chat.completions.create(
-      {
-        model,
-        temperature: effectiveTemperature,
-        max_completion_tokens: maxTokens,
-        messages: userMessages,
-        response_format: { type: "json_object" },
-      },
+      deepseekParams as unknown as Parameters<typeof deepseekClient.chat.completions.create>[0],
       { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) },
     );
 
-    promptTokens = response.usage?.prompt_tokens ?? 0;
-    completionTokens = response.usage?.completion_tokens ?? 0;
-    const usage: ProviderUsage = { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 };
+    // response typing lost due to cast — restore it
+    if (Symbol.asyncIterator in response) {
+      throw new Error("DeepSeek returned unexpected stream");
+    }
+    const chatCompletion = response as OpenAI.ChatCompletion;
 
-    const choice = response.choices[0];
+    promptTokens = chatCompletion.usage?.prompt_tokens ?? 0;
+    completionTokens = chatCompletion.usage?.completion_tokens ?? 0;
+    const choice = chatCompletion.choices[0];
+    const usage: ProviderUsage = { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 };
     const rawText = (choice?.message?.content ?? "").trim();
 
     if (!rawText) {
@@ -666,19 +774,20 @@ export async function generateCompletion<T extends z.ZodType>(
     model, // Required; lib/generate.ts always resolves model per-stage
     temperature = 0.7,
     maxTokens,
+    effort,
     tracking,
   } = options;
   requireModelDefinition(model);
 
   const startTime = Date.now();
+  const provider = getProviderForModel(model);
+  const effortConfig = mapEffort(effort, provider);
 
   const fullSystemPrompt = joinSystemPrompts(cachedSystemPrompt, systemPrompt);
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     { role: "system", content: fullSystemPrompt },
     { role: "user", content: userPrompt },
   ];
-
-  const provider = getProviderForModel(model);
 
   try {
     let result: ProviderResult<z.infer<T>>;
@@ -693,22 +802,26 @@ export async function generateCompletion<T extends z.ZodType>(
           temperature,
           maxTokens,
           schema,
+          effortConfig as EffortConfig & { kind: "anthropic" },
           options.cacheSystemPrompt,
         );
         break;
       case "google":
-        result = await completeWithGoogle(messages, model, temperature, maxTokens, schema);
+        result = await completeWithGoogle(
+          messages, model, temperature, maxTokens, schema,
+          effortConfig as EffortConfig & { kind: "google" },
+        );
         break;
       case "openai":
-        result = await completeWithOpenAI(messages, model, temperature, maxTokens, schema);
+        result = await completeWithOpenAI(
+          messages, model, temperature, maxTokens, schema,
+          effortConfig as EffortConfig & { kind: "openai" },
+        );
         break;
       case "deepseek":
         result = await completeWithDeepSeekStructured(
-          messages,
-          model,
-          temperature,
-          maxTokens,
-          schema,
+          messages, model, temperature, maxTokens, schema,
+          effortConfig as EffortConfig & { kind: "deepseek" },
         );
         break;
       default:

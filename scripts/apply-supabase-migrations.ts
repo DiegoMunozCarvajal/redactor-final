@@ -13,7 +13,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const MIGRATIONS_DIR = join(import.meta.dirname, "..", "supabase", "migrations");
 
 async function main() {
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+   
   const sql = postgres(databaseUrl!, { max: 1 });
 
   // Ensure migration tracking table exists

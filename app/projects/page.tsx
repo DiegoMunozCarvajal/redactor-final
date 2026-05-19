@@ -35,16 +35,26 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchProjects = useCallback(async (signal?: AbortSignal) => {
-    const res = await fetch("/api/projects", { signal });
-    if (signal?.aborted) return;
-    if (res.ok) setProjects(await res.json());
+    try {
+      const res = await fetch("/api/projects", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) setProjects(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      throw err;
+    }
     setLoading(false);
   }, []);
 
   const fetchTemplates = useCallback(async (signal?: AbortSignal) => {
-    const res = await fetch("/api/books", { signal });
-    if (signal?.aborted) return;
-    if (res.ok) setTemplates(await res.json());
+    try {
+      const res = await fetch("/api/books", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) setTemplates(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      throw err;
+    }
   }, []);
 
   useEffect(() => {

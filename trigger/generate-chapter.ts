@@ -38,8 +38,8 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string }) => {
-    const { generationId, projectId, model } = payload;
+  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number }) => {
+    const { generationId, projectId, model, temperature } = payload;
 
     // Load generation
     const [gen] = await db
@@ -109,6 +109,7 @@ export const generateChapter = task({
           topic: project.topic,
           subtitle: project.subtitle,
           ...(model ? { model } : {}),
+          ...(temperature !== undefined ? { temperature } : {}),
         });
 
         await db
@@ -141,6 +142,7 @@ export const generateChapter = task({
           project.topic,
           project.subtitle,
           model,
+          temperature,
         );
 
         await db
@@ -187,10 +189,6 @@ export const generateChapter = task({
           prompt: {
             content:
               'Genera un título y subtítulo atractivo para un libro sobre [TEMA]. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
-            styleRules:
-              "Español claro. Título memorable, subtítulo descriptivo.",
-            knowledgeAreas: null,
-            suggestedLength: null,
           },
           topic: project.topic,
           ...(model ? { model } : {}),

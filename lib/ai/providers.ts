@@ -10,6 +10,11 @@ export interface ModelDefinition {
   pricing: { input: number; output: number };
   /** Whether this model supports structured JSON output reliably */
   supportsStructuredOutput: boolean;
+  /**
+   * When set, temperature is locked to this value whenever reasoning/thinking
+   * is active. undefined = temperature is freely configurable.
+   */
+  fixedTemperature?: number;
 }
 
 /**
@@ -24,6 +29,7 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     provider: "openai",
     pricing: { input: 2.5, output: 15 },
     supportsStructuredOutput: true,
+    fixedTemperature: 1,
   },
   {
     id: "gpt-5.4-mini",
@@ -31,6 +37,23 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     provider: "openai",
     pricing: { input: 0.75, output: 4.5 },
     supportsStructuredOutput: true,
+    fixedTemperature: 1,
+  },
+  {
+    id: "gpt-5.5",
+    label: "GPT 5.5",
+    provider: "openai",
+    pricing: { input: 2.75, output: 16.5 },
+    supportsStructuredOutput: true,
+    fixedTemperature: 1,
+  },
+  {
+    id: "gpt-5.5-mini",
+    label: "GPT 5.5 Mini",
+    provider: "openai",
+    pricing: { input: 0.85, output: 5 },
+    supportsStructuredOutput: true,
+    fixedTemperature: 1,
   },
   // Anthropic
   {
@@ -123,29 +146,30 @@ export function getModelPricing(modelId: string): { input: number; output: numbe
  */
 export const MODELS_BY_STAGE = {
   book_plan: AVAILABLE_MODELS.filter((m) =>
-    ["claude-haiku-4-5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
+    ["claude-haiku-4-5", "gpt-5.5-mini", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
   ),
   unit_brief: AVAILABLE_MODELS.filter((m) =>
-    ["claude-haiku-4-5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
+    ["claude-haiku-4-5", "gpt-5.5-mini", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
   ),
   draft_small_book: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   assemble_small_book_chapter: [
     requireModelDefinition("claude-opus-4-7"),
     requireModelDefinition("claude-sonnet-4-6"),
+    requireModelDefinition("gpt-5.5"),
     requireModelDefinition("gpt-5.4"),
     requireModelDefinition("gemini-2.5-pro"),
     requireModelDefinition("deepseek-v4-flash"),
     requireModelDefinition("deepseek-v4-pro"),
   ],
   draft_workbook: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   critique_revise: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.4", "gpt-5.4-mini", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   book_title: AVAILABLE_MODELS.filter((m) =>
-    ["claude-haiku-4-5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
+    ["claude-haiku-4-5", "gpt-5.5-mini", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
   ),
 } as const;

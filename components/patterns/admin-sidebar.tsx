@@ -38,7 +38,7 @@ export function AdminSidebar({ chapters, bookId }: {
         )}
         <nav className="space-y-0.5">
           {chapters.map((ch) => {
-            const href = `/admin/books/${bookId}/chapters/${ch.id}`
+            const href = `/templates/${bookId}/chapters/${ch.id}`
             const active = pathname === href || pathname.startsWith(href + "/")
             return (
               <Link

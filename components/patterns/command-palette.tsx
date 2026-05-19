@@ -51,10 +51,10 @@ export function CommandPalette() {
             <CommandShortcut>⌘P</CommandShortcut>
           </CommandItem>
           <CommandItem
-            onSelect={() => runCommand(() => router.push("/admin/books"))}
+            onSelect={() => runCommand(() => router.push("/templates"))}
           >
             <Settings className="h-4 w-4" />
-            Admin — Book Templates
+            Templates
           </CommandItem>
         </CommandGroup>
         <CommandGroup heading="Create">

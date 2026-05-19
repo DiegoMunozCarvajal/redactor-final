@@ -50,10 +50,6 @@ export async function POST(
       prompt: {
         content:
           'Genera un título y subtítulo atractivo para un libro sobre [TEMA]. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
-        styleRules:
-          "Español claro. Título memorable, subtítulo descriptivo.",
-        knowledgeAreas: null,
-        suggestedLength: null,
       },
       topic: project.topic,
     });

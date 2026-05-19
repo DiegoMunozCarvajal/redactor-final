@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
-import "@/lib/trigger/setup";
+import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateChapter, sanitizeError } from "@/trigger/generate-chapter";
 import { logAudit } from "@/lib/audit";
 
@@ -37,28 +37,35 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
-
-  // Create generation record BEFORE acquiring lock — so the row survives
-  // even if the Trigger.dev dispatch fails and the lock transaction rolls back.
-  const [gen] = await db
-    .insert(chapterGenerations)
-    .values({ projectId, chapterId, status: "generating" })
-    .returning();
+  const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
 
   // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two
   // concurrent requests both pass the check before either acquires the lock.
+  //
+  // Create the generation row INSIDE the lock so a failed lock acquisition
+  // doesn't leave a stuck "generating" row behind.
+  let gen: typeof chapterGenerations.$inferSelect | null = null;
   const lockResult = await withProjectLock(projectId, async () => {
+    const [row] = await db
+      .insert(chapterGenerations)
+      .values({ projectId, chapterId, status: "generating" })
+      .returning();
+    gen = row;
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
+      // Delete the row we just created — don't leave a stuck "generating" row
+      await db.delete(chapterGenerations).where(eq(chapterGenerations.id, row.id));
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
     try {
+      ensureTriggerConfigured();
       await generateChapter.trigger({
         generationId: gen.id,
         projectId,
         ...(model ? { model } : {}),
+        ...(temperature !== undefined ? { temperature } : {}),
       });
       return gen;
     } catch (err) {
@@ -90,7 +97,7 @@ export async function POST(
     userId: user.id,
     action: "chapter.generate",
     resourceType: "chapter_generation",
-    resourceId: gen.id,
+    resourceId: gen!.id,
     metadata: { projectId, chapterId },
   });
 

@@ -56,7 +56,7 @@ export function Navbar() {
     router.push("/login");
   }
 
-  const isAdmin = pathname.startsWith("/admin");
+  const isAdmin = pathname.startsWith("/templates");
 
   return (
     <header className="sticky top-0 z-50 border-b border-border backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-between">
@@ -80,14 +80,14 @@ export function Navbar() {
           Projects
         </Link>
         <Link
-          href="/admin/books"
+          href="/templates"
           className={`text-sm font-medium transition-colors ${
             isAdmin
               ? "text-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Admin
+          Templates
         </Link>
 
         {isAdmin && (

@@ -1,13 +1,30 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { ChapterEditor } from "@/components/prompts/chapter-editor";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Loader2, Pencil, Check, X, Trash2 } from "lucide-react";
+import { Plus, Loader2, Pencil, Check, X, Trash2, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { toast } from "sonner";
 import type { Chapter, Prompt } from "@/lib/db/schema";
 
 interface ChapterWithPrompts extends Chapter {
@@ -21,9 +38,57 @@ interface TemplateData {
   chapters: ChapterWithPrompts[];
 }
 
+function SortableChapterRow({
+  chapter,
+  templateId,
+  onDelete,
+}: {
+  chapter: ChapterWithPrompts;
+  templateId: string;
+  onDelete: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: chapter.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors mt-4 p-1 rounded shrink-0"
+        aria-label="Drag to reorder"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="flex-1">
+        <ChapterEditor bookId={templateId} chapter={chapter} />
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0 text-muted-foreground hover:text-destructive mt-2"
+        onClick={() => onDelete(chapter.id)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export default function AdminBookPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +97,40 @@ export default function AdminBookPage() {
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [addingChapter, setAddingChapter] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !template) return;
+
+    const oldIndex = template.chapters.findIndex((ch) => ch.id === active.id);
+    const newIndex = template.chapters.findIndex((ch) => ch.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(template.chapters, oldIndex, newIndex).map(
+      (ch, i) => ({ ...ch, position: i }),
+    );
+    setTemplate({ ...template, chapters: reordered });
+
+    const res = await fetch(`/api/books/${template.id}/chapters/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapters: reordered.map((ch) => ({ id: ch.id, position: ch.position })),
+      }),
+    });
+
+    if (!res.ok) {
+      fetchTemplate();
+      toast.error("Error reordering chapters");
+    }
+  }
 
   const fetchTemplate = useCallback(async () => {
     try {
@@ -117,14 +215,6 @@ export default function AdminBookPage() {
     });
   }
 
-  async function deleteTemplate() {
-    if (!template) return;
-    if (!confirm(`Delete template "${template.name}" and all its chapters/prompts? This cannot be undone.`)) return;
-    setDeleting(true);
-    await fetch(`/api/books/${template.id}`, { method: "DELETE" });
-    router.push("/admin/books");
-  }
-
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto p-6 animate-pulse space-y-4">
@@ -151,7 +241,7 @@ export default function AdminBookPage() {
     <div className="max-w-3xl mx-auto">
       <Breadcrumbs
         items={[
-          { label: "Admin", href: "/admin/books" },
+          { label: "Templates", href: "/templates" },
           { label: template.name },
         ]}
       />
@@ -178,30 +268,17 @@ export default function AdminBookPage() {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold mb-2">{template.name}</h1>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => {
-                setEditName(template.name);
-                setEditingName(true);
-              }}
-            >
-              <Pencil className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </div>
+          <h1
+            className="text-2xl font-bold mb-2 cursor-pointer hover:text-primary/80 transition-colors"
+            onClick={() => {
+              setEditName(template.name);
+              setEditingName(true);
+            }}
+            title="Click to edit"
+          >
+            {template.name}
+          </h1>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={deleteTemplate}
-          disabled={deleting}
-          className="text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-          Delete Template
-        </Button>
       </div>
 
       {/* Template description */}
@@ -266,23 +343,34 @@ export default function AdminBookPage() {
         </Button>
       </div>
 
-      <div className="space-y-3">
-        {template.chapters.map((ch) => (
-          <div key={ch.id} className="flex items-start gap-2">
-            <div className="flex-1">
-              <ChapterEditor bookId={template.id} chapter={ch} />
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0 text-muted-foreground hover:text-destructive mt-2"
-              onClick={() => deleteChapter(ch.id)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={template.chapters.map((ch) => ch.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-3">
+            {template.chapters.map((ch) => (
+              <SortableChapterRow
+                key={ch.id}
+                chapter={ch}
+                templateId={template.id}
+                onDelete={deleteChapter}
+              />
+            ))}
           </div>
-        ))}
-      </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
+}
+
+function arrayMove<T>(array: T[], from: number, to: number): T[] {
+  const result = [...array];
+  const [removed] = result.splice(from, 1);
+  result.splice(to, 0, removed);
+  return result;
 }

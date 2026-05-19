@@ -1,8 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { ensureEnvLoaded } from "./load-env";
 
 let client: Anthropic | null = null;
 
 export function getAnthropicClient(): Anthropic {
+  ensureEnvLoaded();
+
   if (!client) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY environment variable is required");

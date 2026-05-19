@@ -30,9 +30,6 @@ interface ProjectPrompt {
   type: string;
   title: string;
   content: string;
-  styleRules: string | null;
-  knowledgeAreas: string | null;
-  suggestedLength: string | null;
 }
 
 const PROMPT_TYPE_LABELS: Record<string, string> = {
@@ -247,52 +244,6 @@ export default function PromptsPage() {
                   rows={3}
                   className="text-sm"
                 />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
-                  Reglas de Estilo
-                </Label>
-                <Textarea
-                  defaultValue={prompt.styleRules ?? ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (prompt.styleRules ?? ""))
-                      savePrompt(prompt.id, "styleRules", e.target.value);
-                  }}
-                  rows={2}
-                  className="text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Áreas de Conocimiento
-                  </Label>
-                  <Input
-                    defaultValue={prompt.knowledgeAreas ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (prompt.knowledgeAreas ?? ""))
-                        savePrompt(prompt.id, "knowledgeAreas", e.target.value);
-                    }}
-                    className="text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Extensión Sugerida
-                  </Label>
-                  <Input
-                    defaultValue={prompt.suggestedLength ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (prompt.suggestedLength ?? ""))
-                        savePrompt(
-                          prompt.id,
-                          "suggestedLength",
-                          e.target.value,
-                        );
-                    }}
-                    className="text-sm"
-                  />
-                </div>
               </div>
             </CardContent>
           </Card>

@@ -1,20 +1,19 @@
 import { Navbar } from "@/components/patterns/navbar";
 import { CommandPalette } from "@/components/patterns/command-palette";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import "./globals.css";
 
-const geist = Geist({
-  variable: "--font-geist",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const meslo = localFont({
+  src: [
+    { path: "../fonts/MesloLGS-NF-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../fonts/MesloLGS-NF-Italic.ttf", weight: "400", style: "italic" },
+    { path: "../fonts/MesloLGS-NF-Bold.ttf", weight: "700", style: "normal" },
+    { path: "../fonts/MesloLGS-NF-Bold-Italic.ttf", weight: "700", style: "italic" },
+  ],
+  variable: "--font-meslo",
   display: "swap",
 });
 
@@ -28,9 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="es"
       suppressHydrationWarning
-      className={`${geist.variable} ${geistMono.variable}`}
+      className={`${meslo.variable}`}
     >
-      <body>
+      <body className="bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <Navbar />
           <main className="min-h-screen">{children}</main>

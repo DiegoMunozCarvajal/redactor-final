@@ -54,11 +54,13 @@ export async function GET(
       const fragList = await db
         .select({
           id: fragments.id,
+          projectPromptId: fragments.projectPromptId,
           position: fragments.position,
           content: fragments.content,
           modelUsed: fragments.modelUsed,
           tokensUsed: fragments.tokensUsed,
           type: projectPrompts.type,
+          createdAt: fragments.createdAt,
         })
         .from(fragments)
         .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))

@@ -151,7 +151,7 @@ export default function AdminBooksPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
             <Card key={t.id} className="group relative">
-              <Link href={`/admin/books/${t.id}`}>
+              <Link href={`/templates/${t.id}`}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{t.name}</CardTitle>
                 </CardHeader>

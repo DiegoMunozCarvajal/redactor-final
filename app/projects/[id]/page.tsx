@@ -4,17 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { GenerateChapterButton } from "@/components/projects/generate-chapter-button";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
-import { Loader2, Pencil, Check, X, BookOpen, Trash2 } from "lucide-react";
+import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
+import { Loader2, Check, X, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -41,38 +35,13 @@ interface ProjectData {
   chapters: ChapterData[];
 }
 
-function statusBadge(status: string) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge className="bg-success/10 text-success border-success/20">
-          Completado
-        </Badge>
-      );
-    case "generating":
-      return (
-        <Badge className="bg-info/10 text-info border-info/20">
-          Generando
-        </Badge>
-      );
-    case "failed":
-      return <Badge variant="destructive">Fallido</Badge>;
-    default:
-      return <Badge variant="secondary">{status}</Badge>;
-  }
-}
-
 export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
-  const [editingSubtitle, setEditingSubtitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
-  const [editSubtitle, setEditSubtitle] = useState("");
-  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
-  const [editChapterTitle, setEditChapterTitle] = useState("");
   const fetchingRef = useRef(false);
 
   async function fetchProject(signal?: AbortSignal) {
@@ -129,21 +98,6 @@ export default function ProjectPage() {
     }
   }
 
-  async function saveSubtitle() {
-    if (!project) return;
-    const res = await fetch(`/api/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subtitle: editSubtitle }),
-    });
-    if (res.ok) {
-      setProject({ ...project, subtitle: editSubtitle });
-      setEditingSubtitle(false);
-    } else {
-      toast.error("Error saving subtitle");
-    }
-  }
-
   async function deleteChapter(chapterId: string) {
     if (!project) return;
     const res = await fetch(`/api/projects/${project.id}/chapters/${chapterId}`, {
@@ -156,26 +110,6 @@ export default function ProjectPage() {
       });
     } else {
       toast.error("Error deleting chapter");
-    }
-  }
-
-  async function saveChapterTitle(chapterId: string) {
-    if (!project) return;
-    const res = await fetch(`/api/projects/${project.id}/chapters/${chapterId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: editChapterTitle }),
-    });
-    if (res.ok) {
-      setProject({
-        ...project,
-        chapters: project.chapters.map((ch) =>
-          ch.id === chapterId ? { ...ch, title: editChapterTitle } : ch,
-        ),
-      });
-      setEditingChapterId(null);
-    } else {
-      toast.error("Error saving chapter title");
     }
   }
 
@@ -236,62 +170,18 @@ export default function ProjectPage() {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">
-              {project.title ?? project.name}
-            </h1>
-            <Button
-              size="icon"
-              variant="ghost"
+          <h1 className="text-2xl font-bold">
+            <span
+              className="cursor-pointer hover:text-primary/80 transition-colors"
               onClick={() => {
-                setEditTitle(project.title ?? "");
+                setEditTitle(project.title || project.name || "");
                 setEditingTitle(true);
               }}
+              title="Click to edit"
             >
-              <Pencil className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </div>
-        )}
-
-        {editingSubtitle ? (
-          <div className="flex items-center gap-2 mt-1">
-            <Input
-              value={editSubtitle}
-              onChange={(e) => setEditSubtitle(e.target.value)}
-              className="text-muted-foreground h-auto py-1"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") saveSubtitle();
-                if (e.key === "Escape") setEditingSubtitle(false);
-              }}
-            />
-            <Button size="icon" variant="ghost" onClick={saveSubtitle}>
-              <Check className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setEditingSubtitle(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            {project.subtitle && (
-              <p className="text-muted-foreground">{project.subtitle}</p>
-            )}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => {
-                setEditSubtitle(project.subtitle ?? "");
-                setEditingSubtitle(true);
-              }}
-            >
-              <Pencil className="h-3 w-3 text-muted-foreground" />
-            </Button>
-          </div>
+            {project.title || project.name}
+            </span>
+          </h1>
         )}
       </div>
 
@@ -310,85 +200,11 @@ export default function ProjectPage() {
       </div>
 
       {/* Chapters */}
-      <div className="space-y-4">
-        {project.chapters.map((ch) => (
-          <Card key={ch.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {editingChapterId === ch.id ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={editChapterTitle}
-                        onChange={(e) => setEditChapterTitle(e.target.value)}
-                        className="text-base font-semibold h-auto py-1 w-auto"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveChapterTitle(ch.id);
-                          if (e.key === "Escape") setEditingChapterId(null);
-                        }}
-                      />
-                      <Button size="icon" variant="ghost" onClick={() => saveChapterTitle(ch.id)}>
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => setEditingChapterId(null)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <Link
-                        href={`/projects/${project.id}/chapters/${ch.id}`}
-                        className="hover:underline"
-                      >
-                        <CardTitle className="text-base">
-                          {ch.title}
-                        </CardTitle>
-                      </Link>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          setEditChapterTitle(ch.title);
-                          setEditingChapterId(ch.id);
-                        }}
-                      >
-                        <Pencil className="h-3 w-3 text-muted-foreground" />
-                      </Button>
-                      {ch.latestGeneration &&
-                        statusBadge(ch.latestGeneration.status)}
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <GenerateChapterButton
-                    projectId={project.id}
-                    chapterId={ch.id}
-                    hasGeneration={ch.latestGeneration !== null}
-                    onGenerationStarted={fetchProject}
-                  />
-                  <Link
-                    href={`/projects/${project.id}/chapters/${ch.id}/prompts`}
-                  >
-                    <Button variant="ghost" size="icon" className="text-muted-foreground">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteChapter(ch.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
+      <SortableChapterList
+        chapters={project.chapters}
+        projectId={project.id}
+        onDelete={deleteChapter}
+      />
     </div>
   );
 }

@@ -22,9 +22,6 @@ export const prompts = pgTable("prompts", {
   type: promptTypeEnum("type").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
-  styleRules: text("style_rules"),
-  knowledgeAreas: text("knowledge_areas"),
-  suggestedLength: text("suggested_length"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_prompts_chapter_position").on(table.chapterId, table.position),

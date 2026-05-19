@@ -85,8 +85,8 @@ export default function ChapterPromptEditorPage() {
     <div className="max-w-4xl mx-auto">
       <Breadcrumbs
         items={[
-          { label: "Admin", href: "/admin/books" },
-          { label: bookName || "...", href: `/admin/books/${params.id}` },
+          { label: "Templates", href: "/templates" },
+          { label: bookName || "...", href: `/templates/${params.id}` },
           { label: chapterTitle || "..." },
         ]}
       />

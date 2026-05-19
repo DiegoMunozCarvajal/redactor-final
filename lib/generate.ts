@@ -12,9 +12,6 @@ function sanitizeTopic(topic: string): string {
 
 export interface PromptLike {
   content: string;
-  styleRules: string | null;
-  knowledgeAreas: string | null;
-  suggestedLength: string | null;
 }
 
 export interface GeneratePromptParams {
@@ -22,6 +19,7 @@ export interface GeneratePromptParams {
   topic: string;
   subtitle?: string | null;
   model?: string;
+  temperature?: number;
 }
 
 export interface GenerateResult {
@@ -37,28 +35,18 @@ export interface GenerateResult {
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
-  const { prompt, topic, subtitle, model = DEFAULT_GENERATION_MODEL } = params;
+  const { prompt, topic, subtitle, model = DEFAULT_GENERATION_MODEL, temperature } = params;
   let content = prompt.content.replace(/\[TEMA\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`);
   if (subtitle) {
     content = content.replace(/\[SUBTÍTULO\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
   }
 
-  const systemPrompt = [
-    prompt.styleRules ? `## Reglas de estilo\n${prompt.styleRules}` : "",
-    prompt.knowledgeAreas
-      ? `## Áreas de conocimiento\n${prompt.knowledgeAreas}`
-      : "",
-    prompt.suggestedLength
-      ? `## Extensión sugerida\n${prompt.suggestedLength}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
   const result = await generateCompletion({
     model,
-    systemPrompt,
+    systemPrompt: "",
     userPrompt: content,
+    ...(temperature !== undefined ? { temperature } : {}),
+    effort: "max",
   });
 
   return {
@@ -78,6 +66,7 @@ export async function generateChapterAssembly(
   topic: string,
   subtitle?: string | null,
   model = DEFAULT_GENERATION_MODEL,
+  temperature?: number,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
     .map((f, i) => `### Fragmento ${i + 1} (${f.type})\n\n${f.content}`)
@@ -95,8 +84,10 @@ export async function generateChapterAssembly(
 
   const result = await generateCompletion({
     model,
-    systemPrompt: assemblyPrompt.styleRules ?? "",
+    systemPrompt: "",
     userPrompt: content,
+    ...(temperature !== undefined ? { temperature } : {}),
+    effort: "max",
   });
 
   return {

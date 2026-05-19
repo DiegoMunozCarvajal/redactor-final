@@ -55,7 +55,7 @@ export function ChapterEditor({
             )}
           </div>
           <Link
-            href={`/admin/books/${bookId}/chapters/${chapter.id}`}
+            href={`/templates/${bookId}/chapters/${chapter.id}`}
             className="shrink-0 text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
           >
             <Pencil className="h-3 w-3" />

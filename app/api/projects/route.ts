@@ -91,9 +91,6 @@ export async function POST(req: NextRequest) {
                 type: prompt.type,
                 title: prompt.title,
                 content: prompt.content,
-                styleRules: prompt.styleRules,
-                knowledgeAreas: prompt.knowledgeAreas,
-                suggestedLength: prompt.suggestedLength,
               })),
             );
           }

@@ -83,9 +83,6 @@ export async function POST(
           type: p.type,
           title: p.title,
           content: p.content,
-          styleRules: p.styleRules,
-          knowledgeAreas: p.knowledgeAreas,
-          suggestedLength: p.suggestedLength,
         })),
       );
     }

@@ -18,21 +18,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await req.json();
-  const { type, title, content, styleRules, knowledgeAreas, suggestedLength, position } = body;
+  const { type, title, content, position } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
-  if (styleRules !== undefined && (typeof styleRules !== "string" || styleRules.length > 10000)) {
-    return NextResponse.json({ error: "styleRules too long" }, { status: 400 });
-  }
-  if (knowledgeAreas !== undefined && (typeof knowledgeAreas !== "string" || knowledgeAreas.length > 10000)) {
-    return NextResponse.json({ error: "knowledgeAreas too long" }, { status: 400 });
-  }
 
   const [prompt] = await db
     .update(prompts)
-    .set({ type, title, content, styleRules, knowledgeAreas, suggestedLength, position })
+    .set({ type, title, content, position })
     .where(eq(prompts.id, id))
     .returning();
 
