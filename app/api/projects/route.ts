@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, prompts, projectPrompts } from "@/lib/db/schema";
+import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, isNull } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, count, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -14,11 +15,24 @@ export async function GET() {
   if (!user)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const result = await db
-    .select()
+  const rows = await db
+    .select({
+      project: projects,
+      chapterCount: count(chapters.id).as("chapterCount"),
+      completedCount: sql<number>`count(${chapterGenerations.id}) filter (where ${chapterGenerations.status} = 'completed')`.as("completedCount"),
+    })
     .from(projects)
+    .leftJoin(chapters, eq(chapters.projectId, projects.id))
+    .leftJoin(chapterGenerations, eq(chapterGenerations.chapterId, chapters.id))
     .where(eq(projects.userId, user.id))
+    .groupBy(projects.id)
     .orderBy(desc(projects.createdAt));
+
+  const result = rows.map((r) => ({
+    ...r.project,
+    chapterCount: Number(r.chapterCount),
+    completedCount: Number(r.completedCount),
+  }));
   return NextResponse.json(result);
 }
 
