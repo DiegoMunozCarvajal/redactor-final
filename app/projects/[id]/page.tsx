@@ -186,17 +186,11 @@ export default function ProjectPage() {
       </div>
 
       {/* Progress */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <BookOpen className="h-4 w-4" />
-          <span>
-            {completedCount}/{project.chapters.length} chapters completed
-          </span>
-        </div>
-        <AddChapterDialog
-          projectId={project.id}
-          onChapterAdded={fetchProject}
-        />
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <BookOpen className="h-4 w-4" />
+        <span>
+          {completedCount}/{project.chapters.length} chapters completed
+        </span>
       </div>
 
       {/* Chapters */}
@@ -205,6 +199,13 @@ export default function ProjectPage() {
         projectId={project.id}
         onDelete={deleteChapter}
       />
+
+      <div className="mt-4">
+        <AddChapterDialog
+          projectId={project.id}
+          onChapterAdded={fetchProject}
+        />
+      </div>
     </div>
   );
 }
