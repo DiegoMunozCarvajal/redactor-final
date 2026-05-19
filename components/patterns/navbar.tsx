@@ -52,8 +52,6 @@ export function Navbar() {
     router.push("/login");
   }
 
-  const isAdmin = pathname.startsWith("/templates");
-
   return (
     <header className="sticky top-0 z-50 border-b border-border backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -63,27 +61,6 @@ export function Navbar() {
         >
           <BookOpen className="h-5 w-5 text-brand-500" />
           Redactor
-        </Link>
-
-        <Link
-          href="/projects"
-          className={`text-sm font-medium transition-colors ${
-            pathname.startsWith("/projects")
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Projects
-        </Link>
-        <Link
-          href="/templates"
-          className={`text-sm font-medium transition-colors ${
-            isAdmin
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Templates
         </Link>
 
       </div>
