@@ -38,7 +38,7 @@ export function ProjectCard({
     >
       <Link href={`/projects/${project.id}`}>
         <Card className="hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200 group">
-          <CardHeader>
+          <CardHeader style={{ padding: `calc(var(--density-card-padding-y)) calc(var(--density-card-padding-x))` }}>
             <div className="flex items-start justify-between gap-2">
               <CardTitle className="group-hover:text-primary transition-colors">
                 {project.title ?? project.name}
@@ -49,7 +49,10 @@ export function ProjectCard({
               {project.topic}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center gap-3 text-xs text-muted-foreground">
+          <CardContent
+            className="flex items-center gap-3 text-xs text-muted-foreground"
+            style={{ padding: `0 calc(var(--density-card-padding-x)) calc(var(--density-card-padding-y))` }}
+          >
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
               {formatDistanceToNow(project.createdAt, {
