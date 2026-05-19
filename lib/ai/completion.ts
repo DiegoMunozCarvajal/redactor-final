@@ -261,10 +261,6 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-function getProviderUsageFromError(error: unknown): ProviderUsage | undefined {
-  return error instanceof ProviderCallError ? error.usage : undefined;
-}
-
 // ---------------------------------------------------------------------------
 // Provider-specific completion handlers
 // ---------------------------------------------------------------------------
@@ -775,7 +771,6 @@ export async function generateCompletion<T extends z.ZodType>(
     temperature = 0.7,
     maxTokens,
     effort,
-    tracking,
   } = options;
   requireModelDefinition(model);
 
