@@ -30,10 +30,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const { type, title, content, position } = body;
+  const { title, content, position } = body;
 
-  if (!type || !title || !content) {
-    return NextResponse.json({ error: "type, title, and content are required" }, { status: 400 });
+  if (!title || !content) {
+    return NextResponse.json({ error: "title and content are required" }, { status: 400 });
   }
 
   const existing = await db
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .insert(prompts)
     .values({
       chapterId: id,
-      type,
       title,
       content,
       position: pos,
@@ -59,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     action: "prompt.create",
     resourceType: "prompt",
     resourceId: prompt.id,
-    metadata: { title: prompt.title, type: prompt.type, chapterId: id },
+    metadata: { title: prompt.title, isAssembly: prompt.isAssembly, chapterId: id },
   });
 
   return NextResponse.json(prompt);

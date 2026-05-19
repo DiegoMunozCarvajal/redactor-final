@@ -1,7 +1,6 @@
-import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { projects } from "./projects";
 import { chapters } from "./chapters";
-import { promptTypeEnum } from "./prompts";
 
 export const projectPrompts = pgTable("project_prompts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -12,7 +11,7 @@ export const projectPrompts = pgTable("project_prompts", {
     .notNull()
     .references(() => chapters.id, { onDelete: "restrict" }),
   position: integer("position").notNull(),
-  type: promptTypeEnum("type").notNull(),
+  isAssembly: boolean("is_assembly").notNull().default(false),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

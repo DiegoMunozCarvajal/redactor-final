@@ -62,14 +62,14 @@ export async function generatePromptContent(
 
 export async function generateChapterAssembly(
   assemblyPrompt: PromptLike,
-  fragments: { content: string; type: string }[],
+  fragments: { content: string }[],
   topic: string,
   subtitle?: string | null,
   model = DEFAULT_GENERATION_MODEL,
   temperature?: number,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
-    .map((f, i) => `### Fragmento ${i + 1} (${f.type})\n\n${f.content}`)
+    .map((f, i) => `### Fragmento ${i + 1}\n\n${f.content}`)
     .join("\n\n---\n\n");
 
   let content = assemblyPrompt.content

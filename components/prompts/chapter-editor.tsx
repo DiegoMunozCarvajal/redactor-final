@@ -1,12 +1,10 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import type { Chapter, Prompt } from "@/lib/db/schema"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Pencil } from "lucide-react"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Trash2 } from "lucide-react"
 
 interface ChapterWithPrompts extends Chapter {
   prompts: Prompt[]
@@ -15,54 +13,42 @@ interface ChapterWithPrompts extends Chapter {
 export function ChapterEditor({
   bookId,
   chapter,
+  onDelete,
 }: {
   bookId: string
   chapter: ChapterWithPrompts
+  onDelete?: (id: string) => void
 }) {
-  const [title, setTitle] = useState(chapter.title)
-
-  async function saveTitle() {
-    await fetch(`/api/chapters/${chapter.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    })
-  }
-
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xs tabular-nums text-muted-foreground font-medium w-6 text-center">
-            {chapter.position}
-          </span>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={saveTitle}
-            className="flex-1 border-0 border-b border-transparent hover:border-border focus-visible:border-primary focus-visible:ring-0 rounded-none px-1 h-8 text-sm font-medium bg-transparent"
-          />
-          <div className="flex items-center gap-1.5 flex-wrap min-w-0 overflow-hidden">
-            {chapter.prompts.slice(0, 4).map((p) => (
-              <Badge key={p.id} variant="secondary" className="text-xs shrink-0">
-                {p.type}
-              </Badge>
-            ))}
-            {chapter.prompts.length > 4 && (
-              <span className="text-xs text-muted-foreground shrink-0">
-                +{chapter.prompts.length - 4}
+    <Link href={`/templates/${bookId}/chapters/${chapter.id}`} className="block">
+      <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-xs text-muted-foreground font-mono">
+                {chapter.position + 1}.
               </span>
+              <CardTitle className="text-sm">
+                {chapter.title}
+              </CardTitle>
+            </div>
+            {onDelete && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 ml-3"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onDelete(chapter.id)
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
             )}
           </div>
-          <Link
-            href={`/templates/${bookId}/chapters/${chapter.id}`}
-            className="shrink-0 text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-          >
-            <Pencil className="h-3 w-3" />
-            Edit
-          </Link>
-        </div>
-      </CardContent>
-    </Card>
+        </CardHeader>
+      </Card>
+    </Link>
   )
 }

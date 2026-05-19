@@ -93,13 +93,13 @@ export const generateChapter = task({
       .orderBy(asc(projectPrompts.position));
 
     const contentPrompts = promptList.filter(
-      (p) => p.type !== "ensamblaje",
+      (p) => !p.isAssembly,
     );
     const assemblyPrompt = promptList.find(
-      (p) => p.type === "ensamblaje",
+      (p) => p.isAssembly,
     );
 
-    const fragmentContents: { content: string; type: string }[] = [];
+    const fragmentContents: { content: string }[] = [];
 
     try {
       // Generate each content fragment
@@ -130,7 +130,6 @@ export const generateChapter = task({
 
         fragmentContents.push({
           content: result.text,
-          type: prompt.type,
         });
       }
 

@@ -50,17 +50,15 @@ export async function POST(
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
   }
 
-  // Load selected fragments with their prompt types
+  // Load selected fragments
   const selectedFragments = await db
     .select({
       id: fragments.id,
       content: fragments.content,
       position: fragments.position,
-      type: projectPrompts.type,
       generationId: fragments.chapterGenerationId,
     })
     .from(fragments)
-    .innerJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
     .where(inArray(fragments.id, fragmentIds))
     .orderBy(asc(fragments.position));
 
@@ -78,7 +76,7 @@ export async function POST(
     .where(
       and(
         eq(projectPrompts.chapterId, chapterId),
-        eq(projectPrompts.type, "ensamblaje"),
+        eq(projectPrompts.isAssembly, true),
       ),
     )
     .limit(1);
@@ -105,7 +103,6 @@ export async function POST(
     try {
       const fragmentContents = selectedFragments.map((f) => ({
         content: f.content ?? "",
-        type: f.type ?? "unknown",
       }));
 
       const assembled = await generateChapterAssembly(

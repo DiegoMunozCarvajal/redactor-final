@@ -7,26 +7,13 @@ import { z } from "zod"
 import type { Prompt } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Loader2, Save, Trash2 } from "lucide-react"
 
-const PROMPT_TYPES = [
-  "apertura", "modelo", "contraste", "amplificacion",
-  "anecdota", "acumulacion", "proceso", "cierre", "ensamblaje",
-] as const
-
 const schema = z.object({
-  type: z.enum(PROMPT_TYPES),
   title: z.string().min(1, "Required"),
   content: z.string().min(1, "Required"),
+  isAssembly: z.boolean(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -46,13 +33,11 @@ export function PromptEditor({
   const { register, handleSubmit, setValue, watch, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      type: prompt.type as (typeof PROMPT_TYPES)[number],
+      isAssembly: prompt.isAssembly,
       title: prompt.title,
       content: prompt.content,
     },
   })
-
-  const currentType = watch("type")
 
   function insertPlaceholder(placeholder: string) {
     const current = watch("content")
@@ -88,27 +73,11 @@ export function PromptEditor({
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <Select
-            value={currentType}
-            onValueChange={(v) => setValue("type", v as (typeof PROMPT_TYPES)[number])}
-          >
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PROMPT_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <input
             {...register("title")}
             placeholder="Prompt title"
             className="flex-1 bg-transparent text-sm font-medium border-0 border-b border-transparent hover:border-border focus:border-primary focus:outline-none focus:ring-0 px-1 py-0.5"
           />
-          <Badge variant="secondary" className="text-xs shrink-0">
-            {currentType}
-          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -143,7 +112,7 @@ export function PromptEditor({
             size="sm"
             onClick={handleDelete}
             disabled={deleting}
-            className="text-muted-foreground hover:text-destructive"
+            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-4 w-4" />
             Delete

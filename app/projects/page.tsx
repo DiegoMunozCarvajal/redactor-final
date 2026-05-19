@@ -149,7 +149,7 @@ export default function ProjectsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive z-10"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
                 onClick={(e) => {
                   e.preventDefault();
                   deleteProject(p.id, p.name);

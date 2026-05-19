@@ -9,13 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Card,
   CardHeader,
   CardTitle,
@@ -27,22 +20,10 @@ interface ProjectPrompt {
   id: string;
   chapterId: string;
   position: number;
-  type: string;
+  isAssembly: boolean;
   title: string;
   content: string;
 }
-
-const PROMPT_TYPE_LABELS: Record<string, string> = {
-  apertura: "Apertura",
-  modelo: "Modelo",
-  contraste: "Contraste",
-  amplificacion: "Amplificación",
-  anecdota: "Anécdota",
-  acumulacion: "Acumulación",
-  proceso: "Proceso",
-  cierre: "Cierre",
-  ensamblaje: "Ensamblaje",
-};
 
 export default function PromptsPage() {
   const params = useParams<{ id: string; chapterId: string }>();
@@ -52,7 +33,7 @@ export default function PromptsPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [showNew, setShowNew] = useState(false);
   const [newPrompt, setNewPrompt] = useState({
-    type: "apertura",
+    isAssembly: false,
     title: "",
     content: "",
   });
@@ -100,7 +81,7 @@ export default function PromptsPage() {
     });
     if (res.ok) {
       setShowNew(false);
-      setNewPrompt({ type: "apertura", title: "", content: "" });
+      setNewPrompt({ isAssembly: false, title: "", content: "" });
       fetchPrompts();
     }
   }
@@ -153,36 +134,14 @@ export default function PromptsPage() {
       {showNew && (
         <Card className="mb-4 border-brand-200">
           <CardContent className="pt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Tipo</Label>
-                <Select
-                  value={newPrompt.type}
-                  onValueChange={(v) =>
-                    setNewPrompt((p) => ({ ...p, type: v }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PROMPT_TYPE_LABELS).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Título</Label>
-                <Input
-                  value={newPrompt.title}
-                  onChange={(e) =>
-                    setNewPrompt((p) => ({ ...p, title: e.target.value }))
-                  }
-                />
-              </div>
+            <div>
+              <Label>Título</Label>
+              <Input
+                value={newPrompt.title}
+                onChange={(e) =>
+                  setNewPrompt((p) => ({ ...p, title: e.target.value }))
+                }
+              />
             </div>
             <div>
               <Label>Contenido</Label>
@@ -213,7 +172,6 @@ export default function PromptsPage() {
                   <span className="text-muted-foreground">
                     {prompt.position + 1}.
                   </span>{" "}
-                  {PROMPT_TYPE_LABELS[prompt.type] ?? prompt.type}:{" "}
                   {prompt.title}
                 </CardTitle>
                 <div className="flex items-center gap-1">
@@ -223,9 +181,10 @@ export default function PromptsPage() {
                   <Button
                     size="icon"
                     variant="ghost"
+                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                     onClick={() => deletePrompt(prompt.id)}
                   >
-                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

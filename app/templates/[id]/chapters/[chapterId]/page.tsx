@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
-import { AnimatePresence, motion } from "motion/react"
-import { PromptEditor } from "@/components/prompts/prompt-editor"
 import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import { Button } from "@/components/ui/button"
-import { Plus, Loader2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { VersionHistory } from "@/components/prompts/version-history"
+import { Loader2, Plus, Save, Check, X, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import type { Prompt } from "@/lib/db/schema"
 
 export default function ChapterPromptEditorPage() {
@@ -15,8 +19,13 @@ export default function ChapterPromptEditorPage() {
   const [chapterTitle, setChapterTitle] = useState("")
   const [bookName, setBookName] = useState("")
   const [loading, setLoading] = useState(true)
-
   const [error, setError] = useState<string | null>(null)
+  const [addingPrompt, setAddingPrompt] = useState(false)
+  const [addingAssembly, setAddingAssembly] = useState(false)
+  const [newPrompt, setNewPrompt] = useState({ title: "", content: "" })
+  const [promptFormData, setPromptFormData] = useState<Record<string, { title: string; content: string }>>({})
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [showVersions, setShowVersions] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -36,39 +45,101 @@ export default function ChapterPromptEditorPage() {
     return () => { cancelled = true }
   }, [params.chapterId, params.id])
 
-  const [adding, setAdding] = useState(false)
+  useEffect(() => {
+    setPromptFormData((prev) => {
+      const next = { ...prev }
+      for (const p of prompts) {
+        if (!next[p.id]) {
+          next[p.id] = { title: p.title, content: p.content }
+        }
+      }
+      return next
+    })
+  }, [prompts])
 
-  async function addPrompt() {
-    setAdding(true)
+  function getFormData(promptId: string, prompt: Prompt) {
+    return {
+      title: promptFormData[promptId]?.title ?? prompt.title,
+      content: promptFormData[promptId]?.content ?? prompt.content,
+    }
+  }
+
+  async function savePrompt(promptId: string) {
+    const prompt = prompts.find((p) => p.id === promptId)
+    if (!prompt) return
+    const data = promptFormData[promptId]
+    if (!data) return
+
+    setSaving((s) => ({ ...s, [promptId]: true }))
     try {
-      const pos = prompts.length
-      const res = await fetch(`/api/chapters/${params.chapterId}/prompts`, {
-        method: "POST",
+      const res = await fetch(`/api/prompts/${promptId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "apertura",
-          title: "Nuevo prompt",
-          content: "[TEMA]",
-          position: pos,
+          title: data.title,
+          content: data.content,
+          isAssembly: prompt.isAssembly,
         }),
       })
-      const p = await res.json()
-      if (res.ok) setPrompts([...prompts, p])
+      if (res.ok) {
+        const updated = await res.json()
+        setPrompts((prev) => prev.map((p) => (p.id === promptId ? updated : p)))
+        toast.success("Prompt saved")
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? "Error saving")
+      }
+    } catch {
+      toast.error("Network error")
     } finally {
-      setAdding(false)
+      setSaving((s) => ({ ...s, [promptId]: false }))
+    }
+  }
+
+  async function createPrompt(isAssembly: boolean) {
+    const { title, content } = newPrompt
+    if (!title || !content) {
+      toast.error("Title and content are required")
+      return
+    }
+    const res = await fetch(`/api/chapters/${params.chapterId}/prompts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        content,
+        position: prompts.length,
+        isAssembly,
+      }),
+    })
+    if (res.ok) {
+      const p = await res.json()
+      setPrompts([...prompts, p])
+      setAddingPrompt(false)
+      setAddingAssembly(false)
+      setNewPrompt({ title: "", content: "" })
+      toast.success("Prompt added")
+    } else {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Error adding prompt")
+    }
+  }
+
+  async function deletePrompt(promptId: string) {
+    if (!confirm("Delete this prompt?")) return
+    const res = await fetch(`/api/prompts/${promptId}`, { method: "DELETE" })
+    if (res.ok) {
+      setPrompts((prev) => prev.filter((p) => p.id !== promptId))
+      toast.success("Prompt deleted")
+    } else {
+      toast.error("Error deleting prompt")
     }
   }
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-pulse">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="border rounded-lg p-6 space-y-3">
-            <div className="h-5 bg-muted rounded w-1/3" />
-            <div className="h-32 bg-muted rounded" />
-            <div className="h-4 bg-muted rounded w-1/4" />
-          </div>
-        ))}
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -81,8 +152,11 @@ export default function ChapterPromptEditorPage() {
     )
   }
 
+  const contentPrompts = prompts.filter((p) => !p.isAssembly)
+  const assemblyPrompt = prompts.find((p) => p.isAssembly)
+
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto p-6">
       <Breadcrumbs
         items={[
           { label: "Templates", href: "/templates" },
@@ -90,47 +164,363 @@ export default function ChapterPromptEditorPage() {
           { label: chapterTitle || "..." },
         ]}
       />
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold">{chapterTitle}</h1>
-          <p className="text-sm text-muted-foreground">{prompts.length} prompts</p>
-        </div>
+
+      <div className="mt-6 mb-8">
+        <h1 className="text-2xl font-bold">{chapterTitle}</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {prompts.length} prompts
+        </p>
       </div>
 
-      <div className="space-y-4">
-        <AnimatePresence mode="popLayout">
-          {prompts.map((p) => (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <PromptEditor
-                prompt={p}
-                onSave={(updated) =>
-                  setPrompts((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-                }
-                onDelete={(id) => setPrompts((prev) => prev.filter((x) => x.id !== id))}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      {prompts.length === 0 && !addingPrompt && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <h2 className="text-lg font-medium mb-1">No prompts configured</h2>
+          <p className="text-sm text-muted-foreground max-w-sm mb-4">
+            Add prompts to this chapter template.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setAddingPrompt(true)}>
+            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt
+          </Button>
+        </div>
+      )}
 
-        <Button
-          variant="outline"
-          className="w-full border-dashed"
-          onClick={addPrompt}
-          disabled={adding}
-        >
-          {adding ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          Add Prompt
-        </Button>
+      {/* Content Prompts */}
+      {contentPrompts.length > 0 && (
+        <div className="space-y-3 mb-6">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Prompts de Contenido
+          </h2>
+          {contentPrompts.map((prompt) => {
+            const data = getFormData(prompt.id, prompt)
+            return (
+              <Card key={prompt.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {prompt.position + 1}.
+                      </span>
+                      <CardTitle className="text-sm">
+                        {prompt.title}
+                      </CardTitle>
+                      {saving[prompt.id] && (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs"
+                        onClick={() =>
+                          setShowVersions((prev) => ({
+                            ...prev,
+                            [prompt.id]: !prev[prompt.id],
+                          }))
+                        }
+                      >
+                        Versiones
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => deletePrompt(prompt.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="border-t pt-3 space-y-3">
+                  {showVersions[prompt.id] && (
+                    <VersionHistory
+                      versionsApiUrl={`/api/prompts/${prompt.id}/versions`}
+                      promptId={prompt.id}
+                    />
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-muted-foreground">Título</Label>
+                    <Input
+                      value={data.title}
+                      onChange={(e) => {
+                        setPromptFormData((prev) => ({
+                          ...prev,
+                          [prompt.id]: { ...data, title: e.target.value },
+                        }))
+                      }}
+                      className="text-xs h-8"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                    <Textarea
+                      value={data.content}
+                      onChange={(e) => {
+                        setPromptFormData((prev) => ({
+                          ...prev,
+                          [prompt.id]: { ...data, content: e.target.value },
+                        }))
+                      }}
+                      className="text-xs min-h-[100px]"
+                      placeholder="Prompt content..."
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => savePrompt(prompt.id)}
+                      disabled={saving[prompt.id]}
+                    >
+                      {saving[prompt.id] ? (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      ) : (
+                        <Save className="h-3 w-3 mr-1" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Add Content Prompt (between content and assembly) */}
+      <div className="mb-8">
+        {addingPrompt && !addingAssembly ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Nuevo Prompt</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">Título</Label>
+                <Input
+                  value={newPrompt.title}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  className="text-xs h-8"
+                  placeholder="Prompt title"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                <Textarea
+                  value={newPrompt.content}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, content: e.target.value }))
+                  }
+                  className="text-xs min-h-[100px]"
+                  placeholder="Prompt content with [TEMA] placeholder..."
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => {
+                    setAddingPrompt(false)
+                    setNewPrompt({ title: "", content: "" })
+                  }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+                <Button size="sm" className="text-xs" onClick={() => createPrompt(false)}>
+                  <Check className="h-3 w-3 mr-1" /> Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setNewPrompt({ title: "", content: "" })
+              setAddingAssembly(false)
+              setAddingPrompt(true)
+            }}
+          >
+            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt de Contenido
+          </Button>
+        )}
+      </div>
+
+      {/* Assembly Prompt */}
+      <div className="mb-8">
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Ensamblaje</h2>
+        {assemblyPrompt ? (() => {
+          const data = getFormData(assemblyPrompt.id, assemblyPrompt)
+          return (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {assemblyPrompt.position + 1}.
+                    </span>
+                    <CardTitle className="text-sm">
+                      {assemblyPrompt.title}
+                    </CardTitle>
+                    {saving[assemblyPrompt.id] && (
+                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs"
+                      onClick={() =>
+                        setShowVersions((prev) => ({
+                          ...prev,
+                          [assemblyPrompt.id]: !prev[assemblyPrompt.id],
+                        }))
+                      }
+                    >
+                      Versiones
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deletePrompt(assemblyPrompt.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="border-t pt-3 space-y-3">
+                {showVersions[assemblyPrompt.id] && (
+                  <VersionHistory
+                    versionsApiUrl={`/api/prompts/${assemblyPrompt.id}/versions`}
+                    promptId={assemblyPrompt.id}
+                  />
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Título</Label>
+                  <Input
+                    value={data.title}
+                    onChange={(e) => {
+                      setPromptFormData((prev) => ({
+                        ...prev,
+                        [assemblyPrompt.id]: { ...data, title: e.target.value },
+                      }))
+                    }}
+                    className="text-xs h-8"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                  <Textarea
+                    value={data.content}
+                    onChange={(e) => {
+                      setPromptFormData((prev) => ({
+                        ...prev,
+                        [assemblyPrompt.id]: { ...data, content: e.target.value },
+                      }))
+                    }}
+                    className="text-xs min-h-[100px]"
+                    placeholder="Assembly prompt content..."
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => savePrompt(assemblyPrompt.id)}
+                    disabled={saving[assemblyPrompt.id]}
+                  >
+                    {saving[assemblyPrompt.id] ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    ) : (
+                      <Save className="h-3 w-3 mr-1" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })() : addingPrompt && addingAssembly ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Nuevo Prompt de Ensamblaje</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">Título</Label>
+                <Input
+                  value={newPrompt.title}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  className="text-xs h-8"
+                  placeholder="Assembly prompt title"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                <Textarea
+                  value={newPrompt.content}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, content: e.target.value }))
+                  }
+                  className="text-xs min-h-[100px]"
+                  placeholder="Assembly prompt content..."
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => {
+                    setAddingPrompt(false)
+                    setAddingAssembly(false)
+                    setNewPrompt({ title: "", content: "" })
+                  }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+                <Button size="sm" className="text-xs" onClick={() => createPrompt(true)}>
+                  <Check className="h-3 w-3 mr-1" /> Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center">
+              <p className="text-sm text-muted-foreground mb-3">
+                No assembly prompt configured yet.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setNewPrompt({
+                    title: "Ensamblaje",
+                    content: "[TEMA]\n\n[SUBTÍTULO]\n\nEnsambla los fragmentos...",
+                  })
+                  setAddingAssembly(true)
+                  setAddingPrompt(true)
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Añadir Prompt de Ensamblaje
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

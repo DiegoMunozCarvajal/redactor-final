@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
+import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 
 const MODEL_FIXED_TEMP = new Map(
   AVAILABLE_MODELS.filter((m) => m.fixedTemperature !== undefined).map((m) => [
@@ -71,25 +72,13 @@ const MODELS = [
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
 
-const PROMPT_TYPE_LABELS: Record<string, string> = {
-  apertura: "Apertura",
-  modelo: "Modelo",
-  contraste: "Contraste",
-  amplificacion: "Amplificación",
-  anecdota: "Anécdota",
-  acumulacion: "Acumulación",
-  proceso: "Proceso",
-  cierre: "Cierre",
-  ensamblaje: "Ensamblaje",
-};
-
 interface FragmentData {
   id: string;
   position: number;
   content: string | null;
   modelUsed: string | null;
   tokensUsed: number | null;
-  type: string | null;
+  isAssembly: boolean;
   projectPromptId?: string;
   createdAt?: string;
 }
@@ -119,7 +108,7 @@ interface PromptData {
   id: string;
   chapterId: string;
   position: number;
-  type: string;
+  isAssembly: boolean;
   title: string;
   content: string;
 }
@@ -160,7 +149,6 @@ export default function ChapterPage() {
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
   const [newPrompt, setNewPrompt] = useState({
-    type: "apertura",
     title: "",
     content: "",
   });
@@ -269,7 +257,7 @@ export default function ChapterPage() {
   }
 
   async function runAllPrompts() {
-    const contentPrompts = prompts.filter((p) => p.type !== "ensamblaje");
+    const contentPrompts = prompts.filter((p) => !p.isAssembly);
     for (const prompt of contentPrompts) {
       await runPrompt(prompt.id);
       // Small delay between triggers
@@ -340,9 +328,9 @@ export default function ChapterPage() {
   }
 
   async function createPrompt() {
-    const { type, title, content } = newPrompt;
-    if (!type || !title || !content) {
-      toast.error("Type, title, and content are required");
+    const { title, content } = newPrompt;
+    if (!title || !content) {
+      toast.error("Title and content are required");
       return;
     }
     const res = await fetch(`/api/projects/${params.id}/prompts`, {
@@ -350,7 +338,6 @@ export default function ChapterPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chapterId: params.chapterId,
-        type,
         title,
         content,
       }),
@@ -358,7 +345,7 @@ export default function ChapterPage() {
     if (res.ok) {
       fetchPrompts();
       setAddingPrompt(false);
-      setNewPrompt({ type: "apertura", title: "", content: "" });
+      setNewPrompt({ title: "", content: "" });
       toast.success("Prompt added");
     } else {
       const err = await res.json().catch(() => ({}));
@@ -462,8 +449,8 @@ export default function ChapterPage() {
     setAssemblyModalOpen(true);
   }
 
-  const contentPrompts = prompts.filter((p) => p.type !== "ensamblaje");
-  const assemblyPrompt = prompts.find((p) => p.type === "ensamblaje");
+  const contentPrompts = prompts.filter((p) => !p.isAssembly);
+  const assemblyPrompt = prompts.find((p) => p.isAssembly);
   const totalContentDone = contentPrompts.filter(
     (p) => promptFragmentMap.has(p.id),
   ).length;
@@ -643,7 +630,7 @@ export default function ChapterPage() {
                         {prompt.position + 1}.
                       </span>
                       <CardTitle className="text-sm">
-                        {PROMPT_TYPE_LABELS[prompt.type] ?? prompt.type}: {prompt.title}
+                        {prompt.title}
                       </CardTitle>
                       {isDone && (
                         <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
@@ -734,10 +721,10 @@ export default function ChapterPage() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 hover:text-destructive"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         onClick={() => deletePrompt(prompt.id)}
                       >
-                        <Trash2 className="h-3 w-3 text-muted-foreground" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
@@ -830,26 +817,6 @@ export default function ChapterPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Tipo</Label>
-                <Select
-                  value={newPrompt.type}
-                  onValueChange={(v) => setNewPrompt(prev => ({ ...prev, type: v }))}
-                >
-                  <SelectTrigger className="w-full h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PROMPT_TYPE_LABELS)
-                      .filter(([key]) => key !== "ensamblaje")
-                      .map(([key, label]) => (
-                        <SelectItem key={key} value={key} className="text-xs">
-                          {label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-[10px] text-muted-foreground">Título</Label>
                 <Input
                   value={newPrompt.title}
@@ -874,7 +841,7 @@ export default function ChapterPage() {
                   className="text-xs"
                   onClick={() => {
                     setAddingPrompt(false);
-                    setNewPrompt({ type: "apertura", title: "", content: "" });
+                    setNewPrompt({ title: "", content: "" });
                   }}
                 >
                   <X className="h-3 w-3 mr-1" /> Cancel
@@ -897,80 +864,19 @@ export default function ChapterPage() {
         )}
       </div>
 
-      {/* Assembly Section */}
-      {assemblyPrompt && (
-        <div className="mb-8">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Ensamblaje
-          </h2>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {assemblyPrompt.position + 1}.
-                  </span>
-                  <CardTitle className="text-sm">
-                    {PROMPT_TYPE_LABELS[assemblyPrompt.type] ?? assemblyPrompt.type}:{" "}
-                    {assemblyPrompt.title}
-                  </CardTitle>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">
-                    {[...fragmentVersions.values()].reduce(
-                      (sum, vs) => sum + vs.length,
-                      0,
-                    )}{" "}
-                    versiones disponibles
-                  </span>
-                  <Button
-                    size="sm"
-                    onClick={openAssemblyModal}
-                    disabled={
-                      [...fragmentVersions.keys()].length === 0
-                    }
-                  >
-                    <Play className="h-3 w-3 mr-1" /> Ensamblar
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => setEditingPromptId(editingPromptId === assemblyPrompt.id ? null : assemblyPrompt.id)}
-                  >
-                    <Pencil className="h-3 w-3 text-muted-foreground" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-
-            {editingPromptId === assemblyPrompt.id && (
-              <CardContent className="border-t pt-3 space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground">Contenido</Label>
-                  <Textarea
-                    value={promptFormData[assemblyPrompt.id]?.content ?? assemblyPrompt.content}
-                    onChange={(e) => {
-                      setPromptFormData(prev => ({
-                        ...prev,
-                        [assemblyPrompt.id]: { ...(prev[assemblyPrompt.id] || { content: assemblyPrompt.content }), content: e.target.value }
-                      }));
-                    }}
-                    onBlur={(e) => {
-                      if (e.target.value !== (assemblyPrompt.content)) {
-                        savePromptField(assemblyPrompt.id, "content", e.target.value);
-                        setPrompts(prev => prev.map(p => p.id === assemblyPrompt.id ? { ...p, content: e.target.value } : p));
-                      }
-                    }}
-                    className="text-xs min-h-[100px]"
-                    placeholder="Assembly prompt content..."
-                  />
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        </div>
-      )}
+      <AssemblyPromptSection
+        prompt={assemblyPrompt}
+        onSave={async (data) => {
+          if (!assemblyPrompt) return
+          await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          })
+          fetchPrompts()
+        }}
+        versionsApiUrl={`/api/projects/${params.id}/prompts/${assemblyPrompt?.id}/versions`}
+      />
 
       {/* Assembly Modal */}
       <Dialog open={assemblyModalOpen} onOpenChange={setAssemblyModalOpen}>
@@ -990,7 +896,6 @@ export default function ChapterPage() {
               return (
                 <div key={prompt.id} className="space-y-2">
                   <h4 className="text-sm font-medium">
-                    {PROMPT_TYPE_LABELS[prompt.type] ?? prompt.type}:{" "}
                     {prompt.title}
                   </h4>
 

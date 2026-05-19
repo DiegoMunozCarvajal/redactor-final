@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
                 projectId: p.id,
                 chapterId: projectChapter.id,
                 position: prompt.position,
-                type: prompt.type,
+                isAssembly: prompt.isAssembly,
                 title: prompt.title,
                 content: prompt.content,
               })),

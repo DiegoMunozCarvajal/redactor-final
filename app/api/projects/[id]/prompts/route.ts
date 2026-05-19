@@ -64,11 +64,11 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { chapterId, type, title, content } = body;
+  const { chapterId, title, content } = body;
 
-  if (!chapterId || !type || !title || !content) {
+  if (!chapterId || !title || !content) {
     return NextResponse.json(
-      { error: "chapterId, type, title, and content are required" },
+      { error: "chapterId, title, and content are required" },
       { status: 400 },
     );
   }
@@ -86,7 +86,6 @@ export async function POST(
     .values({
       projectId,
       chapterId,
-      type,
       title,
       content,
       position: maxPos + 1,

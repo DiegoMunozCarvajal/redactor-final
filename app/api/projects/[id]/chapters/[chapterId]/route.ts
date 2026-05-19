@@ -59,7 +59,7 @@ export async function GET(
           content: fragments.content,
           modelUsed: fragments.modelUsed,
           tokensUsed: fragments.tokensUsed,
-          type: projectPrompts.type,
+          isAssembly: projectPrompts.isAssembly,
           createdAt: fragments.createdAt,
         })
         .from(fragments)

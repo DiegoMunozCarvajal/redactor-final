@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { prompts } from "@/lib/db/schema";
+import { prompts, promptVersions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -17,15 +17,29 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await req.json();
-  const { type, title, content, position } = body;
+  const { title, content, position, isAssembly } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
 
+  // Save version before updating
+  const [current] = await db
+    .select()
+    .from(prompts)
+    .where(eq(prompts.id, id))
+    .limit(1);
+  if (current) {
+    await db.insert(promptVersions).values({
+      promptId: current.id,
+      title: current.title,
+      content: current.content,
+    });
+  }
+
   const [prompt] = await db
     .update(prompts)
-    .set({ type, title, content, position })
+    .set({ title, content, position, isAssembly })
     .where(eq(prompts.id, id))
     .returning();
 
@@ -36,7 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     action: "prompt.update",
     resourceType: "prompt",
     resourceId: prompt.id,
-    metadata: { title: prompt.title, type: prompt.type },
+    metadata: { title: prompt.title, isAssembly: prompt.isAssembly },
   });
 
   return NextResponse.json(prompt);

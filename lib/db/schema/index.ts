@@ -6,3 +6,4 @@ export * from "./projects";
 export * from "./chapter-generations";
 export * from "./audit-logs";
 export * from "./fragments";
+export * from "./prompt-versions";

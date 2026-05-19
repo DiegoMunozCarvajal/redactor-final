@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicEnv, SupabaseConfigurationError } from "@/lib/auth/supabase-config";
+import type { UserResponse } from "@supabase/supabase-js";
 
 // Deduplicate concurrent getUser() calls across requests to prevent
 // single-use refresh token race conditions.
@@ -10,15 +11,19 @@ import { getSupabasePublicEnv, SupabaseConfigurationError } from "@/lib/auth/sup
 // with "Invalid Refresh Token: Already Used" → silent session loss.
 // This map ensures only one refresh is in flight per session at a time.
 const MAX_INFLIGHT = 500;
-const inFlightRefresh = new Map<string, Promise<unknown>>();
+const inFlightRefresh = new Map<string, Promise<UserResponse>>();
 
 async function dedupedGetUser(
   supabase: ReturnType<typeof createServerClient>,
   refreshTokenHint: string,
-) {
+): Promise<UserResponse> {
   const existing = inFlightRefresh.get(refreshTokenHint);
   if (existing) {
-    try { await existing; } catch { /* will retry below */ }
+    try {
+      return await existing;
+    } catch {
+      // Existing refresh failed — retry below with fresh call
+    }
   }
 
   const promise = supabase.auth.getUser();

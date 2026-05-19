@@ -80,7 +80,7 @@ export async function POST(
           projectId,
           chapterId: chapter.id,
           position: p.position,
-          type: p.type,
+          isAssembly: p.isAssembly,
           title: p.title,
           content: p.content,
         })),

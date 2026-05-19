@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts, fragments } from "@/lib/db/schema";
+import { projects, projectPrompts, promptVersions, fragments } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
 
@@ -41,12 +41,28 @@ export async function PUT(
   }
 
   const body = await req.json();
-  const { content } = body;
+  const { title, content, position, isAssembly } = body;
+
+  if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
+    return NextResponse.json({ error: "content too long" }, { status: 400 });
+  }
+
+  // Save version before updating assembly prompt
+  if (isAssembly) {
+    await db.insert(promptVersions).values({
+      promptId: existing.id,
+      title: existing.title,
+      content: existing.content,
+    });
+  }
 
   const [updated] = await db
     .update(projectPrompts)
     .set({
+      ...(title !== undefined && { title }),
       ...(content !== undefined && { content }),
+      ...(position !== undefined && { position }),
+      ...(isAssembly !== undefined && { isAssembly }),
     })
     .where(eq(projectPrompts.id, promptId))
     .returning();

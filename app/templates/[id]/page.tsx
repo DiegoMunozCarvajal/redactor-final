@@ -7,7 +7,7 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Loader2, Pencil, Check, X, Trash2, GripVertical } from "lucide-react";
+import { Plus, Loader2, Pencil, Check, X, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -67,22 +67,14 @@ function SortableChapterRow({
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors mt-4 p-1 rounded shrink-0"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors mt-3 p-1 rounded shrink-0"
         aria-label="Drag to reorder"
       >
         <GripVertical className="h-4 w-4" />
       </button>
       <div className="flex-1">
-        <ChapterEditor bookId={templateId} chapter={chapter} />
+        <ChapterEditor bookId={templateId} chapter={chapter} onDelete={onDelete} />
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0 text-muted-foreground hover:text-destructive mt-2"
-        onClick={() => onDelete(chapter.id)}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
     </div>
   );
 }
@@ -217,12 +209,8 @@ export default function AdminBookPage() {
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto p-6 animate-pulse space-y-4">
-        <div className="h-8 bg-muted rounded w-1/3" />
-        <div className="h-4 bg-muted rounded w-1/2" />
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-muted rounded" />
-        ))}
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -238,7 +226,7 @@ export default function AdminBookPage() {
   const chapterCount = template.chapters.length;
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto p-6">
       <Breadcrumbs
         items={[
           { label: "Templates", href: "/templates" },

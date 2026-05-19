@@ -5,8 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/browser";
-import { useSidebar } from "@/lib/stores/sidebar";
-import { BookOpen, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { BookOpen, ChevronDown } from "lucide-react";
 
 const AUTH_ROUTES = [
   "/login",
@@ -24,8 +23,6 @@ export function Navbar() {
   const [userResolved, setUserResolved] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { collapsed, toggle } = useSidebar();
-
   useEffect(() => {
     supabase.auth
       .getUser()
@@ -89,19 +86,6 @@ export function Navbar() {
           Templates
         </Link>
 
-        {isAdmin && (
-          <button
-            onClick={toggle}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </button>
-        )}
       </div>
 
       {userResolved && (
