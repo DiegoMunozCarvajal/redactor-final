@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/browser";
-import { BookOpen, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 const AUTH_ROUTES = [
   "/login",
@@ -53,18 +52,7 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <Link
-          href="/projects"
-          className="flex items-center gap-2 font-semibold tracking-tight hover:text-primary transition-colors"
-        >
-          <BookOpen className="h-5 w-5 text-brand-500" />
-          Redactor
-        </Link>
-
-      </div>
-
+    <header className="sticky top-0 z-30 border-b border-border backdrop-blur-md bg-background/80 h-14 px-6 flex items-center justify-end">
       {userResolved && (
         <div ref={menuRef} className="relative">
           <button
