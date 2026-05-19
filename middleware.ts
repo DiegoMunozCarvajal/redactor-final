@@ -103,7 +103,8 @@ export async function middleware(request: NextRequest) {
   } = await dedupedGetUser(supabase, refreshTokenHint);
 
   // If not authenticated and not on an auth page, redirect to login
-  const publicPaths = new Set(["/login", "/signup", "/forgot-password", "/reset-password", "/callback"]);
+  // /signup removed — account creation disabled. Create accounts via DB insert only.
+  const publicPaths = new Set(["/login", "/forgot-password", "/reset-password", "/callback"]);
   if (
     !user &&
     !publicPaths.has(request.nextUrl.pathname)

@@ -10,7 +10,6 @@ import { BookOpen, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-rea
 
 const AUTH_ROUTES = [
   "/login",
-  "/signup",
   "/forgot-password",
   "/reset-password",
   "/callback",
