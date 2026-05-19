@@ -109,10 +109,10 @@ export function AddChapterDialog({
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <button className="w-full rounded-lg border-2 border-dashed border-border hover:border-brand-300 dark:hover:border-brand-700 hover:bg-accent/50 transition-all duration-200 py-6 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
           <Plus className="h-4 w-4" />
           Add chapter
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
