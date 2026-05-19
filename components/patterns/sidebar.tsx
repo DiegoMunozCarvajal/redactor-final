@@ -137,10 +137,9 @@ export function Sidebar() {
       } else if (seg.type === "templates") {
         toFetch.push({ key, url: `/api/books/${seg.id}` });
       } else if (seg.type === "chapter") {
-        // Need the project ID for the chapter API
         const projectId = seg.parentId;
         if (projectId) {
-          toFetch.push({ key, url: `/api/projects/${projectId}/chapters` });
+          toFetch.push({ key, url: `/api/projects/${projectId}/chapters/${seg.id}` });
         }
       }
     }
@@ -151,19 +150,6 @@ export function Sidebar() {
 
     Promise.all(
       toFetch.map(async ({ key, url }) => {
-        // For chapters we use the chapters list and find by ID
-        if (key.startsWith("chapter:")) {
-          const chapterId = key.replace("chapter:", "");
-          try {
-            const res = await fetch(url);
-            if (!res.ok) return { key, label: null };
-            const chapters = await res.json();
-            const chapter = chapters.find((ch: { id: string; title: string }) => ch.id === chapterId);
-            return { key, label: chapter?.title ?? null };
-          } catch {
-            return { key, label: null };
-          }
-        }
         const label = await fetchName(url);
         return { key, label };
       })
