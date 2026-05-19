@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { BookOpen, Clock, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
+import { enUS } from "date-fns/locale";
 
 interface ProjectData {
   id: string;
@@ -91,7 +91,7 @@ export default function ProjectsPage() {
     <div className="py-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Proyectos</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Create and manage your book generation projects
           </p>
@@ -140,7 +140,7 @@ export default function ProjectsPage() {
                       <Clock className="h-3 w-3" />
                       {formatDistanceToNow(new Date(p.createdAt), {
                         addSuffix: true,
-                        locale: es,
+                        locale: enUS,
                       })}
                     </span>
                   </CardContent>

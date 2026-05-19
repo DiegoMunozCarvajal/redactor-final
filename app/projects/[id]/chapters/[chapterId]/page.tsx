@@ -45,7 +45,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
+import { enUS } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 
@@ -116,11 +116,11 @@ interface PromptData {
 function statusBadge(status: string) {
   switch (status) {
     case "completed":
-      return <Badge className="bg-success/10 text-success border-success/20">Completado</Badge>;
+      return <Badge className="bg-success/10 text-success border-success/20">Completed</Badge>;
     case "generating":
-      return <Badge className="bg-info/10 text-info border-info/20">Generando</Badge>;
+      return <Badge className="bg-info/10 text-info border-info/20">Generating</Badge>;
     case "failed":
-      return <Badge variant="destructive">Fallido</Badge>;
+      return <Badge variant="destructive">Failed</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
@@ -240,7 +240,7 @@ export default function ChapterPage() {
       );
       if (res.ok) {
         fetchChapter();
-        toast.success("Fragmento generado");
+        toast.success("Fragment generated");
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error ?? "Error generating fragment");
@@ -268,7 +268,7 @@ export default function ChapterPage() {
   async function runAssembly() {
     const fragmentIds = Object.values(selectedFragments).filter(Boolean);
     if (fragmentIds.length === 0) {
-      toast.error("Selecciona al menos un fragmento");
+      toast.error("Select at least one fragment");
       return;
     }
     setAssembling(true);
@@ -288,13 +288,13 @@ export default function ChapterPage() {
       if (res.ok) {
         setAssemblyModalOpen(false);
         fetchChapter();
-        toast.success("Ensamblaje completado");
+        toast.success("Assembly completed");
       } else {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.error ?? "Error en ensamblaje");
+        toast.error(err.error ?? "Assembly error");
       }
     } catch {
-      toast.error("Error de red");
+      toast.error("Network error");
     } finally {
       setAssembling(false);
     }
@@ -465,7 +465,7 @@ export default function ChapterPage() {
         items={[
           { label: "Projects", href: "/projects" },
           { label: projectName, href: `/projects/${params.id}` },
-          { label: `Capítulo ${chapter.position + 1}: ${chapter.title}` },
+          { label: `Chapter ${chapter.position + 1}: ${chapter.title}` },
         ]}
       />
 
@@ -504,7 +504,7 @@ export default function ChapterPage() {
           </div>
         )}
         <div className="text-sm text-muted-foreground mt-1">
-          {totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "Sin generaciones"}
+          {totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "No generations"}
           {activeGen && (
             <>
               {" "}· {statusBadge("generating")}{" "}
@@ -568,7 +568,7 @@ export default function ChapterPage() {
                       ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
                       : "bg-muted/50 border-border"
                   }`}
-                  title={fixed !== undefined ? `Temperatura fija a ${fixed} para este modelo` : undefined}
+                  title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
                 />
               );
             })()}
@@ -584,7 +584,7 @@ export default function ChapterPage() {
               ) : (
                 <Play className="h-4 w-4 mr-1" />
               )}
-              Generar Todos
+              Generate All
             </Button>
           )}
         </div>
@@ -599,7 +599,7 @@ export default function ChapterPage() {
             Add prompts to start generating content for this chapter.
           </p>
           <Button variant="outline" size="sm" onClick={() => setAddingPrompt(true)}>
-            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt
+            <Plus className="h-3 w-3 mr-1" /> Add Prompt
           </Button>
         </div>
       )}
@@ -608,7 +608,7 @@ export default function ChapterPage() {
       {contentPrompts.length > 0 && (
         <div className="space-y-3 mb-8">
           <h2 className="text-sm font-medium text-muted-foreground">
-            Prompts de Contenido
+            Content Prompts
           </h2>
           {contentPrompts.map((prompt) => {
             const activeFragment = promptFragmentMap.get(prompt.id);
@@ -634,7 +634,7 @@ export default function ChapterPage() {
                       </CardTitle>
                       {isDone && (
                         <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
-                          Listo
+                          Ready
                         </Badge>
                       )}
                       {isGenerating && (
@@ -690,7 +690,7 @@ export default function ChapterPage() {
                                 ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
                                 : "bg-muted/50 border-border"
                             }`}
-                            title={fixed !== undefined ? `Temperatura fija a ${fixed} para este modelo` : undefined}
+                            title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
                           />
                         );
                       })()}
@@ -708,7 +708,7 @@ export default function ChapterPage() {
                         ) : (
                           <Play className="h-3 w-3 mr-1" />
                         )}
-                        {isDone ? "Regenerar" : "Generar"}
+                        {isDone ? "Regenerate" : "Generate"}
                       </Button>
                       <Button
                         size="icon"
@@ -733,7 +733,7 @@ export default function ChapterPage() {
                 {editingPromptId === prompt.id && (
                   <CardContent className="border-t pt-3 space-y-3">
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                      <Label className="text-[10px] text-muted-foreground">Content</Label>
                       <Textarea
                         value={promptFormData[prompt.id]?.content ?? prompt.content}
                         onChange={(e) => {
@@ -813,11 +813,11 @@ export default function ChapterPage() {
         {addingPrompt ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Nuevo Prompt</CardTitle>
+              <CardTitle className="text-sm">New Prompt</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Título</Label>
+                <Label className="text-[10px] text-muted-foreground">Title</Label>
                 <Input
                   value={newPrompt.title}
                   onChange={(e) => setNewPrompt(prev => ({ ...prev, title: e.target.value }))}
@@ -826,7 +826,7 @@ export default function ChapterPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                <Label className="text-[10px] text-muted-foreground">Content</Label>
                 <Textarea
                   value={newPrompt.content}
                   onChange={(e) => setNewPrompt(prev => ({ ...prev, content: e.target.value }))}
@@ -859,7 +859,7 @@ export default function ChapterPage() {
             className="w-full"
             onClick={() => setAddingPrompt(true)}
           >
-            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt
+            <Plus className="h-3 w-3 mr-1" /> Add Prompt
           </Button>
         )}
       </div>
@@ -882,9 +882,9 @@ export default function ChapterPage() {
       <Dialog open={assemblyModalOpen} onOpenChange={setAssemblyModalOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Ensamblar Capítulo</DialogTitle>
+            <DialogTitle>Assemble Chapter</DialogTitle>
             <DialogDescription>
-              Selecciona una versión de cada fragmento para el ensamblaje.
+              Select a version of each fragment for assembly.
             </DialogDescription>
           </DialogHeader>
 
@@ -901,7 +901,7 @@ export default function ChapterPage() {
 
                   {versions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Sin fragmentos generados
+                      No fragments generated
                     </p>
                   ) : (
                     <div className="space-y-1.5">
@@ -946,7 +946,7 @@ export default function ChapterPage() {
                                 <span className="text-[10px] text-muted-foreground">
                                   {formatDistanceToNow(new Date(v.createdAt), {
                                     addSuffix: true,
-                                    locale: es,
+                                    locale: enUS,
                                   })}
                                 </span>
                               )}
@@ -968,7 +968,7 @@ export default function ChapterPage() {
           {/* Assembly controls */}
           <div className="flex items-center justify-between pt-4 border-t">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Modelo:</span>
+              <span className="text-[10px] text-muted-foreground">Model:</span>
               <Select value={assemblyModel} onValueChange={(v) => {
                 setAssemblyModel(v);
                 const fixed = fixedTempFor(v);
@@ -1006,7 +1006,7 @@ export default function ChapterPage() {
                         ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
                         : "bg-muted/50 border-border"
                     }`}
-                    title={fixed !== undefined ? `Temperatura fija a ${fixed} para este modelo` : undefined}
+                    title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
                   />
                 );
               })()}
@@ -1024,7 +1024,7 @@ export default function ChapterPage() {
               ) : (
                 <Play className="h-3 w-3 mr-1" />
               )}
-              Ensamblar
+              Assemble
             </Button>
           </div>
         </DialogContent>

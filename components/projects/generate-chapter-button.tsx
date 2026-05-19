@@ -92,7 +92,7 @@ export function GenerateChapterButton({
         ) : (
           <Play className="h-4 w-4 mr-1" />
         )}
-        {hasGeneration ? "Regenerar" : "Generar"}
+        {hasGeneration ? "Regenerate" : "Generate"}
       </Button>
     </div>
   );

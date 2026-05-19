@@ -33,7 +33,7 @@ export function AssemblyPromptSection({ prompt, onSave, versionsApiUrl, readOnly
   if (!prompt) {
     return (
       <div className="mb-8">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Ensamblaje</h2>
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
             <p className="text-sm text-muted-foreground">No assembly prompt configured yet.</p>
@@ -50,7 +50,7 @@ export function AssemblyPromptSection({ prompt, onSave, versionsApiUrl, readOnly
 
   return (
     <div className="mb-8">
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Ensamblaje</h2>
+      <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -116,7 +116,7 @@ export function AssemblyPromptSection({ prompt, onSave, versionsApiUrl, readOnly
         {editing && (
           <CardContent className="border-t pt-3">
             <div className="space-y-1.5">
-              <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+              <Label className="text-[10px] text-muted-foreground">Content</Label>
               <Textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}

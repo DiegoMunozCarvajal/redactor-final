@@ -19,13 +19,13 @@ const meslo = localFont({
 
 export const metadata: Metadata = {
   title: "Redactor",
-  description: "Genera libros de no-ficción en español",
+  description: "Generates non-fiction books in Spanish",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
-      lang="es"
+      lang="en"
       suppressHydrationWarning
       className={`${meslo.variable}`}
     >

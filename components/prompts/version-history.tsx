@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Loader2, RotateCcw } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
-import { es } from "date-fns/locale"
+import { enUS } from "date-fns/locale"
 
 interface Version {
   id: string
@@ -59,7 +59,7 @@ export function VersionHistory({ versionsApiUrl, promptId }: Props) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground mb-2">{versions.length} version(es) guardada(s)</p>
+      <p className="text-xs text-muted-foreground mb-2">{versions.length} saved version(s)</p>
       {versions.map((v) => (
         <div key={v.id} className="border rounded-md p-2">
           <div className="flex items-center justify-between">
@@ -78,7 +78,7 @@ export function VersionHistory({ versionsApiUrl, promptId }: Props) {
             </button>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground">
-                {formatDistanceToNow(new Date(v.createdAt), { addSuffix: true, locale: es })}
+                {formatDistanceToNow(new Date(v.createdAt), { addSuffix: true, locale: enUS })}
               </span>
               <Button
                 size="sm"

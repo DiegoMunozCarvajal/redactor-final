@@ -184,7 +184,7 @@ export default function AdminBookPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: `Capítulo ${maxPos + 1}`,
+        title: `Chapter ${maxPos + 1}`,
         position: maxPos + 1,
       }),
     });
@@ -319,7 +319,7 @@ export default function AdminBookPage() {
 
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-muted-foreground">
-          {chapterCount} {chapterCount === 1 ? "capítulo" : "capítulos"}
+          {chapterCount} {chapterCount === 1 ? "chapter" : "chapters"}
         </p>
         <Button variant="outline" size="sm" onClick={addChapter} disabled={addingChapter}>
           {addingChapter ? (

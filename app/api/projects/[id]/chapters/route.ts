@@ -31,7 +31,7 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const title = body.title || "Nuevo capítulo";
+  const title = body.title || "New chapter";
   const templateChapterId = body.templateChapterId as string | undefined;
 
   // Get next position

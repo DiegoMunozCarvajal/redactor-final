@@ -125,9 +125,9 @@ export default function PromptsPage() {
       />
 
       <div className="flex items-center justify-between mt-4 mb-6">
-        <h1 className="text-xl font-bold">Prompts del Capítulo</h1>
+        <h1 className="text-xl font-bold">Chapter Prompts</h1>
         <Button onClick={() => setShowNew(true)} disabled={showNew}>
-          <Plus className="h-4 w-4 mr-1" /> Añadir Prompt
+          <Plus className="h-4 w-4 mr-1" /> Add Prompt
         </Button>
       </div>
 
@@ -135,7 +135,7 @@ export default function PromptsPage() {
         <Card className="mb-4 border-brand-200">
           <CardContent className="pt-4 space-y-3">
             <div>
-              <Label>Título</Label>
+              <Label>Title</Label>
               <Input
                 value={newPrompt.title}
                 onChange={(e) =>
@@ -144,7 +144,7 @@ export default function PromptsPage() {
               />
             </div>
             <div>
-              <Label>Contenido</Label>
+              <Label>Content</Label>
               <Textarea
                 value={newPrompt.content}
                 onChange={(e) =>
@@ -154,9 +154,9 @@ export default function PromptsPage() {
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={addPrompt}>Guardar</Button>
+              <Button onClick={addPrompt}>Save</Button>
               <Button variant="ghost" onClick={() => setShowNew(false)}>
-                Cancelar
+                Cancel
               </Button>
             </div>
           </CardContent>
@@ -192,7 +192,7 @@ export default function PromptsPage() {
             <CardContent className="space-y-3">
               <div>
                 <Label className="text-xs text-muted-foreground">
-                  Contenido
+                  Content
                 </Label>
                 <Textarea
                   defaultValue={prompt.content}

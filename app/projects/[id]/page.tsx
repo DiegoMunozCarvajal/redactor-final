@@ -190,7 +190,7 @@ export default function ProjectPage() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <BookOpen className="h-4 w-4" />
           <span>
-            {completedCount}/{project.chapters.length} capítulos completados
+            {completedCount}/{project.chapters.length} chapters completed
           </span>
         </div>
         <AddChapterDialog

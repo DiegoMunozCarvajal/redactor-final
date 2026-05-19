@@ -167,7 +167,7 @@ export default function AdminBooksPage() {
                   )}
                   <p className="text-xs text-muted-foreground mt-2">
                     {t.chapterCount}{" "}
-                    {t.chapterCount === 1 ? "capítulo" : "capítulos"}
+                    {t.chapterCount === 1 ? "chapter" : "chapters"}
                   </p>
                 </CardContent>
               </Link>

@@ -50,17 +50,17 @@ function statusBadge(status: string) {
     case "completed":
       return (
         <Badge className="bg-success/10 text-success border-success/20">
-          Completado
+          Completed
         </Badge>
       );
     case "generating":
       return (
         <Badge className="bg-info/10 text-info border-info/20">
-          Generando
+          Generating
         </Badge>
       );
     case "failed":
-      return <Badge variant="destructive">Fallido</Badge>;
+      return <Badge variant="destructive">Failed</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }

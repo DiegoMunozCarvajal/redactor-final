@@ -95,10 +95,10 @@ export function PromptEditor({
               </button>
               <button
                 type="button"
-                onClick={() => insertPlaceholder("[SUBTÍTULO]")}
+                onClick={() => insertPlaceholder("[SUBTITLE]")}
                 className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
               >
-                + [SUBTÍTULO]
+                + [SUBTITLE]
               </button>
             </div>
           </div>

@@ -36,9 +36,9 @@ export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
   const { prompt, topic, subtitle, model = DEFAULT_GENERATION_MODEL, temperature } = params;
-  let content = prompt.content.replace(/\[TEMA\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`);
+  let content = prompt.content.replace(/\[TEMA\]|\[TOPIC\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`);
   if (subtitle) {
-    content = content.replace(/\[SUBTÍTULO\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
+    content = content.replace(/\[SUBTÍTULO\]|\[SUBTITLE\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
   }
 
   const result = await generateCompletion({
@@ -69,17 +69,17 @@ export async function generateChapterAssembly(
   temperature?: number,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
-    .map((f, i) => `### Fragmento ${i + 1}\n\n${f.content}`)
+    .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
     .join("\n\n---\n\n");
 
   let content = assemblyPrompt.content
-    .replace(/\[TEMA\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`)
+    .replace(/\[TEMA\]|\[TOPIC\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`)
     .replace(
-      /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]/g,
+      /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
       fragmentsText,
     );
   if (subtitle) {
-    content = content.replace(/\[SUBTÍTULO\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
+    content = content.replace(/\[SUBTÍTULO\]|\[SUBTITLE\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
   }
 
   const result = await generateCompletion({

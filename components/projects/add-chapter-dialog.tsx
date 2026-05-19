@@ -111,22 +111,22 @@ export function AddChapterDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="h-4 w-4" />
-          Añadir capítulo
+          Add chapter
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Añadir capítulo</DialogTitle>
+          <DialogTitle>Add chapter</DialogTitle>
           <DialogDescription>
-            Crea un nuevo capítulo. Opcionalmente, selecciona un template para copiar sus prompts.
+            Create a new chapter. Optionally, select a template to copy its prompts.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="chapter-title">Título del capítulo</Label>
+            <Label htmlFor="chapter-title">Chapter title</Label>
             <Input
               id="chapter-title"
-              placeholder="Introducción"
+              placeholder="Introduction"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => {
@@ -136,7 +136,7 @@ export function AddChapterDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Template (opcional)</Label>
+            <Label>Template (optional)</Label>
             <Select
               value={selectedTemplateId ?? "__none__"}
               onValueChange={(v) => {
@@ -152,10 +152,10 @@ export function AddChapterDialog({
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Sin template (empezar desde cero)" />
+                <SelectValue placeholder="No template (start from scratch)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">Sin template (empezar desde cero)</SelectItem>
+                <SelectItem value="__none__">No template (start from scratch)</SelectItem>
                 {templates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
@@ -167,7 +167,7 @@ export function AddChapterDialog({
 
           {selectedTemplateId && (
             <div className="space-y-2">
-              <Label>Capítulo del template</Label>
+              <Label>Template chapter</Label>
               <Select
                 value={selectedChapterId ?? ""}
                 onValueChange={(v) => setSelectedChapterId(v || null)}
@@ -176,10 +176,10 @@ export function AddChapterDialog({
                 <SelectTrigger>
                   <SelectValue placeholder={
                     loading
-                      ? "Cargando capítulos..."
+                      ? "Loading chapters..."
                       : templateChapters.length === 0
                         ? "No chapters in this template"
-                        : "Selecciona un capítulo"
+                        : "Select a chapter"
                   } />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,7 +199,7 @@ export function AddChapterDialog({
             disabled={!title.trim() || submitting}
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Crear capítulo
+            Create chapter
           </Button>
         </div>
       </DialogContent>

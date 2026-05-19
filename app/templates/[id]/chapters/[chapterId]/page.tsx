@@ -179,7 +179,7 @@ export default function ChapterPromptEditorPage() {
             Add prompts to this chapter template.
           </p>
           <Button variant="outline" size="sm" onClick={() => setAddingPrompt(true)}>
-            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt
+            <Plus className="h-3 w-3 mr-1" /> Add Prompt
           </Button>
         </div>
       )}
@@ -188,7 +188,7 @@ export default function ChapterPromptEditorPage() {
       {contentPrompts.length > 0 && (
         <div className="space-y-3 mb-6">
           <h2 className="text-sm font-medium text-muted-foreground">
-            Prompts de Contenido
+            Content Prompts
           </h2>
           {contentPrompts.map((prompt) => {
             const data = getFormData(prompt.id, prompt)
@@ -219,7 +219,7 @@ export default function ChapterPromptEditorPage() {
                           }))
                         }
                       >
-                        Versiones
+                        Versions
                       </Button>
                       <Button
                         size="icon"
@@ -241,7 +241,7 @@ export default function ChapterPromptEditorPage() {
                     />
                   )}
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground">Título</Label>
+                    <Label className="text-[10px] text-muted-foreground">Title</Label>
                     <Input
                       value={data.title}
                       onChange={(e) => {
@@ -254,7 +254,7 @@ export default function ChapterPromptEditorPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                    <Label className="text-[10px] text-muted-foreground">Content</Label>
                     <Textarea
                       value={data.content}
                       onChange={(e) => {
@@ -294,11 +294,11 @@ export default function ChapterPromptEditorPage() {
         {addingPrompt && !addingAssembly ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Nuevo Prompt</CardTitle>
+              <CardTitle className="text-sm">New Prompt</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Título</Label>
+                <Label className="text-[10px] text-muted-foreground">Title</Label>
                 <Input
                   value={newPrompt.title}
                   onChange={(e) =>
@@ -309,7 +309,7 @@ export default function ChapterPromptEditorPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                <Label className="text-[10px] text-muted-foreground">Content</Label>
                 <Textarea
                   value={newPrompt.content}
                   onChange={(e) =>
@@ -348,14 +348,14 @@ export default function ChapterPromptEditorPage() {
               setAddingPrompt(true)
             }}
           >
-            <Plus className="h-3 w-3 mr-1" /> Añadir Prompt de Contenido
+            <Plus className="h-3 w-3 mr-1" /> Add Content Prompt
           </Button>
         )}
       </div>
 
       {/* Assembly Prompt */}
       <div className="mb-8">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Ensamblaje</h2>
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
         {assemblyPrompt ? (() => {
           const data = getFormData(assemblyPrompt.id, assemblyPrompt)
           return (
@@ -385,7 +385,7 @@ export default function ChapterPromptEditorPage() {
                         }))
                       }
                     >
-                      Versiones
+                      Versions
                     </Button>
                     <Button
                       size="icon"
@@ -407,7 +407,7 @@ export default function ChapterPromptEditorPage() {
                   />
                 )}
                 <div className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground">Título</Label>
+                  <Label className="text-[10px] text-muted-foreground">Title</Label>
                   <Input
                     value={data.title}
                     onChange={(e) => {
@@ -420,7 +420,7 @@ export default function ChapterPromptEditorPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                  <Label className="text-[10px] text-muted-foreground">Content</Label>
                   <Textarea
                     value={data.content}
                     onChange={(e) => {
@@ -454,11 +454,11 @@ export default function ChapterPromptEditorPage() {
         })() : addingPrompt && addingAssembly ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Nuevo Prompt de Ensamblaje</CardTitle>
+              <CardTitle className="text-sm">New Assembly Prompt</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Título</Label>
+                <Label className="text-[10px] text-muted-foreground">Title</Label>
                 <Input
                   value={newPrompt.title}
                   onChange={(e) =>
@@ -469,7 +469,7 @@ export default function ChapterPromptEditorPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Contenido</Label>
+                <Label className="text-[10px] text-muted-foreground">Content</Label>
                 <Textarea
                   value={newPrompt.content}
                   onChange={(e) =>
@@ -509,14 +509,14 @@ export default function ChapterPromptEditorPage() {
                 size="sm"
                 onClick={() => {
                   setNewPrompt({
-                    title: "Ensamblaje",
-                    content: "[TEMA]\n\n[SUBTÍTULO]\n\nEnsambla los fragmentos...",
+                    title: "Assembly",
+                    content: "[TEMA]\n\n[SUBTÍTULO]\n\nAssembles the fragments...",
                   })
                   setAddingAssembly(true)
                   setAddingPrompt(true)
                 }}
               >
-                <Plus className="h-3 w-3 mr-1" /> Añadir Prompt de Ensamblaje
+                <Plus className="h-3 w-3 mr-1" /> Add Assembly Prompt
               </Button>
             </CardContent>
           </Card>
