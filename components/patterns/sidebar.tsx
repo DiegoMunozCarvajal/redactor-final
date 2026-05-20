@@ -42,7 +42,8 @@ function getStoredCollapsed(): boolean {
 interface PathSegment {
   type: "projects" | "templates" | "chapter" | "prompts";
   id?: string;
-  parentId?: string; // projectId for chapters
+  parentId?: string;
+  parentType?: "projects" | "templates";
 }
 
 function parsePathname(pathname: string): PathSegment[] {
@@ -69,10 +70,13 @@ function parsePathname(pathname: string): PathSegment[] {
         break;
       case "chapters":
         if (parts[i + 1]) {
-          const parentId = segments.length >= 2 && segments[segments.length - 1].type !== "projects" && segments[segments.length - 1].type !== "templates"
-            ? segments.findLast((s) => s.id != null && (s.type === "projects" || s.type === "templates"))?.id
-            : segments[segments.length - 1]?.id;
-          segments.push({ type: "chapter", id: parts[i + 1], parentId });
+          const parentSeg = segments.findLast((s) => s.id != null && (s.type === "projects" || s.type === "templates"));
+          segments.push({
+            type: "chapter",
+            id: parts[i + 1],
+            parentId: parentSeg?.id,
+            parentType: parentSeg?.type as "projects" | "templates" | undefined,
+          });
           i++;
         }
         break;
@@ -102,14 +106,23 @@ async function fetchName(url: string): Promise<string | null> {
   }
 }
 
-async function fetchChapterLabel(projectId: string, chapterId: string): Promise<string | null> {
+async function fetchChapterLabel(parentId: string, chapterId: string, parentType: "projects" | "templates"): Promise<string | null> {
   try {
-    const res = await fetch(`/api/projects/${projectId}/chapters/${chapterId}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const chapter = data.chapter;
-    if (!chapter) return null;
-    return `Capítulo ${chapter.position + 1}`;
+    if (parentType === "projects") {
+      const res = await fetch(`/api/projects/${parentId}/chapters/${chapterId}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const chapter = data.chapter;
+      if (!chapter) return null;
+      return `Capítulo ${chapter.position + 1}`;
+    } else {
+      const res = await fetch(`/api/books/${parentId}/chapters`);
+      if (!res.ok) return null;
+      const chapters = await res.json();
+      const chapter = Array.isArray(chapters) ? chapters.find((c: { id: string; position: number }) => c.id === chapterId) : null;
+      if (!chapter) return null;
+      return `Capítulo ${chapter.position + 1}`;
+    }
   } catch {
     return null;
   }
@@ -157,7 +170,7 @@ export function Sidebar() {
   useEffect(() => {
     const segments = parsePathname(pathname);
     const toFetch: { key: string; url: string }[] = [];
-    const toFetchChapter: { key: string; projectId: string; chapterId: string }[] = [];
+    const toFetchChapter: { key: string; parentId: string; chapterId: string; parentType: "projects" | "templates" }[] = [];
     const toFetchPrompt: { key: string; projectId: string; chapterId: string; promptId: string }[] = [];
 
     // Find project ID for prompt context
@@ -174,8 +187,9 @@ export function Sidebar() {
         toFetch.push({ key, url: `/api/books/${seg.id}` });
       } else if (seg.type === "chapter") {
         const pid = seg.parentId;
-        if (pid) {
-          toFetchChapter.push({ key, projectId: pid, chapterId: seg.id });
+        const ptype = seg.parentType;
+        if (pid && ptype) {
+          toFetchChapter.push({ key, parentId: pid, chapterId: seg.id, parentType: ptype });
         }
       } else if (seg.type === "prompts") {
         const chapterId = seg.parentId;
@@ -194,8 +208,8 @@ export function Sidebar() {
       return { key, label };
     });
 
-    const chapterPromises = toFetchChapter.map(async ({ key, projectId: pid, chapterId }) => {
-      const label = await fetchChapterLabel(pid, chapterId);
+    const chapterPromises = toFetchChapter.map(async ({ key, parentId, chapterId, parentType }) => {
+      const label = await fetchChapterLabel(parentId, chapterId, parentType);
       return { key, label };
     });
 
