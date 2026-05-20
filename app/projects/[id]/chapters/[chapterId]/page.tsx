@@ -811,7 +811,8 @@ export default function ChapterPage() {
         </div>
       )}
 
-      {/* Add Prompt Button */}
+      {/* Add Prompt Button — hidden when empty state shows the same button */}
+      {prompts.length > 0 || addingPrompt ? (
       <div className="mb-6">
         {addingPrompt ? (
           <Card>
@@ -866,6 +867,7 @@ export default function ChapterPage() {
           </Button>
         )}
       </div>
+      ) : null}
 
       <AssemblyPromptSection
         prompt={assemblyPrompt}
