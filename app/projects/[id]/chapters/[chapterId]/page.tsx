@@ -779,13 +779,14 @@ export default function ChapterPage() {
                           {versions.map((v, i) => (
                             <button
                               key={v.id}
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedFragmentVersion((prev) => ({
                                   ...prev,
                                   [prompt.id]:
                                     prev[prompt.id] === v.id ? undefined : v.id,
-                                }))
-                              }
+                                }));
+                              }}
                               className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
                                 (selectedVersionId ?? latestFragment?.id) === v.id
                                   ? "bg-primary text-primary-foreground"
