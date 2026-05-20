@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
@@ -35,7 +35,6 @@ import {
   Loader2,
   BookOpen,
   AlertTriangle,
-  Pencil,
   Check,
   X,
   Trash2,
@@ -128,6 +127,7 @@ function statusBadge(status: string) {
 
 export default function ChapterPage() {
   const params = useParams<{ id: string; chapterId: string }>();
+  const router = useRouter();
   const [data, setData] = useState<ChapterDetail | null>(null);
   const [prompts, setPrompts] = useState<PromptData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -622,7 +622,11 @@ export default function ChapterPage() {
             const isDone = !!fragment;
 
             return (
-              <Card key={prompt.id} className={isDone ? "border-success/20" : ""}>
+              <Card
+                key={prompt.id}
+                className={`${isDone ? "border-success/20" : ""} cursor-pointer hover:border-primary/30 transition-colors`}
+                onClick={() => router.push(`/projects/${params.id}/chapters/${params.chapterId}/prompts/${prompt.id}`)}
+              >
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -641,7 +645,7 @@ export default function ChapterPage() {
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <Select
                         value={getModel(prompt.id)}
                         onValueChange={(v) => {
@@ -676,6 +680,7 @@ export default function ChapterPage() {
                             step="0.1"
                             value={fixed ?? getTemperature(prompt.id)}
                             disabled={fixed !== undefined}
+                            onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               const v = parseFloat(e.target.value);
                               if (!isNaN(v) && v >= 0 && v <= 1) {
@@ -697,7 +702,10 @@ export default function ChapterPage() {
                       <Button
                         size="sm"
                         variant={isDone ? "outline" : "default"}
-                        onClick={() => runPrompt(prompt.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          runPrompt(prompt.id);
+                        }}
                         disabled={isGenerating}
                         className="h-7 text-xs"
                       >
@@ -713,16 +721,11 @@ export default function ChapterPage() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7"
-                        onClick={() => setEditingPromptId(editingPromptId === prompt.id ? null : prompt.id)}
-                      >
-                        <Pencil className="h-3 w-3 text-muted-foreground" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => deletePrompt(prompt.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deletePrompt(prompt.id);
+                        }}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>

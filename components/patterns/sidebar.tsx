@@ -78,6 +78,11 @@ function parsePathname(pathname: string): PathSegment[] {
         break;
       case "prompts":
         segments.push({ type: "prompts" });
+        if (parts[i + 1]) {
+          const parentId = segments.findLast((s) => s.id != null && s.type === "chapter")?.id;
+          segments.push({ type: "prompts", id: parts[i + 1], parentId });
+          i++;
+        }
         break;
     }
   }
@@ -92,6 +97,32 @@ async function fetchName(url: string): Promise<string | null> {
     if (!res.ok) return null;
     const data = await res.json();
     return data.name ?? data.title ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchChapterLabel(projectId: string, chapterId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/chapters/${chapterId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const chapter = data.chapter;
+    if (!chapter) return null;
+    return `Capítulo ${chapter.position + 1}`;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPromptLabel(projectId: string, chapterId: string, promptId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/prompts?chapterId=${chapterId}`);
+    if (!res.ok) return null;
+    const prompts = await res.json();
+    const prompt = Array.isArray(prompts) ? prompts.find((p: { id: string; title: string }) => p.id === promptId) : null;
+    if (!prompt) return null;
+    return prompt.title;
   } catch {
     return null;
   }
@@ -126,6 +157,11 @@ export function Sidebar() {
   useEffect(() => {
     const segments = parsePathname(pathname);
     const toFetch: { key: string; url: string }[] = [];
+    const toFetchChapter: { key: string; projectId: string; chapterId: string }[] = [];
+    const toFetchPrompt: { key: string; projectId: string; chapterId: string; promptId: string }[] = [];
+
+    // Find project ID for prompt context
+    const projectId = segments.find((s) => s.type === "projects" && s.id)?.id;
 
     for (const seg of segments) {
       if (!seg.id) continue;
@@ -137,23 +173,38 @@ export function Sidebar() {
       } else if (seg.type === "templates") {
         toFetch.push({ key, url: `/api/books/${seg.id}` });
       } else if (seg.type === "chapter") {
-        const projectId = seg.parentId;
-        if (projectId) {
-          toFetch.push({ key, url: `/api/projects/${projectId}/chapters/${seg.id}` });
+        const pid = seg.parentId;
+        if (pid) {
+          toFetchChapter.push({ key, projectId: pid, chapterId: seg.id });
+        }
+      } else if (seg.type === "prompts") {
+        const chapterId = seg.parentId;
+        if (projectId && chapterId) {
+          toFetchPrompt.push({ key, projectId, chapterId, promptId: seg.id });
         }
       }
     }
 
-    if (toFetch.length === 0) return;
+    if (toFetch.length === 0 && toFetchChapter.length === 0 && toFetchPrompt.length === 0) return;
 
     let cancelled = false;
 
-    Promise.all(
-      toFetch.map(async ({ key, url }) => {
-        const label = await fetchName(url);
-        return { key, label };
-      })
-    ).then((results) => {
+    const urlPromises = toFetch.map(async ({ key, url }) => {
+      const label = await fetchName(url);
+      return { key, label };
+    });
+
+    const chapterPromises = toFetchChapter.map(async ({ key, projectId: pid, chapterId }) => {
+      const label = await fetchChapterLabel(pid, chapterId);
+      return { key, label };
+    });
+
+    const promptPromises = toFetchPrompt.map(async ({ key, projectId: pid, chapterId, promptId }) => {
+      const label = await fetchPromptLabel(pid, chapterId, promptId);
+      return { key, label };
+    });
+
+    Promise.all([...urlPromises, ...chapterPromises, ...promptPromises]).then((results) => {
       if (cancelled) return;
       setResolvedLabels((prev) => {
         const next = { ...prev };
@@ -283,14 +334,30 @@ function buildNavItems(pathname: string, resolvedLabels: Record<string, string>)
       label: chapterLabel,
       icon: FileText,
       depth: 2,
-      active: parts.length === 4 || parts.length === 5,
+      active: parts.length === 4 || (parts.length >= 5 && parts[4] === "prompts"),
     });
 
+    // Prompts list route: /projects/[id]/chapters/[chapterId]/prompts
     if (parts.length === 5 && parts[4] === "prompts") {
       items.splice(parentIndex + 3, 0, {
         href: `/${rootType}/${entityId}/chapters/${chapterId}/prompts`,
         label: "Prompts",
         icon: ChevronRight,
+        depth: 3,
+        active: true,
+      });
+    }
+
+    // Individual prompt route: /projects/[id]/chapters/[chapterId]/prompts/[promptId]
+    if (parts.length >= 6 && parts[4] === "prompts") {
+      const promptId = parts[5];
+      const promptKey = `prompts:${promptId}`;
+      const promptLabel = resolvedLabels[promptKey] ?? "...";
+
+      items.splice(parentIndex + 3, 0, {
+        href: `/${rootType}/${entityId}/chapters/${chapterId}/prompts/${promptId}`,
+        label: promptLabel,
+        icon: FileText,
         depth: 3,
         active: true,
       });
