@@ -162,6 +162,7 @@ export default function ProjectsPage() {
         <div className="md:col-span-2 md:row-span-2">
           <ContinueWritingCard
             project={lastProject}
+            onDelete={deleteProject}
           />
         </div>
         <QuickStartCard templates={templates} />

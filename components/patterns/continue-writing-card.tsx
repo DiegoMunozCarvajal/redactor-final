@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { BookOpen, Clock } from "lucide-react";
+import { BookOpen, Clock, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
+import { Button } from "@/components/ui/button";
 
 interface ContinueWritingCardProps {
   project: {
@@ -13,16 +14,18 @@ interface ContinueWritingCardProps {
     chapterCount?: number;
     completedCount?: number;
   };
+  onDelete?: (id: string, name: string) => void;
 }
 
-export function ContinueWritingCard({ project }: ContinueWritingCardProps) {
+export function ContinueWritingCard({ project, onDelete }: ContinueWritingCardProps) {
   const progress = (project.chapterCount ?? 0) > 0
     ? Math.round(((project.completedCount ?? 0) / (project.chapterCount ?? 1)) * 100)
     : 0;
 
   return (
-    <Link href={`/projects/${project.id}`}>
-      <div className="rounded-lg border bg-gradient-to-br from-brand-50/50 to-accent/30 dark:from-brand-900/20 dark:to-accent/20 p-6 hover:border-brand-200 dark:hover:border-brand-700 transition-all duration-200 h-full flex flex-col justify-between">
+    <div className="relative group h-full">
+      <Link href={`/projects/${project.id}`}>
+        <div className="rounded-lg border bg-gradient-to-br from-brand-50/50 to-accent/30 dark:from-brand-900/20 dark:to-accent/20 p-6 hover:border-brand-200 dark:hover:border-brand-700 transition-all duration-200 h-full flex flex-col justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
             <BookOpen className="h-3.5 w-3.5 text-brand-500" />
@@ -57,7 +60,21 @@ export function ContinueWritingCard({ project }: ContinueWritingCardProps) {
             })}
           </div>
         </div>
-      </div>
-    </Link>
+        </div>
+      </Link>
+      {onDelete && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
+          onClick={(e) => {
+            e.preventDefault();
+            onDelete(project.id, project.name);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
   );
 }
