@@ -6,6 +6,7 @@ import { eq, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
+import { syncChapterPlaceholders } from "@/lib/placeholders";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -60,6 +61,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     resourceId: prompt.id,
     metadata: { title: prompt.title, isAssembly: prompt.isAssembly, chapterId: id },
   });
+
+  // Sync placeholders for this chapter
+  const allPrompts = await db
+    .select({ content: prompts.content })
+    .from(prompts)
+    .where(eq(prompts.chapterId, id));
+  await syncChapterPlaceholders(id, allPrompts.map((p) => p.content));
 
   return NextResponse.json(prompt);
 }

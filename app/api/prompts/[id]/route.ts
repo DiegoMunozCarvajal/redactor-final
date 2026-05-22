@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
+import { syncChapterPlaceholders } from "@/lib/placeholders";
 
 // NOTE: Uses PUT for partial update (PATCH semantics).
 // Kept as PUT for backward compatibility with admin UI.
@@ -53,6 +54,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     metadata: { title: prompt.title, isAssembly: prompt.isAssembly },
   });
 
+  // Sync placeholders for the prompt's chapter
+  if (prompt) {
+    const allPrompts = await db
+      .select({ content: prompts.content })
+      .from(prompts)
+      .where(eq(prompts.chapterId, prompt.chapterId));
+    await syncChapterPlaceholders(prompt.chapterId, allPrompts.map((p) => p.content));
+  }
+
   return NextResponse.json(prompt);
 }
 
@@ -64,7 +74,24 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
+
+  // Capture chapter before deleting
+  const [existing] = await db
+    .select({ chapterId: prompts.chapterId })
+    .from(prompts)
+    .where(eq(prompts.id, id))
+    .limit(1);
+
   await db.delete(prompts).where(eq(prompts.id, id));
+
+  // Sync placeholders
+  if (existing) {
+    const allPrompts = await db
+      .select({ content: prompts.content })
+      .from(prompts)
+      .where(eq(prompts.chapterId, existing.chapterId));
+    await syncChapterPlaceholders(existing.chapterId, allPrompts.map((p) => p.content));
+  }
 
   logAudit({
     userId: admin.user.id,
