@@ -33,7 +33,8 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
       } else {
         toast.error("Error saving brief");
       }
-    } catch {
+    } catch (err) {
+      console.error("brief save failed:", err);
       toast.error("Network error");
     } finally {
       setSaving(false);
@@ -50,12 +51,13 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
       });
       if (res.ok) {
         const data = await res.json();
-        setContent(data.content ?? "");
+        setContent(data?.content ?? "");
         toast.success("Brief generated");
       } else {
         toast.error("Error generating brief");
       }
-    } catch {
+    } catch (err) {
+      console.error("brief generate failed:", err);
       toast.error("Network error");
     } finally {
       setGenerating(false);
@@ -84,7 +86,7 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
               {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
               Generate with AI
             </Button>
-            <Button size="sm" className="text-xs" onClick={save} disabled={saving}>
+            <Button size="sm" className="text-xs" onClick={save} disabled={saving || generating}>
               {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
               Save
             </Button>
