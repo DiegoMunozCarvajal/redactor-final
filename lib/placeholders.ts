@@ -21,28 +21,28 @@ export async function syncChapterPlaceholders(
 ) {
   const detected = extractPlaceholders(promptContents);
 
-  // Delete rows no longer referenced
-  if (detected.length > 0) {
-    await db
-      .delete(chapterPlaceholders)
-      .where(
-        and(
-          eq(chapterPlaceholders.chapterId, chapterId),
-          notInArray(chapterPlaceholders.name, detected),
-        ),
-      );
-  } else {
-    await db
-      .delete(chapterPlaceholders)
-      .where(eq(chapterPlaceholders.chapterId, chapterId));
-    return;
-  }
+  await db.transaction(async (tx) => {
+    // Delete rows no longer referenced
+    if (detected.length > 0) {
+      await tx
+        .delete(chapterPlaceholders)
+        .where(
+          and(
+            eq(chapterPlaceholders.chapterId, chapterId),
+            notInArray(chapterPlaceholders.name, detected),
+          ),
+        );
+    } else {
+      await tx
+        .delete(chapterPlaceholders)
+        .where(eq(chapterPlaceholders.chapterId, chapterId));
+      return;
+    }
 
-  // Upsert detected names (keep existing definitions)
-  for (const name of detected) {
-    await db
+    // Batch upsert detected names (keep existing definitions)
+    await tx
       .insert(chapterPlaceholders)
-      .values({ chapterId, name })
+      .values(detected.map((name) => ({ chapterId, name })))
       .onConflictDoNothing();
-  }
+  });
 }
