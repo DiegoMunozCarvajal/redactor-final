@@ -11,7 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { VersionHistory } from "@/components/prompts/version-history"
 import { Loader2, Plus, Save, Check, X, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import type { Prompt } from "@/lib/db/schema"
+import type { ChapterPlaceholder, Prompt } from "@/lib/db/schema"
 
 export default function ChapterPromptEditorPage() {
   const params = useParams<{ id: string; chapterId: string }>()
@@ -26,6 +26,7 @@ export default function ChapterPromptEditorPage() {
   const [promptFormData, setPromptFormData] = useState<Record<string, { title: string; content: string }>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [showVersions, setShowVersions] = useState<Record<string, boolean>>({})
+  const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -39,6 +40,9 @@ export default function ChapterPromptEditorPage() {
       fetch(`/api/books/${params.id}`)
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
         .then((b) => { if (!cancelled) setBookName(b.name ?? "") }),
+      fetch(`/api/chapters/${params.chapterId}/placeholders`)
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+        .then((data) => { if (!cancelled) setPlaceholders(data) }),
     ])
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -84,6 +88,7 @@ export default function ChapterPromptEditorPage() {
       if (res.ok) {
         const updated = await res.json()
         setPrompts((prev) => prev.map((p) => (p.id === promptId ? updated : p)))
+        fetchPlaceholders()
         toast.success("Prompt saved")
       } else {
         const err = await res.json().catch(() => ({}))
@@ -118,6 +123,7 @@ export default function ChapterPromptEditorPage() {
       setAddingPrompt(false)
       setAddingAssembly(false)
       setNewPrompt({ title: "", content: "" })
+      fetchPlaceholders()
       toast.success("Prompt added")
     } else {
       const err = await res.json().catch(() => ({}))
@@ -125,11 +131,19 @@ export default function ChapterPromptEditorPage() {
     }
   }
 
+  async function fetchPlaceholders() {
+    try {
+      const res = await fetch(`/api/chapters/${params.chapterId}/placeholders`)
+      if (res.ok) setPlaceholders(await res.json())
+    } catch { /* ignore */ }
+  }
+
   async function deletePrompt(promptId: string) {
     if (!confirm("Delete this prompt?")) return
     const res = await fetch(`/api/prompts/${promptId}`, { method: "DELETE" })
     if (res.ok) {
       setPrompts((prev) => prev.filter((p) => p.id !== promptId))
+      fetchPlaceholders()
       toast.success("Prompt deleted")
     } else {
       toast.error("Error deleting prompt")
@@ -352,6 +366,35 @@ export default function ChapterPromptEditorPage() {
           </Button>
         )}
       </div>
+
+      {/* Placeholders */}
+      {placeholders.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">
+            Placeholders
+          </h2>
+          <Card>
+            <CardContent className="pt-4 space-y-2">
+              {placeholders.map((ph) => {
+                const count = prompts.filter((p) => p.content.includes(`{${ph.name}}`)).length
+                return (
+                  <div key={ph.id} className="flex items-center justify-between text-sm">
+                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                      {"{"}{ph.name}{"}"}
+                    </code>
+                    <span className="text-xs text-muted-foreground">
+                      {count} prompt{count !== 1 ? "s" : ""} use this
+                    </span>
+                  </div>
+                )
+              })}
+              <p className="text-[10px] text-muted-foreground pt-2">
+                Values are defined at the project level.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Assembly Prompt */}
       <div className="mb-8">
