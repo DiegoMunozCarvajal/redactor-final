@@ -1,4 +1,6 @@
 export * from "./book-templates";
+export * from "./chapter-briefs";
+export * from "./chapter-config-prompts";
 export * from "./chapter-placeholders";
 export * from "./chapters";
 export * from "./prompts";

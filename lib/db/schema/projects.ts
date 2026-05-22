@@ -20,6 +20,7 @@ export const projects = pgTable(
     }),
     title: text("title"),
     subtitle: text("subtitle"),
+    description: text("description"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_projects_user").on(table.userId)],
