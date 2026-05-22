@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   projects,
@@ -23,7 +23,7 @@ export async function POST(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user)
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id: projectId, chapterId } = await params;
 
@@ -34,7 +34,7 @@ export async function POST(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!project || project.userId !== user.id) {
-    return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
   // Verify chapter belongs to project
@@ -44,7 +44,7 @@ export async function POST(
     .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
     .limit(1);
   if (!chapter) {
-    return new Response(JSON.stringify({ error: "chapter not found" }), { status: 404 });
+    return NextResponse.json({ error: "chapter not found" }, { status: 404 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -82,7 +82,7 @@ export async function POST(
   const promptContents = promptRows.map((p) => p.content);
 
   if (placeholderNames.length === 0) {
-    return new Response(JSON.stringify({ error: "no placeholders to fill" }), { status: 400 });
+    return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
 
   // Phase 1: Research (silent — no streaming)

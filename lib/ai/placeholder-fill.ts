@@ -197,6 +197,8 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
           definition,
           sources: placeholderSources.slice(0, 5),
         };
+      } else {
+        yield { type: "error", name, error: `No definition generated for {${name}}` };
       }
     }
   } catch (err) {

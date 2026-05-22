@@ -107,6 +107,6 @@ export async function POST(
     return NextResponse.json({ name, definition, sources });
   } catch (err) {
     console.error("[fill/single] Failed:", err);
-    return NextResponse.json({ error: "Generation failed" }, { status: 502 });
+    return NextResponse.json({ error: "Generation failed", detail: (err as Error).message }, { status: 502 });
   }
 }
