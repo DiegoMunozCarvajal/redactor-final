@@ -16,6 +16,7 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
+  Play,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -348,12 +349,14 @@ export function PlaceholderFillSection({
                     className="h-8 w-8 flex-shrink-0"
                     onClick={() => fillOne(ph.name)}
                     disabled={isFillingThis || filling}
-                    aria-label={`Regenerate {${ph.name}}`}
+                    aria-label={def ? `Regenerate {${ph.name}}` : `Generate {${ph.name}}`}
                   >
                     {isFillingThis ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
+                    ) : def ? (
                       <RefreshCw className="h-3 w-3 text-muted-foreground" />
+                    ) : (
+                      <Play className="h-3 w-3 text-muted-foreground" />
                     )}
                   </Button>
                 </div>
