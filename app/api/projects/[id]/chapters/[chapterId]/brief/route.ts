@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapterBriefs } from "@/lib/db/schema";
+import { projects, chapters, chapterBriefs } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -27,6 +27,15 @@ export async function GET(
   if (!project || project.userId !== user.id) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, id)))
+    .limit(1);
+  if (!chapter)
+    return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const [brief] = await db
     .select()
@@ -62,8 +71,21 @@ export async function PATCH(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, id)))
+    .limit(1);
+  if (!chapter)
+    return NextResponse.json({ error: "chapter not found" }, { status: 404 });
+
   const body = await req.json().catch(() => ({}));
   const { content } = body;
+
+  if (content !== undefined && typeof content !== "string") {
+    return NextResponse.json({ error: "content must be a string" }, { status: 400 });
+  }
 
   const [brief] = await db
     .insert(chapterBriefs)

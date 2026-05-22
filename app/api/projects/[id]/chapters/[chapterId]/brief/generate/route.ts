@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   projects,
+  chapters,
   projectPrompts,
   chapterBriefs,
   chapterConfigPrompts,
@@ -39,6 +40,15 @@ export async function POST(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, id)))
+    .limit(1);
+  if (!chapter)
+    return NextResponse.json({ error: "chapter not found" }, { status: 404 });
+
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
 
@@ -67,7 +77,10 @@ export async function POST(
 
   const systemPrompt = config?.content || DEFAULT_BRIEF_PROMPT;
 
-  const userPrompt = `## Project Description\n${project.description || "(none)"}
+  const userPrompt = `## Project
+Name: ${project.name || "(unnamed)"}
+Topic: ${project.topic || "(none)"}
+Description: ${project.description || "(none)"}
 
 ## Chapter Prompts
 ${promptList
@@ -79,13 +92,18 @@ ${promptList
 
 Write a 2-3 sentence chapter brief.`;
 
-  const result = await generateCompletion({
-    model: model || "deepseek-v4-flash",
-    systemPrompt,
-    userPrompt,
-  });
-
-  const briefContent = (result.data as string).trim();
+  let briefContent: string;
+  try {
+    const result = await generateCompletion({
+      model: model || "deepseek-v4-flash",
+      systemPrompt,
+      userPrompt,
+    });
+    briefContent = (result.data as string).trim();
+  } catch (err) {
+    console.error("[brief/generate] AI call failed:", err);
+    return NextResponse.json({ error: "Generation failed" }, { status: 502 });
+  }
 
   const [brief] = await db
     .insert(chapterBriefs)
