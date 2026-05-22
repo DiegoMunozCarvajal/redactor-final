@@ -30,7 +30,7 @@ export function PromptEditor({
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, setValue, watch, formState: { isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       isAssembly: prompt.isAssembly,
@@ -38,11 +38,6 @@ export function PromptEditor({
       content: prompt.content,
     },
   })
-
-  function insertPlaceholder(placeholder: string) {
-    const current = watch("content")
-    setValue("content", current + " " + placeholder)
-  }
 
   async function onSubmit(data: FormData) {
     const res = await fetch(`/api/prompts/${prompt.id}`, {
