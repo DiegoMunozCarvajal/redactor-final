@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const { title, content, position } = body;
+  const { title, content, position, isAssembly } = body;
 
   if (!title || !content) {
     return NextResponse.json({ error: "title and content are required" }, { status: 400 });
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       title,
       content,
       position: pos,
+      isAssembly: isAssembly ?? false,
     })
     .returning();
 
