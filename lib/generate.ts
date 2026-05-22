@@ -1,9 +1,8 @@
 import { generateCompletion } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 
-function sanitizeTopic(topic: string): string {
-  // Strip control characters and prevent delimiter injection
-  return topic
+function sanitizeValue(value: string): string {
+  return value
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .replace(/<</g, "‹‹")
     .replace(/>>/g, "››")
@@ -16,8 +15,7 @@ export interface PromptLike {
 
 export interface GeneratePromptParams {
   prompt: PromptLike;
-  topic: string;
-  subtitle?: string | null;
+  placeholders: Record<string, string>;
   model?: string;
   temperature?: number;
 }
@@ -32,14 +30,24 @@ export interface GenerateResult {
   };
 }
 
+function applyPlaceholders(content: string, placeholders: Record<string, string>): string {
+  for (const [name, value] of Object.entries(placeholders)) {
+    const token = `{${name}}`;
+    if (!content.includes(token)) continue;
+    const sanitized = sanitizeValue(value);
+    content = content.replaceAll(
+      token,
+      `<<${name.toUpperCase()}>>${sanitized}<</${name.toUpperCase()}>>`,
+    );
+  }
+  return content;
+}
+
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
-  const { prompt, topic, subtitle, model = DEFAULT_GENERATION_MODEL, temperature } = params;
-  let content = prompt.content.replace(/\[TEMA\]|\[TOPIC\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`);
-  if (subtitle) {
-    content = content.replace(/\[SUBTÍTULO\]|\[SUBTITLE\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
-  }
+  const { prompt, placeholders, model = DEFAULT_GENERATION_MODEL, temperature } = params;
+  const content = applyPlaceholders(prompt.content, placeholders);
 
   const result = await generateCompletion({
     model,
@@ -63,8 +71,7 @@ export async function generatePromptContent(
 export async function generateChapterAssembly(
   assemblyPrompt: PromptLike,
   fragments: { content: string }[],
-  topic: string,
-  subtitle?: string | null,
+  placeholders: Record<string, string>,
   model = DEFAULT_GENERATION_MODEL,
   temperature?: number,
 ): Promise<GenerateResult> {
@@ -72,15 +79,11 @@ export async function generateChapterAssembly(
     .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
     .join("\n\n---\n\n");
 
-  let content = assemblyPrompt.content
-    .replace(/\[TEMA\]|\[TOPIC\]/g, `<<TEMA>>${sanitizeTopic(topic)}<</TEMA>>`)
-    .replace(
-      /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
-      fragmentsText,
-    );
-  if (subtitle) {
-    content = content.replace(/\[SUBTÍTULO\]|\[SUBTITLE\]/g, `<<SUBTÍTULO>>${sanitizeTopic(subtitle)}<</SUBTÍTULO>>`);
-  }
+  let content = applyPlaceholders(assemblyPrompt.content, placeholders);
+  content = content.replace(
+    /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
+    fragmentsText,
+  );
 
   const result = await generateCompletion({
     model,
