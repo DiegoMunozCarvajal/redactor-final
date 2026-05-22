@@ -14,7 +14,7 @@ export const projects = pgTable(
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    topic: text("topic").notNull(),
+    topic: text("topic"),
     bookTemplateId: uuid("book_template_id").references(() => bookTemplates.id, {
       onDelete: "restrict",
     }),
