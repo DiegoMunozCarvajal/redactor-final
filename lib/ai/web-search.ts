@@ -9,6 +9,28 @@ export interface SearchResult {
   publishedDate?: string;
 }
 
+interface ExaResultItem {
+  title?: string;
+  url?: string;
+  text?: string;
+  publishedDate?: string;
+}
+
+interface TavilyResultItem {
+  title?: string;
+  url?: string;
+  content?: string;
+  published_date?: string;
+}
+
+interface SSPaper {
+  title?: string;
+  url?: string;
+  abstract?: string;
+  paperId?: string;
+  publicationDate?: string;
+}
+
 async function searchExa(query: string): Promise<SearchResult[]> {
   const apiKey = process.env.EXA_API_KEY;
   if (!apiKey) throw new Error("EXA_API_KEY not set");
@@ -28,7 +50,7 @@ async function searchExa(query: string): Promise<SearchResult[]> {
 
   if (!res.ok) throw new Error(`Exa search failed: ${res.status}`);
   const data = await res.json();
-  return (data.results ?? []).map((r: any) => ({
+  return (data.results ?? []).map((r: ExaResultItem) => ({
     title: r.title ?? "",
     url: r.url ?? "",
     snippet: (r.text ?? "").slice(0, 300),
@@ -54,7 +76,7 @@ async function searchTavily(query: string): Promise<SearchResult[]> {
 
   if (!res.ok) throw new Error(`Tavily search failed: ${res.status}`);
   const data = await res.json();
-  return (data.results ?? []).map((r: any) => ({
+  return (data.results ?? []).map((r: TavilyResultItem) => ({
     title: r.title ?? "",
     url: r.url ?? "",
     snippet: (r.content ?? "").slice(0, 300),
@@ -71,10 +93,13 @@ async function searchSemanticScholar(query: string): Promise<SearchResult[]> {
   if (apiKey) headers["x-api-key"] = apiKey;
 
   const res = await fetch(url, { headers });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    console.warn("[web-search] Semantic Scholar returned non-ok status:", res.status);
+    return [];
+  }
 
   const data = await res.json();
-  return (data.data ?? []).map((r: any) => ({
+  return (data.data ?? []).map((r: SSPaper) => ({
     title: r.title ?? "",
     url: r.url ?? `https://api.semanticscholar.org/CorpusID:${r.paperId}`,
     snippet: (r.abstract ?? "").slice(0, 300),
@@ -107,15 +132,15 @@ export async function webSearch(query: string): Promise<SearchResult[]> {
   try {
     const ssResults = await searchSemanticScholar(query);
     results.push(...ssResults);
-  } catch {
-    // non-critical
+  } catch (err) {
+    console.warn("[web-search] Semantic Scholar unavailable:", (err as Error).message);
   }
 
   return results;
 }
 
 /**
- * Search multiple queries in parallel and return deduplicated results.
+ * Search multiple queries in parallel and return results keyed by query.
  */
 export async function webSearchBatch(queries: string[]): Promise<Record<string, SearchResult[]>> {
   const results: Record<string, SearchResult[]> = {};
