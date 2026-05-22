@@ -102,6 +102,47 @@ export function AssemblyPromptSection({
               </CardTitle>
             </div>
             <div className="flex items-center gap-2">
+              {/* Assembly controls */}
+              {models && onAssemble && (
+                <>
+                  <Select value={assemblyModel ?? ""} onValueChange={(v) => onAssemblyModelChange?.(v)}>
+                    <SelectTrigger className="w-[100px] h-7 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map((m) => (
+                        <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.short}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={assemblyEffort ?? "max"} onValueChange={(v) => onAssemblyEffortChange?.(v)}>
+                    <SelectTrigger className="w-[55px] h-7 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+                      <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {assemblyEffort === "off" && (
+                    <Input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={assemblyTemperature ?? 0.7}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        onAssemblyTemperatureChange?.(isNaN(v) ? 0.7 : v);
+                      }}
+                      className="w-[48px] h-7 text-[10px] px-1"
+                    />
+                  )}
+                  <Button size="sm" className="text-xs" onClick={onAssemble} disabled={assembling}>
+                    <Play className="h-3 w-3 mr-1" /> Assemble
+                  </Button>
+                </>
+              )}
               {prompt.id && (
                 <Button
                   size="sm"
@@ -140,52 +181,6 @@ export function AssemblyPromptSection({
         {showVersions && prompt.id && (
           <CardContent className="border-t pt-3">
             <VersionHistory versionsApiUrl={versionsApiUrl} promptId={prompt.id} />
-          </CardContent>
-        )}
-
-        {/* Assembly controls */}
-        {models && onAssemble && (
-          <CardContent className="border-t pt-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Select value={assemblyModel ?? ""} onValueChange={(v) => onAssemblyModelChange?.(v)}>
-                  <SelectTrigger className="w-[120px] h-7 text-[10px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {models.map((m) => (
-                      <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.short}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={assemblyEffort ?? "max"} onValueChange={(v) => onAssemblyEffortChange?.(v)}>
-                  <SelectTrigger className="w-[60px] h-7 text-[10px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-                    <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
-                  </SelectContent>
-                </Select>
-                {assemblyEffort === "off" && (
-                  <Input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={assemblyTemperature ?? 0.7}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      onAssemblyTemperatureChange?.(isNaN(v) ? 0.7 : v);
-                    }}
-                    className="w-[52px] h-7 text-[10px] px-1"
-                  />
-                )}
-              </div>
-              <Button size="sm" className="text-xs" onClick={onAssemble} disabled={assembling}>
-                <Play className="h-3 w-3 mr-1" /> Assemble
-              </Button>
-            </div>
           </CardContent>
         )}
 
