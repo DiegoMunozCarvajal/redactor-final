@@ -13,13 +13,14 @@ export interface PlaceholderFillEvent {
   error?: string;
 }
 
-// Cheap model for research decisions
+// Fast model for research decisions — same as DEFAULT_GENERATION_MODEL for now;
+// swap to a cheaper provider when one becomes available.
 const RESEARCH_MODEL = "deepseek-v4-flash";
 
 // Default model for generation if none specified
 const DEFAULT_MODEL = DEFAULT_GENERATION_MODEL;
 
-async function extractJson(text: string): Promise<any> {
+function extractJson(text: string): any {
   try {
     return JSON.parse(text);
   } catch {}
@@ -79,32 +80,45 @@ export async function researchPlaceholders(
   // Phase 1a: Decide which placeholders need research
   const decisionPrompt = `${RESEARCH_DECISION_PROMPT}\n\nProject: ${projectDescription || "(none)"}\nChapter brief: ${chapterBrief || "(none)"}\nPlaceholders: ${JSON.stringify(placeholderNames)}`;
 
-  const decision = await generateCompletion({
-    model: RESEARCH_MODEL,
-    systemPrompt: "",
-    userPrompt: decisionPrompt,
-  });
-
   let needsResearch: string[] = [];
   try {
-    const parsed = await extractJson(decision.data as string);
+    const decision = await generateCompletion({
+      model: RESEARCH_MODEL,
+      systemPrompt: "",
+      userPrompt: decisionPrompt,
+    });
+    const parsed = extractJson(decision.data as string);
     needsResearch = Array.isArray(parsed)
       ? parsed
       : (parsed.needsResearch ?? []);
   } catch {
-    // If parsing fails, research all
+    // If provider fails or parsing fails, research all
     needsResearch = placeholderNames;
   }
 
   // Phase 1b: Execute searches
   if (needsResearch.length === 0) return {};
 
+  // Build query → placeholder name map so we can key results by name
+  const queryToName = new Map<string, string>();
   const searchQueries = needsResearch.map((name) => {
     const readable = name.replace(/_/g, " ").toLowerCase();
-    return `${readable} ${projectDescription || ""} ${chapterBrief || ""}`.trim();
+    const query = `${readable} ${projectDescription || ""} ${chapterBrief || ""}`.trim();
+    queryToName.set(query, name);
+    return query;
   });
 
-  return webSearchBatch(searchQueries);
+  const batchResults = await webSearchBatch(searchQueries);
+
+  // Transform from Record<query, SearchResult[]> to Record<placeholderName, SearchResult[]>
+  const results: Record<string, SearchResult[]> = {};
+  for (const [query, hits] of Object.entries(batchResults)) {
+    const name = queryToName.get(query);
+    if (name) {
+      results[name] = hits;
+    }
+  }
+  return results;
 }
 
 export async function* fillPlaceholders(
@@ -122,9 +136,9 @@ export async function* fillPlaceholders(
   let researchContext = "";
   if (Object.keys(searchResults).length > 0) {
     researchContext = "\n\n## Research Results\n";
-    for (const [query, results] of Object.entries(searchResults)) {
+    for (const [name, results] of Object.entries(searchResults)) {
       if (results.length === 0) continue;
-      researchContext += `\n### Query: ${query}\n`;
+      researchContext += `\n### ${name.replace(/_/g, " ")}\n`;
       for (const r of results) {
         researchContext += `- ${r.title}\n  ${r.snippet}\n  URL: ${r.url}\n`;
       }
@@ -151,31 +165,31 @@ ${JSON.stringify(placeholderNames)}
 
 Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ...}}`;
 
-  const result = await generateCompletion({
-    model,
-    systemPrompt,
-    userPrompt,
-    effort: "max",
-  });
+  let result;
+  try {
+    result = await generateCompletion({
+      model,
+      systemPrompt,
+      userPrompt,
+      effort: "max",
+    });
+  } catch (err) {
+    yield {
+      type: "error",
+      error: `Provider failure: ${(err as Error).message}`,
+    };
+    return;
+  }
 
   try {
-    const parsed = await extractJson(result.data as string);
+    const parsed = extractJson(result.data as string);
     const definitions: Record<string, string> = parsed.placeholders ?? parsed;
 
     for (const name of placeholderNames) {
       const definition = definitions[name];
       if (definition) {
-        // Build sources map for this placeholder
-        const placeholderSources: SearchResult[] = [];
-        for (const [query, results] of Object.entries(searchResults)) {
-          if (
-            query
-              .toLowerCase()
-              .includes(name.replace(/_/g, " ").toLowerCase())
-          ) {
-            placeholderSources.push(...results);
-          }
-        }
+        // Look up sources directly by placeholder name
+        const placeholderSources = searchResults[name] ?? [];
 
         yield {
           type: "placeholder",
@@ -247,7 +261,7 @@ Return JSON: {"definition": "your concise definition"}`;
   });
 
   try {
-    const parsed = await extractJson(result.data as string);
+    const parsed = extractJson(result.data as string);
     return { definition: parsed.definition ?? "", sources };
   } catch {
     return { definition: (result.data as string).trim(), sources };
