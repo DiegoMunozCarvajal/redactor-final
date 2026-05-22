@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Pencil, Save, History, Play } from "lucide-react"
+import { Save, History, Play, Trash2 } from "lucide-react"
 import { VersionHistory } from "@/components/prompts/version-history"
 
 interface ModelOption {
@@ -45,6 +45,7 @@ interface Props {
   onAssemblyTemperatureChange?: (v: number) => void
   onAssemble?: () => void
   assembling?: boolean
+  onDelete?: () => void
 }
 
 export function AssemblyPromptSection({
@@ -52,7 +53,7 @@ export function AssemblyPromptSection({
   models, assemblyModel, onAssemblyModelChange,
   assemblyEffort, onAssemblyEffortChange,
   assemblyTemperature, onAssemblyTemperatureChange,
-  onAssemble, assembling,
+  onAssemble, assembling, onDelete,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(prompt?.title ?? "")
@@ -81,7 +82,16 @@ export function AssemblyPromptSection({
   return (
     <div className="mb-8">
       <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
-      <Card>
+      <Card
+        className="cursor-pointer hover:border-primary/30 transition-colors"
+        onClick={() => {
+          if (!editing && !readOnly) {
+            setTitle(prompt.title);
+            setContent(prompt.content);
+            setEditing(true);
+          }
+        }}
+      >
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -95,13 +105,14 @@ export function AssemblyPromptSection({
                     onChange={(e) => setTitle(e.target.value)}
                     className="bg-transparent border-0 border-b border-border focus:outline-none focus:border-primary text-sm font-medium"
                     placeholder="Assembly prompt title"
+                    onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
                   prompt.title
                 )}
               </CardTitle>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               {/* Assembly controls */}
               {models && onAssemble && (
                 <>
@@ -153,25 +164,14 @@ export function AssemblyPromptSection({
                   <History className="h-3 w-3 mr-1" /> Versions
                 </Button>
               )}
-              {!readOnly && (
+              {!readOnly && onDelete && (
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7"
-                  onClick={() => {
-                    if (editing) {
-                      setSaving(true)
-                      onSave({ title, content }).finally(() => setSaving(false))
-                      setEditing(false)
-                    } else {
-                      setTitle(prompt.title)
-                      setContent(prompt.content)
-                      setEditing(true)
-                    }
-                  }}
-                  disabled={saving}
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={onDelete}
                 >
-                  {editing ? <Save className="h-3 w-3" /> : <Pencil className="h-3 w-3 text-muted-foreground" />}
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               )}
             </div>
@@ -185,7 +185,7 @@ export function AssemblyPromptSection({
         )}
 
         {editing && (
-          <CardContent className="border-t pt-3">
+          <CardContent className="border-t pt-3" onClick={(e) => e.stopPropagation()}>
             <div className="space-y-1.5">
               <Label className="text-[10px] text-muted-foreground">Content</Label>
               <Textarea
@@ -194,6 +194,32 @@ export function AssemblyPromptSection({
                 className="text-xs min-h-[100px]"
                 placeholder="Assembly prompt content..."
               />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="text-xs"
+                disabled={saving}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSaving(true);
+                  onSave({ title, content }).finally(() => setSaving(false));
+                  setEditing(false);
+                }}
+              >
+                {saving ? "Saving..." : "Save"}
+              </Button>
             </div>
           </CardContent>
         )}

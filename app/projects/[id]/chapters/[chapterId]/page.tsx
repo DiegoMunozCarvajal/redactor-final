@@ -42,12 +42,14 @@ import {
   Plus,
   RotateCcw,
   Save,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
+import { VersionHistory } from "@/components/prompts/version-history";
 import { ChapterBriefSection } from "@/components/projects/chapter-brief-section";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
@@ -167,6 +169,7 @@ export default function ChapterPage() {
   const [promptFormData, setPromptFormData] = useState<Record<string, {
     content: string;
   }>>({});
+  const [showPromptVersions, setShowPromptVersions] = useState<Record<string, boolean>>({});
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
@@ -830,6 +833,22 @@ export default function ChapterPage() {
                         )}
                         {isDone ? "Regenerate" : "Generate"}
                       </Button>
+                      {prompt.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowPromptVersions((prev) => ({
+                              ...prev,
+                              [prompt.id]: !prev[prompt.id],
+                            }));
+                          }}
+                        >
+                          <History className="h-3 w-3 mr-1" /> Versions
+                        </Button>
+                      )}
                       <Button
                         size="icon"
                         variant="ghost"
@@ -867,6 +886,15 @@ export default function ChapterPage() {
                         placeholder="Prompt content..."
                       />
                     </div>
+                  </CardContent>
+                )}
+
+                {showPromptVersions[prompt.id] && prompt.id && (
+                  <CardContent className="border-t pt-3" onClick={(e) => e.stopPropagation()}>
+                    <VersionHistory
+                      versionsApiUrl={`/api/projects/${params.id}/prompts/${prompt.id}/versions`}
+                      promptId={prompt.id}
+                    />
                   </CardContent>
                 )}
 
