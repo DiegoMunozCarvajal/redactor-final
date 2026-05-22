@@ -43,7 +43,6 @@ interface Props {
   projectId: string;
   chapterId: string;
   placeholders: ChapterPlaceholder[];
-  onPlaceholdersSaved: (placeholders: ChapterPlaceholder[]) => void;
   onSaveDefinitions: () => Promise<void>;
   savingPlaceholders: boolean;
 }
@@ -52,7 +51,6 @@ export function PlaceholderFillSection({
   projectId,
   chapterId,
   placeholders,
-  onPlaceholdersSaved,
   onSaveDefinitions,
   savingPlaceholders,
 }: Props) {
@@ -101,14 +99,7 @@ export function PlaceholderFillSection({
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
+      function processLines(lines: string[]) {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const dataStr = line.slice(6);
@@ -134,6 +125,23 @@ export function PlaceholderFillSection({
             // ignore malformed JSON in stream
           }
         }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        processLines(lines);
+      }
+
+      // Flush remaining decoder bytes
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        processLines(buffer.split("\n"));
       }
     } catch {
       toast.error("Stream error");
@@ -250,6 +258,7 @@ export function PlaceholderFillSection({
                     className="h-8 w-8 flex-shrink-0"
                     onClick={() => fillOne(ph.name)}
                     disabled={isFillingThis || filling}
+                    aria-label={`Regenerate {${ph.name}}`}
                   >
                     {isFillingThis ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -270,6 +279,7 @@ export function PlaceholderFillSection({
                           [ph.name]: !prev[ph.name],
                         }))
                       }
+                      aria-expanded={!!expandedSources[ph.name]}
                     >
                       {expandedSources[ph.name] ? (
                         <ChevronDown className="h-3 w-3" />
