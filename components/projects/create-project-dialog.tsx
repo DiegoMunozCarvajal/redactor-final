@@ -28,15 +28,16 @@ import { toast } from "sonner"
 
 const schema = z.object({
   name: z.string().min(1, "Required").max(100),
-  topic: z.string().min(1, "Required").max(200),
 })
 
 type FormData = z.infer<typeof schema>
 
 export function CreateProjectDialog({
   templates,
+  trigger,
 }: {
   templates: { id: string; name: string }[]
+  trigger?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [bookTemplateId, setBookTemplateId] = useState<string | null>(null)
@@ -52,7 +53,7 @@ export function CreateProjectDialog({
 
   async function onSubmit(data: FormData) {
     try {
-      const body: { name: string; topic: string; bookTemplateId?: string } = data
+      const body: { name: string; bookTemplateId?: string } = { name: data.name }
       if (bookTemplateId) {
         body.bookTemplateId = bookTemplateId
       }
@@ -77,10 +78,12 @@ export function CreateProjectDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <BookOpen className="h-4 w-4" />
-          New Project
-        </Button>
+        {trigger ?? (
+          <Button>
+            <BookOpen className="h-4 w-4" />
+            New Project
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -100,17 +103,6 @@ export function CreateProjectDialog({
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="topic">Topic</Label>
-            <Input
-              id="topic"
-              placeholder="History of Artificial Intelligence"
-              {...register("topic")}
-            />
-            {errors.topic && (
-              <p className="text-xs text-destructive">{errors.topic.message}</p>
-            )}
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="bookTemplateId">Book Template (optional)</Label>

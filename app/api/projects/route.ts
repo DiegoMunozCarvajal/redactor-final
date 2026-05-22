@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, prompts, projectPrompts, chapterPlaceholders } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, isNull, count, sql } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, count, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -48,14 +48,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, topic, bookTemplateId } = body;
+  const { name, bookTemplateId } = body;
 
   // Server-side validation
   if (typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
-  }
-  if (typeof topic !== "string" || topic.length < 1 || topic.length > 500) {
-    return NextResponse.json({ error: "topic must be 1-500 characters" }, { status: 400 });
   }
 
   let project: typeof projects.$inferSelect;
@@ -63,7 +60,7 @@ export async function POST(req: NextRequest) {
     project = await db.transaction(async (tx) => {
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, topic, bookTemplateId: bookTemplateId ?? null })
+        .values({ userId: user.id, name, bookTemplateId: bookTemplateId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters
@@ -79,6 +76,8 @@ export async function POST(req: NextRequest) {
           )
           .orderBy(asc(chapters.position));
 
+        const chapterIdMap = new Map<string, string>();
+
         for (const chapter of templateChapters) {
           const [projectChapter] = await tx
             .insert(chapters)
@@ -89,6 +88,8 @@ export async function POST(req: NextRequest) {
               title: chapter.title,
             })
             .returning();
+
+          chapterIdMap.set(chapter.id, projectChapter.id);
 
           const templatePrompts = await tx
             .select()
@@ -107,6 +108,25 @@ export async function POST(req: NextRequest) {
                 content: prompt.content,
               })),
             );
+          }
+        }
+
+        // Copy template chapter placeholders to project chapters (names only, no definitions)
+        const allTemplateChapterIds = templateChapters.map((tc) => tc.id);
+        if (allTemplateChapterIds.length > 0) {
+          const templatePlaceholders = await tx
+            .select()
+            .from(chapterPlaceholders)
+            .where(inArray(chapterPlaceholders.chapterId, allTemplateChapterIds));
+
+          for (const ph of templatePlaceholders) {
+            const projectChapterId = chapterIdMap.get(ph.chapterId);
+            if (projectChapterId) {
+              await tx
+                .insert(chapterPlaceholders)
+                .values({ chapterId: projectChapterId, name: ph.name })
+                .onConflictDoNothing();
+            }
           }
         }
       }
