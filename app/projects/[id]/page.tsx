@@ -64,6 +64,7 @@ export default function ProjectPage() {
   const [savingDescription, setSavingDescription] = useState(false);
   const [descModel, setDescModel] = useState("deepseek-v4-pro");
   const [descEffort, setDescEffort] = useState<string>("off");
+  const [descTemperature, setDescTemperature] = useState(0.7);
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const fetchingRef = useRef(false);
 
@@ -129,7 +130,7 @@ export default function ProjectPage() {
       const res = await fetch(`/api/projects/${params.id}/description/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: descModel, effort: descEffort }),
+        body: JSON.stringify({ model: descModel, effort: descEffort, temperature: descTemperature }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -292,6 +293,17 @@ export default function ProjectPage() {
               <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
             </SelectContent>
           </Select>
+          {descEffort === "off" && (
+            <Input
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={descTemperature}
+              onChange={(e) => setDescTemperature(parseFloat(e.target.value) || 0.7)}
+              className="w-[60px] h-7 text-[10px] px-1"
+            />
+          )}
           <Button
             size="sm"
             variant="outline"

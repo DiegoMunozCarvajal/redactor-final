@@ -51,6 +51,11 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
   const effort = body.effort as ReasoningEffort | undefined;
+  const temperatureRaw = body.temperature;
+  if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 2)) {
+    return NextResponse.json({ error: "temperature must be a number between 0 and 2" }, { status: 400 });
+  }
+  const temperature = temperatureRaw as number | undefined;
 
   const [brief] = await db
     .select()
@@ -94,6 +99,7 @@ export async function POST(
       model,
       config?.content,
       effort,
+      temperature,
     );
 
     // Persist definition to DB

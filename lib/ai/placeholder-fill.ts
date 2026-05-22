@@ -130,6 +130,7 @@ export async function* fillPlaceholders(
   model: string = DEFAULT_MODEL,
   customSystemPrompt?: string,
   effort?: ReasoningEffort,
+  temperature?: number,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const systemPrompt = customSystemPrompt || FILL_SYSTEM_PROMPT;
 
@@ -173,6 +174,7 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
       systemPrompt,
       userPrompt,
       ...(effort !== undefined ? { effort } : {}),
+      ...(temperature !== undefined ? { temperature } : {}),
     });
   } catch (err) {
     yield {
@@ -222,6 +224,7 @@ export async function fillSinglePlaceholder(
   model: string = DEFAULT_MODEL,
   customSystemPrompt?: string,
   effort?: ReasoningEffort,
+  temperature?: number,
 ): Promise<{ definition: string; sources: SearchResult[] }> {
   // Research this specific placeholder
   const query = `${name.replace(/_/g, " ")} ${projectDescription || ""}`.trim();
@@ -262,6 +265,7 @@ Return JSON: {"definition": "your concise definition"}`;
     systemPrompt,
     userPrompt,
     ...(effort !== undefined ? { effort } : {}),
+    ...(temperature !== undefined ? { temperature } : {}),
   });
 
   try {

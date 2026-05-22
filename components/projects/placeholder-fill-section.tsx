@@ -56,6 +56,7 @@ export function PlaceholderFillSection({
 }: Props) {
   const [fillModel, setFillModel] = useState("deepseek-v4-pro");
   const [effort, setEffort] = useState<string>("max");
+  const [temperature, setTemperature] = useState(0.7);
   const [filling, setFilling] = useState(false);
   const [fillingName, setFillingName] = useState<string | null>(null);
   const [definitions, setDefinitions] = useState<Record<string, string>>({});
@@ -81,7 +82,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel, effort }),
+          body: JSON.stringify({ model: fillModel, effort, temperature }),
         },
       );
 
@@ -159,7 +160,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel, effort }),
+          body: JSON.stringify({ model: fillModel, effort, temperature }),
         },
       );
       if (res.ok) {
@@ -215,6 +216,17 @@ export function PlaceholderFillSection({
               <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
             </SelectContent>
           </Select>
+          {effort === "off" && (
+            <Input
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value) || 0.7)}
+              className="w-[60px] h-7 text-[10px] px-1"
+            />
+          )}
           <Button
             size="sm"
             className="text-xs"
