@@ -10,7 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen, Save } from "lucide-react";
+import { Loader2, Check, X, BookOpen, Save, Sparkles } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -38,6 +45,14 @@ interface ProjectData {
   chapters: ChapterData[];
 }
 
+const MODELS = [
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
+];
+
 export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<ProjectData | null>(null);
@@ -47,6 +62,8 @@ export default function ProjectPage() {
   const [editTitle, setEditTitle] = useState("");
   const [description, setDescription] = useState("");
   const [savingDescription, setSavingDescription] = useState(false);
+  const [descModel, setDescModel] = useState("deepseek-v4-pro");
+  const [generatingDescription, setGeneratingDescription] = useState(false);
   const fetchingRef = useRef(false);
 
   async function fetchProject(signal?: AbortSignal) {
@@ -100,6 +117,30 @@ export default function ProjectPage() {
       setEditingTitle(false);
     } else {
       toast.error("Error saving title");
+    }
+  }
+
+  async function generateDescription() {
+    if (!project) return;
+    setGeneratingDescription(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/description/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: descModel }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDescription(data.description);
+        setProject({ ...project, description: data.description });
+        toast.success("Description generated");
+      } else {
+        toast.error("Error generating description");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setGeneratingDescription(false);
     }
   }
 
@@ -229,7 +270,27 @@ export default function ProjectPage() {
           className="text-xs min-h-[80px]"
           placeholder="What is this book about? This helps the AI understand context for filling placeholders..."
         />
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Select value={descModel} onValueChange={setDescModel}>
+            <SelectTrigger className="w-[130px] h-7 text-[10px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs"
+            onClick={generateDescription}
+            disabled={generatingDescription}
+          >
+            {generatingDescription ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+            Generate
+          </Button>
           <Button size="sm" className="text-xs" onClick={saveDescription} disabled={savingDescription}>
             {savingDescription ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
             Save
