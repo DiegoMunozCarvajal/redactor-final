@@ -60,17 +60,18 @@ const MODEL_FIXED_TEMP = new Map(
 );
 
 const MODELS = [
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", short: "DS Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DS Pro" },
+  { id: "gpt-5.4", label: "GPT 5.4", short: "GPT 5.4" },
+  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "GPT4 Mini" },
+  { id: "gpt-5.5", label: "GPT 5.5", short: "GPT 5.5" },
+  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini", short: "GPT5 Mini" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", short: "Haiku" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", short: "Sonnet" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6", short: "Opus 4.6" },
   { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus" },
-  { id: "gpt-5.5", label: "GPT 5.5", short: "GPT 5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini", short: "GPT Mini" },
-  { id: "gpt-5.4", label: "GPT 5.4", short: "GPT 5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "GPT 4 Mini" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "Gem Flash" },
   { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", short: "Gem Pro" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "Gem Flash" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DS Pro" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", short: "DS Flash" },
 ];
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
@@ -143,6 +144,9 @@ export default function ChapterPage() {
   const [promptModels, setPromptModels] = useState<Record<string, string>>({});
   const [defaultTemperature, setDefaultTemperature] = useState(0.7);
   const [promptTemperatures, setPromptTemperatures] = useState<Record<string, number>>({});
+  const [defaultEffort, setDefaultEffort] = useState<string>("max");
+  const [promptEfforts, setPromptEfforts] = useState<Record<string, string>>({});
+  const [assemblyEffort, setAssemblyEffort] = useState<string>("max");
   const [assemblyModalOpen, setAssemblyModalOpen] = useState(false);
   const [selectedFragments, setSelectedFragments] = useState<Record<string, string>>({});
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
@@ -170,6 +174,10 @@ export default function ChapterPage() {
 
   function getTemperature(promptId: string) {
     return promptTemperatures[promptId] ?? defaultTemperature;
+  }
+
+  function getEffort(promptId: string) {
+    return promptEfforts[promptId] ?? defaultEffort;
   }
 
   function fixedTempFor(modelId: string): number | undefined {
@@ -272,7 +280,8 @@ export default function ChapterPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: getModel(promptId),
-            temperature: getTemperature(promptId),
+            effort: getEffort(promptId),
+            ...(getEffort(promptId) === "off" ? { temperature: getTemperature(promptId) } : {}),
           }),
         },
       );
@@ -319,7 +328,8 @@ export default function ChapterPage() {
           body: JSON.stringify({
             fragmentIds,
             model: assemblyModel,
-            temperature: assemblyTemperature,
+            effort: assemblyEffort,
+            ...(assemblyEffort === "off" ? { temperature: assemblyTemperature } : {}),
           }),
         },
       );
@@ -610,32 +620,43 @@ export default function ChapterPage() {
               ))}
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-muted-foreground">T:</span>
-            {(() => {
-              const fixed = fixedTempFor(defaultModel);
-              return (
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={fixed ?? defaultTemperature}
-                  disabled={fixed !== undefined}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (!isNaN(v) && v >= 0 && v <= 1) setDefaultTemperature(v);
-                  }}
-                  className={`w-14 h-7 text-xs border rounded px-1.5 text-center ${
-                    fixed !== undefined
-                      ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                      : "bg-muted/50 border-border"
-                  }`}
-                  title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                />
-              );
-            })()}
-          </div>
+          <Select value={defaultEffort} onValueChange={setDefaultEffort}>
+            <SelectTrigger className="w-[70px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="max" className="text-xs">Max</SelectItem>
+              <SelectItem value="off" className="text-xs">Alto</SelectItem>
+            </SelectContent>
+          </Select>
+          {defaultEffort === "off" && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted-foreground">T:</span>
+              {(() => {
+                const fixed = fixedTempFor(defaultModel);
+                return (
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={fixed ?? defaultTemperature}
+                    disabled={fixed !== undefined}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0 && v <= 1) setDefaultTemperature(v);
+                    }}
+                    className={`w-14 h-7 text-xs border rounded px-1.5 text-center ${
+                      fixed !== undefined
+                        ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
+                        : "bg-muted/50 border-border"
+                    }`}
+                    title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
+                  />
+                );
+              })()}
+            </div>
+          )}
           {contentPrompts.length > 0 && (
             <Button
               size="sm"
@@ -748,35 +769,48 @@ export default function ChapterPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      {(() => {
-                        const fixed = fixedTempFor(getModel(prompt.id));
-                        return (
-                          <input
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={fixed ?? getTemperature(prompt.id)}
-                            disabled={fixed !== undefined}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v) && v >= 0 && v <= 1) {
-                                setPromptTemperatures((prev) => ({
-                                  ...prev,
-                                  [prompt.id]: v,
-                                }));
-                              }
-                            }}
-                            className={`w-12 h-7 text-[10px] border rounded px-1 text-center ${
-                              fixed !== undefined
-                                ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                                : "bg-muted/50 border-border"
-                            }`}
-                            title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                          />
-                        );
-                      })()}
+                      <Select value={getEffort(prompt.id)} onValueChange={(v) => {
+                        setPromptEfforts((prev) => ({ ...prev, [prompt.id]: v }));
+                      }}>
+                        <SelectTrigger className="w-[60px] h-7 text-[10px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+                          <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {getEffort(prompt.id) === "off" && (
+                        (() => {
+                          const fixed = fixedTempFor(getModel(prompt.id));
+                          return (
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.1"
+                              value={fixed ?? getTemperature(prompt.id)}
+                              disabled={fixed !== undefined}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (!isNaN(v) && v >= 0 && v <= 1) {
+                                  setPromptTemperatures((prev) => ({
+                                    ...prev,
+                                    [prompt.id]: v,
+                                  }));
+                                }
+                              }}
+                              className={`w-12 h-7 text-[10px] border rounded px-1 text-center ${
+                                fixed !== undefined
+                                  ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
+                                  : "bg-muted/50 border-border"
+                              }`}
+                              title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
+                            />
+                          );
+                        })()
+                      )}
                       <Button
                         size="sm"
                         variant={isDone ? "outline" : "default"}
@@ -1069,31 +1103,44 @@ export default function ChapterPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-[10px] text-muted-foreground">T:</span>
-              {(() => {
-                const fixed = fixedTempFor(assemblyModel);
-                return (
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={fixed ?? assemblyTemperature}
-                    disabled={fixed !== undefined}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v >= 0 && v <= 1)
-                        setAssemblyTemperature(v);
-                    }}
-                    className={`w-14 h-8 text-xs border rounded px-1.5 text-center ${
-                      fixed !== undefined
-                        ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                        : "bg-muted/50 border-border"
-                    }`}
-                    title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                  />
-                );
-              })()}
+              <Select value={assemblyEffort} onValueChange={setAssemblyEffort}>
+                <SelectTrigger className="w-[70px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="max" className="text-xs">Max</SelectItem>
+                  <SelectItem value="off" className="text-xs">Alto</SelectItem>
+                </SelectContent>
+              </Select>
+              {assemblyEffort === "off" && (
+                <>
+                  <span className="text-[10px] text-muted-foreground">T:</span>
+                  {(() => {
+                    const fixed = fixedTempFor(assemblyModel);
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={fixed ?? assemblyTemperature}
+                        disabled={fixed !== undefined}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v >= 0 && v <= 1)
+                            setAssemblyTemperature(v);
+                        }}
+                        className={`w-14 h-8 text-xs border rounded px-1.5 text-center ${
+                          fixed !== undefined
+                            ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
+                            : "bg-muted/50 border-border"
+                        }`}
+                        title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
+                      />
+                    );
+                  })()}
+                </>
+              )}
             </div>
             <Button
               size="sm"
