@@ -1,29 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, projectPrompts, chapterGenerations, fragments } from "@/lib/db/schema";
-import { chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { withProjectLock } from "@/lib/api/rate-limit";
 import { generatePromptContent } from "@/lib/generate";
 import { getProviderForModel } from "@/lib/ai/providers";
+import { getChapterPlaceholders } from "@/lib/placeholders";
 import { logAudit } from "@/lib/audit";
-
-async function loadPlaceholders(chapterId: string): Promise<Record<string, string>> {
-  const rows = await db
-    .select()
-    .from(chapterPlaceholders)
-    .where(eq(chapterPlaceholders.chapterId, chapterId));
-
-  const map: Record<string, string> = {};
-  for (const row of rows) {
-    if (row.definition) {
-      map[row.name] = row.definition;
-    }
-  }
-  return map;
-}
 
 export async function POST(
   req: NextRequest,
@@ -79,7 +64,7 @@ export async function POST(
     // Advisory lock serializes same-project access.
     // No sliding window check needed — single fragments are lightweight.
     try {
-      const placeholders = await loadPlaceholders(prompt.chapterId);
+      const placeholders = await getChapterPlaceholders(prompt.chapterId);
 
       const result = await generatePromptContent({
         prompt,

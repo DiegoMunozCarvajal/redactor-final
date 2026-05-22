@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { projects, projectPrompts, promptVersions, fragments } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
+import { syncChapterPlaceholders } from "@/lib/placeholders";
 
 export async function PUT(
   req: NextRequest,
@@ -67,6 +68,15 @@ export async function PUT(
     .where(eq(projectPrompts.id, promptId))
     .returning();
 
+  // Sync placeholders
+  if (updated) {
+    const allPrompts = await db
+      .select({ content: projectPrompts.content })
+      .from(projectPrompts)
+      .where(eq(projectPrompts.chapterId, updated.chapterId));
+    await syncChapterPlaceholders(updated.chapterId, allPrompts.map((p) => p.content));
+  }
+
   return NextResponse.json(updated);
 }
 
@@ -108,6 +118,13 @@ export async function DELETE(
 
   await db.delete(fragments).where(eq(fragments.projectPromptId, promptId));
   await db.delete(projectPrompts).where(eq(projectPrompts.id, promptId));
+
+  // Sync placeholders
+  const remainingPrompts = await db
+    .select({ content: projectPrompts.content })
+    .from(projectPrompts)
+    .where(eq(projectPrompts.chapterId, existing.chapterId));
+  await syncChapterPlaceholders(existing.chapterId, remainingPrompts.map((p) => p.content));
 
   return NextResponse.json({ ok: true });
 }

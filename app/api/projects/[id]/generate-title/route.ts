@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { projects } from "@/lib/db/schema";
+import { projects, chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { generatePromptContent } from "@/lib/generate";
+import { getChapterPlaceholders } from "@/lib/placeholders";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 
@@ -46,12 +47,24 @@ export async function POST(
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
+    // Load placeholders from first chapter
+    const [firstChapter] = await db
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(eq(chapters.projectId, projectId))
+      .orderBy(asc(chapters.position))
+      .limit(1);
+
+    const placeholders = firstChapter
+      ? await getChapterPlaceholders(firstChapter.id)
+      : {};
+
     const result = await generatePromptContent({
       prompt: {
         content:
           'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
       },
-      placeholders: { tema: project.topic ?? "" },
+      placeholders,
     });
 
     let title = "";

@@ -46,3 +46,18 @@ export async function syncChapterPlaceholders(
       .onConflictDoNothing();
   });
 }
+
+export async function getChapterPlaceholders(chapterId: string): Promise<Record<string, string>> {
+  const rows = await db
+    .select()
+    .from(chapterPlaceholders)
+    .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.definition) {
+      map[row.name] = row.definition;
+    }
+  }
+  return map;
+}

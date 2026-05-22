@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { projects, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc } from "drizzle-orm";
+import { syncChapterPlaceholders } from "@/lib/placeholders";
 
 export async function GET(
   req: NextRequest,
@@ -91,6 +92,13 @@ export async function POST(
       position: maxPos + 1,
     })
     .returning();
+
+  // Sync placeholders
+  const allPrompts = await db
+    .select({ content: projectPrompts.content })
+    .from(projectPrompts)
+    .where(eq(projectPrompts.chapterId, chapterId));
+  await syncChapterPlaceholders(chapterId, allPrompts.map((p) => p.content));
 
   return NextResponse.json(prompt);
 }
