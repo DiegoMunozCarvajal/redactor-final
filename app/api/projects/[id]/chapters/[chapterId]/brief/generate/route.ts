@@ -79,7 +79,7 @@ export async function POST(
   const systemPrompt = config?.content || DEFAULT_BRIEF_PROMPT;
 
   const userPrompt = `## Project
-Name: ${project.name || "(unnamed)"}
+Name: ${(project.title ?? project.name) || "(unnamed)"}
 Topic: ${project.topic || "(none)"}
 Description: ${project.description || "(none)"}
 

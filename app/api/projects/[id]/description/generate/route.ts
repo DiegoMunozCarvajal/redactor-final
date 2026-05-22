@@ -38,7 +38,8 @@ export async function POST(
     return NextResponse.json({ error: "project has no name" }, { status: 400 });
   }
 
-  const userPrompt = `Book name: ${project.name}\n\nWrite a concise 2-4 sentence description of this book in Spanish.`;
+  const bookName = project.title ?? project.name;
+  const userPrompt = `Book name: ${bookName}\n\nWrite a concise 2-4 sentence description of this book in Spanish.`;
 
   try {
     const result = await generateCompletion({

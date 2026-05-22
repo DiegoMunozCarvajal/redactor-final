@@ -99,7 +99,7 @@ async function fetchName(url: string): Promise<string | null> {
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
-    return data.name ?? data.title ?? null;
+    return data.title ?? data.name ?? null;
   } catch {
     return null;
   }
@@ -164,6 +164,19 @@ export function Sidebar() {
       setMobileOpen(false);
     }
   }, [pathname, isMobile]);
+
+  // Invalidate cached labels when a project is renamed
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ id: string; title: string }>) => {
+      setResolvedLabels((prev) => {
+        const key = `projects:${e.detail.id}`;
+        if (prev[key] === e.detail.title) return prev;
+        return { ...prev, [key]: e.detail.title };
+      });
+    };
+    window.addEventListener("project-renamed", handler as EventListener);
+    return () => window.removeEventListener("project-renamed", handler as EventListener);
+  }, []);
 
   // Resolve breadcrumb names
   useEffect(() => {

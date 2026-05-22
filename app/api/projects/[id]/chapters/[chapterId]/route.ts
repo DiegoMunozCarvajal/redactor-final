@@ -75,7 +75,7 @@ export async function GET(
   );
 
   return NextResponse.json({
-    projectName: project.name,
+    projectName: project.title ?? project.name,
     projectTopic: project.topic,
     chapter: {
       id: chapter.id,

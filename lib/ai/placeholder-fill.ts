@@ -1,4 +1,4 @@
-import { generateCompletion } from "./completion";
+import { generateCompletion, type ReasoningEffort } from "./completion";
 import { DEFAULT_GENERATION_MODEL } from "./providers";
 import { webSearchBatch, type SearchResult } from "./web-search";
 
@@ -129,6 +129,7 @@ export async function* fillPlaceholders(
   searchResults: Record<string, SearchResult[]>,
   model: string = DEFAULT_MODEL,
   customSystemPrompt?: string,
+  effort?: ReasoningEffort,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const systemPrompt = customSystemPrompt || FILL_SYSTEM_PROMPT;
 
@@ -171,7 +172,7 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
       model,
       systemPrompt,
       userPrompt,
-      effort: "max",
+      ...(effort !== undefined ? { effort } : {}),
     });
   } catch (err) {
     yield {
@@ -220,6 +221,7 @@ export async function fillSinglePlaceholder(
   existingDefinitions: Record<string, string>,
   model: string = DEFAULT_MODEL,
   customSystemPrompt?: string,
+  effort?: ReasoningEffort,
 ): Promise<{ definition: string; sources: SearchResult[] }> {
   // Research this specific placeholder
   const query = `${name.replace(/_/g, " ")} ${projectDescription || ""}`.trim();
@@ -259,7 +261,7 @@ Return JSON: {"definition": "your concise definition"}`;
     model,
     systemPrompt,
     userPrompt,
-    effort: "max",
+    ...(effort !== undefined ? { effort } : {}),
   });
 
   try {

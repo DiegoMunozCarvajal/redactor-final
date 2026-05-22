@@ -1,5 +1,6 @@
 import { generateCompletion } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
+import type { ReasoningEffort } from "@/lib/ai/completion";
 
 function sanitizeValue(value: string): string {
   return value
@@ -18,6 +19,7 @@ export interface GeneratePromptParams {
   placeholders: Record<string, string>;
   model?: string;
   temperature?: number;
+  effort?: ReasoningEffort;
 }
 
 export interface GenerateResult {
@@ -50,7 +52,7 @@ function applyPlaceholders(content: string, placeholders: Record<string, string>
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
-  const { prompt, placeholders, model = DEFAULT_GENERATION_MODEL, temperature } = params;
+  const { prompt, placeholders, model = DEFAULT_GENERATION_MODEL, temperature, effort } = params;
   const content = applyPlaceholders(prompt.content, placeholders);
 
   const result = await generateCompletion({
@@ -58,7 +60,7 @@ export async function generatePromptContent(
     systemPrompt: "",
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
-    effort: "max",
+    ...(effort !== undefined ? { effort } : {}),
   });
 
   return {
@@ -78,6 +80,7 @@ export async function generateChapterAssembly(
   placeholders: Record<string, string>,
   model = DEFAULT_GENERATION_MODEL,
   temperature?: number,
+  effort?: ReasoningEffort,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
     .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
@@ -94,7 +97,7 @@ export async function generateChapterAssembly(
     systemPrompt: "",
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
-    effort: "max",
+    ...(effort !== undefined ? { effort } : {}),
   });
 
   return {
