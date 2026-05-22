@@ -25,11 +25,18 @@ import { toast } from "sonner";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
 const MODELS = [
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { id: "gpt-5.4", label: "GPT 5.4" },
+  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini" },
+  { id: "gpt-5.5", label: "GPT 5.5" },
+  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
   { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
 ];
 
 interface SearchResult {
