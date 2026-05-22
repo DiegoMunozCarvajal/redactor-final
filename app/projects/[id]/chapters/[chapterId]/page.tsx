@@ -600,6 +600,35 @@ export default function ChapterPage() {
         </Card>
       )}
 
+      <ChapterBriefSection
+        projectId={params.id as string}
+        chapterId={params.chapterId as string}
+        initialContent={chapterBrief}
+        onSaved={(content) => setChapterBrief(content)}
+      />
+
+      <PlaceholderFillSection
+        projectId={params.id as string}
+        chapterId={params.chapterId as string}
+        placeholders={placeholders}
+        onSaveDefinitions={savePlaceholders}
+        savingPlaceholders={savingPlaceholders}
+      />
+
+      {/* No prompts */}
+      {prompts.length === 0 && !addingPrompt && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <AlertTriangle className="h-10 w-10 text-muted-foreground/40 mb-3" />
+          <h2 className="text-lg font-medium mb-1">No prompts configured</h2>
+          <p className="text-sm text-muted-foreground max-w-sm mb-4">
+            Add prompts to start generating content for this chapter.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setAddingPrompt(true)}>
+            <Plus className="h-3 w-3 mr-1" /> Add Prompt
+          </Button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -673,35 +702,6 @@ export default function ChapterPage() {
           )}
         </div>
       </div>
-
-      <ChapterBriefSection
-        projectId={params.id as string}
-        chapterId={params.chapterId as string}
-        initialContent={chapterBrief}
-        onSaved={(content) => setChapterBrief(content)}
-      />
-
-      <PlaceholderFillSection
-        projectId={params.id as string}
-        chapterId={params.chapterId as string}
-        placeholders={placeholders}
-        onSaveDefinitions={savePlaceholders}
-        savingPlaceholders={savingPlaceholders}
-      />
-
-      {/* No prompts */}
-      {prompts.length === 0 && !addingPrompt && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <AlertTriangle className="h-10 w-10 text-muted-foreground/40 mb-3" />
-          <h2 className="text-lg font-medium mb-1">No prompts configured</h2>
-          <p className="text-sm text-muted-foreground max-w-sm mb-4">
-            Add prompts to start generating content for this chapter.
-          </p>
-          <Button variant="outline" size="sm" onClick={() => setAddingPrompt(true)}>
-            <Plus className="h-3 w-3 mr-1" /> Add Prompt
-          </Button>
-        </div>
-      )}
 
       {/* Content Prompts */}
       {contentPrompts.length > 0 && (
