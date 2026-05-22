@@ -7,6 +7,7 @@ import {
   fragments,
   projects,
   chapters,
+  chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq, asc, and, isNull } from "drizzle-orm";
 import {
@@ -28,6 +29,21 @@ export function sanitizeError(err: unknown): string {
     .replace(/ghp_[a-zA-Z0-9]{36}/g, "ghp_***")
     .replace(/gho_[a-zA-Z0-9]{36}/g, "gho_***");
   return redacted.slice(0, 500);
+}
+
+async function loadPlaceholders(chapterId: string): Promise<Record<string, string>> {
+  const rows = await db
+    .select()
+    .from(chapterPlaceholders)
+    .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.definition) {
+      map[row.name] = row.definition;
+    }
+  }
+  return map;
 }
 
 export const generateChapter = task({
@@ -103,11 +119,12 @@ export const generateChapter = task({
 
     try {
       // Generate each content fragment
+      const placeholders = await loadPlaceholders(gen.chapterId);
+
       for (const prompt of contentPrompts) {
         const result = await generatePromptContent({
           prompt,
-          topic: project.topic,
-          subtitle: project.subtitle,
+          placeholders,
           ...(model ? { model } : {}),
           ...(temperature !== undefined ? { temperature } : {}),
         });
@@ -138,8 +155,7 @@ export const generateChapter = task({
         const assembled = await generateChapterAssembly(
           assemblyPrompt,
           fragmentContents,
-          project.topic,
-          project.subtitle,
+          placeholders,
           model,
           temperature,
         );
@@ -187,12 +203,11 @@ export const generateChapter = task({
         const titleResult = await generatePromptContent({
           prompt: {
             content:
-              'Genera un título y subtítulo atractivo para un libro sobre [TEMA]. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
+              'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
           },
-          topic: project.topic,
+          placeholders,
           ...(model ? { model } : {}),
         });
-
         let title = "";
         let subtitle = "";
         try {

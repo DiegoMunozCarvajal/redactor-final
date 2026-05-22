@@ -5,10 +5,26 @@ import {
   projectPrompts,
   fragments,
   projects,
+  chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generatePromptContent } from "@/lib/generate";
 import { sanitizeError } from "./generate-chapter";
+
+async function loadPlaceholders(chapterId: string): Promise<Record<string, string>> {
+  const rows = await db
+    .select()
+    .from(chapterPlaceholders)
+    .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.definition) {
+      map[row.name] = row.definition;
+    }
+  }
+  return map;
+}
 
 export const generateFragment = task({
   id: "generate-fragment",
@@ -57,10 +73,11 @@ export const generateFragment = task({
     if (!project) throw new Error(`Project ${projectId} not found`);
 
     try {
+      const placeholders = await loadPlaceholders(gen.chapterId);
+
       const result = await generatePromptContent({
         prompt,
-        topic: project.topic,
-        subtitle: project.subtitle,
+        placeholders,
         ...(model ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
       });

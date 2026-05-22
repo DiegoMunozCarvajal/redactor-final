@@ -49,9 +49,9 @@ export async function POST(
     const result = await generatePromptContent({
       prompt: {
         content:
-          'Genera un título y subtítulo atractivo para un libro sobre [TEMA]. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
+          'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
       },
-      topic: project.topic,
+      placeholders: { tema: project.topic ?? "" },
     });
 
     let title = "";
