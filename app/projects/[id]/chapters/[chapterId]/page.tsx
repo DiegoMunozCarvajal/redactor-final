@@ -43,6 +43,7 @@ import {
   RotateCcw,
   Save,
   History,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -832,6 +833,19 @@ export default function ChapterPage() {
                           <Play className="h-3 w-3 mr-1" />
                         )}
                         {isDone ? "Regenerate" : "Generate"}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(prompt.content);
+                          toast.success("Prompt content copied");
+                        }}
+                        title="Copy content"
+                      >
+                        <Copy className="h-3 w-3" />
                       </Button>
                       {prompt.id && (
                         <Button
