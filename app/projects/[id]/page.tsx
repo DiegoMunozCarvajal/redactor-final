@@ -297,7 +297,7 @@ export default function ProjectPage() {
             <Input
               type="number"
               min={0}
-              max={2}
+              max={1}
               step={0.1}
               value={descTemperature}
               onChange={(e) => setDescTemperature(parseFloat(e.target.value) || 0.7)}
