@@ -25,8 +25,9 @@ export const generateFragment = task({
     projectId: string;
     model?: string;
     temperature?: number;
+    effort?: "off" | "max";
   }) => {
-    const { generationId, projectPromptId, projectId, model, temperature } = payload;
+    const { generationId, projectPromptId, projectId, model, temperature, effort } = payload;
 
     // Load generation
     const [gen] = await db
@@ -65,6 +66,7 @@ export const generateFragment = task({
         placeholders,
         ...(model ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
+        ...(effort !== undefined ? { effort } : {}),
       });
 
       await db.insert(fragments).values({

@@ -39,8 +39,8 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number }) => {
-    const { generationId, projectId, model, temperature } = payload;
+  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max" }) => {
+    const { generationId, projectId, model, temperature, effort } = payload;
 
     // Load generation
     const [gen] = await db
@@ -112,6 +112,7 @@ export const generateChapter = task({
           placeholders,
           ...(model ? { model } : {}),
           ...(temperature !== undefined ? { temperature } : {}),
+          ...(effort !== undefined ? { effort } : {}),
         });
 
         await db
@@ -143,6 +144,7 @@ export const generateChapter = task({
           placeholders,
           model,
           temperature,
+          effort,
         );
 
         await db
@@ -192,6 +194,7 @@ export const generateChapter = task({
           },
           placeholders,
           ...(model ? { model } : {}),
+          ...(effort !== undefined ? { effort } : {}),
         });
         let title = "";
         let subtitle = "";
