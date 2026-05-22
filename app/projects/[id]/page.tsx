@@ -6,9 +6,11 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen } from "lucide-react";
+import { Loader2, Check, X, BookOpen, Save } from "lucide-react";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -32,6 +34,7 @@ interface ProjectData {
   topic: string;
   title: string | null;
   subtitle: string | null;
+  description: string | null;
   chapters: ChapterData[];
 }
 
@@ -42,6 +45,8 @@ export default function ProjectPage() {
   const [error, setError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [savingDescription, setSavingDescription] = useState(false);
   const fetchingRef = useRef(false);
 
   async function fetchProject(signal?: AbortSignal) {
@@ -97,6 +102,36 @@ export default function ProjectPage() {
       toast.error("Error saving title");
     }
   }
+
+  async function saveDescription() {
+    if (!project) return;
+    setSavingDescription(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/description`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProject({ ...project, description: updated.description });
+        toast.success("Description saved");
+      } else {
+        toast.error("Error saving description");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSavingDescription(false);
+    }
+  }
+
+  // Sync description from project data when it loads/changes
+  useEffect(() => {
+    if (project) {
+      setDescription(project.description ?? "");
+    }
+  }, [project?.id]);
 
   async function deleteChapter(chapterId: string) {
     if (!project) return;
@@ -183,6 +218,23 @@ export default function ProjectPage() {
             </span>
           </h1>
         )}
+      </div>
+
+      {/* Description */}
+      <div className="space-y-2 mb-6">
+        <Label className="text-xs text-muted-foreground">Description</Label>
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="text-xs min-h-[80px]"
+          placeholder="What is this book about? This helps the AI understand context for filling placeholders..."
+        />
+        <div className="flex justify-end">
+          <Button size="sm" className="text-xs" onClick={saveDescription} disabled={savingDescription}>
+            {savingDescription ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+            Save
+          </Button>
+        </div>
       </div>
 
       {/* Progress */}
