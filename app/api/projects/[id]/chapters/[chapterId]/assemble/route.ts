@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
+import { chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, inArray, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generateChapterAssembly } from "@/lib/generate";
 import { logAudit } from "@/lib/audit";
+
+async function loadPlaceholders(chapterId: string): Promise<Record<string, string>> {
+  const rows = await db
+    .select()
+    .from(chapterPlaceholders)
+    .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.definition) {
+      map[row.name] = row.definition;
+    }
+  }
+  return map;
+}
 
 export async function POST(
   req: NextRequest,
@@ -105,11 +121,12 @@ export async function POST(
         content: f.content ?? "",
       }));
 
+      const placeholders = await loadPlaceholders(chapterId);
+
       const assembled = await generateChapterAssembly(
         assemblyPrompt,
         fragmentContents,
-        project.topic,
-        project.subtitle,
+        placeholders,
         model,
         temperature,
       );
