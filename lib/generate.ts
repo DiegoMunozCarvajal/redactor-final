@@ -57,7 +57,7 @@ export async function generatePromptContent(
 
   const result = await generateCompletion({
     model,
-    systemPrompt: "",
+    systemPrompt: "Escribe siempre en español. Responde únicamente con el contenido solicitado, sin introducciones ni comentarios adicionales.",
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
@@ -94,7 +94,7 @@ export async function generateChapterAssembly(
 
   const result = await generateCompletion({
     model,
-    systemPrompt: "",
+    systemPrompt: "Eres un editor que ensambla capítulos de libros en español. Escribe siempre en español. Responde únicamente con el capítulo ensamblado, sin introducciones ni comentarios adicionales.",
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),

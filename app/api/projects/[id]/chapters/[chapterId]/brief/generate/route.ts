@@ -12,7 +12,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { csrfCheck } from "@/lib/api/csrf";
 
-const DEFAULT_BRIEF_PROMPT = `You are a book editor. Based on the chapter title, the content prompts, and the project description, write a 2-3 sentence brief describing the chapter's scope, target reader, and desired outcome. Be specific and concise. Output ONLY the brief text, no JSON wrapper.`;
+const DEFAULT_BRIEF_PROMPT = `Eres un editor de libros. Basándote en el título del capítulo, los prompts de contenido y la descripción del proyecto, escribe un brief de 2-3 oraciones en español describiendo el alcance del capítulo, el lector objetivo y el resultado esperado. Sé específico y conciso. Responde ÚNICAMENTE con el texto del brief, sin envoltura JSON.`;
 
 export async function POST(
   req: NextRequest,
@@ -96,7 +96,7 @@ ${promptList
     )
     .join("\n\n")}
 
-Write a 2-3 sentence chapter brief.`;
+Escribe un brief de 2-3 oraciones en español.`;
 
   let briefContent: string;
   try {
