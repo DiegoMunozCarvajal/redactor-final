@@ -840,10 +840,13 @@ export default function ChapterPage() {
                         className="h-7 w-7 text-muted-foreground"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigator.clipboard.writeText(prompt.content);
-                          toast.success("Prompt content copied");
+                          if (fragment?.content) {
+                            navigator.clipboard.writeText(fragment.content);
+                            toast.success("Fragment copied");
+                          }
                         }}
-                        title="Copy content"
+                        disabled={!fragment?.content}
+                        title="Copy fragment"
                       >
                         <Copy className="h-3 w-3" />
                       </Button>
