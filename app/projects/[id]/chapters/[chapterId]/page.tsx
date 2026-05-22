@@ -1035,6 +1035,13 @@ export default function ChapterPage() {
         onAssemblyTemperatureChange={setAssemblyTemperature}
         onAssemble={() => setAssemblyModalOpen(true)}
         assembling={assembling}
+        onDelete={async () => {
+          if (!assemblyPrompt) return;
+          await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
+            method: "DELETE",
+          });
+          fetchPrompts();
+        }}
       />
 
       {/* Assembly Modal */}
