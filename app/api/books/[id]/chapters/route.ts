@@ -44,7 +44,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const existing = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(chapters)
-    .where(eq(chapters.bookTemplateId, id));
+    .where(
+      and(
+        eq(chapters.bookTemplateId, id),
+        isNull(chapters.projectId),
+      ),
+    );
 
   const pos = position ?? (existing[0]?.count ?? 0);
 

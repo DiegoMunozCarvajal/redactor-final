@@ -304,6 +304,7 @@ export default function ChapterPromptEditorPage() {
       )}
 
       {/* Add Content Prompt (between content and assembly) */}
+      {(prompts.length > 0 || addingPrompt) && (
       <div className="mb-8">
         {addingPrompt && !addingAssembly ? (
           <Card>
@@ -366,6 +367,7 @@ export default function ChapterPromptEditorPage() {
           </Button>
         )}
       </div>
+      )}
 
       {/* Placeholders */}
       {placeholders.length > 0 && (
