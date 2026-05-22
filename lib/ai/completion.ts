@@ -275,7 +275,7 @@ type EffortConfig =
   | { kind: "deepseek"; thinkingDisabled: true }
   | { kind: "deepseek"; thinkingDisabled: false; reasoningEffort: "high" | "max" }
   | { kind: "openai"; reasoningEffort?: "minimal" | "low" | "medium" | "high" }
-  | { kind: "anthropic"; budgetTokens?: number }
+  | { kind: "anthropic"; effort?: "low" | "medium" | "high" }
   | { kind: "google"; thinkingBudget?: number };
 
 function mapEffort(effort: ReasoningEffort | undefined, provider: string): EffortConfig {
@@ -294,10 +294,11 @@ function mapEffort(effort: ReasoningEffort | undefined, provider: string): Effor
     }
     case "anthropic": {
       if (!effort || effort === "off") return { kind: "anthropic" };
-      const budgetMap: Record<string, number> = {
-        minimal: 1024, low: 4096, medium: 8192, high: 16000, max: 16000,
+      // Map our effort levels to Anthropic's output_config.effort values
+      const effortMap: Record<string, "low" | "medium" | "high"> = {
+        minimal: "low", low: "low", medium: "medium", high: "high", max: "high",
       };
-      return { kind: "anthropic", budgetTokens: budgetMap[effort] ?? 16000 };
+      return { kind: "anthropic", effort: effortMap[effort] ?? "high" };
     }
     case "google": {
       if (!effort || effort === "off") return { kind: "google" };
@@ -452,11 +453,11 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      ...(effortConfig.budgetTokens ? {} : { temperature }),
+      ...(effortConfig.effort ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
-      ...(effortConfig.budgetTokens
-        ? { thinking: { type: "enabled" as const, budget_tokens: effortConfig.budgetTokens } }
+      ...(effortConfig.effort
+        ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
         : {}),
       tools: [
         {
@@ -494,11 +495,11 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      ...(effortConfig.budgetTokens ? {} : { temperature }),
+      ...(effortConfig.effort ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
-      ...(effortConfig.budgetTokens
-        ? { thinking: { type: "enabled" as const, budget_tokens: effortConfig.budgetTokens } }
+      ...(effortConfig.effort
+        ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
         : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 

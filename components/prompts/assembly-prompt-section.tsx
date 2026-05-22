@@ -2,11 +2,25 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { Pencil, Save, History } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Pencil, Save, History, Play } from "lucide-react"
 import { VersionHistory } from "@/components/prompts/version-history"
+
+interface ModelOption {
+  id: string
+  label: string
+  short: string
+}
 
 interface AssemblyPrompt {
   id: string
@@ -21,9 +35,25 @@ interface Props {
   onSave: (data: { title: string; content: string }) => Promise<void>
   versionsApiUrl: string
   readOnly?: boolean
+  // Generation controls
+  models?: ModelOption[]
+  assemblyModel?: string
+  onAssemblyModelChange?: (v: string) => void
+  assemblyEffort?: string
+  onAssemblyEffortChange?: (v: string) => void
+  assemblyTemperature?: number
+  onAssemblyTemperatureChange?: (v: number) => void
+  onAssemble?: () => void
+  assembling?: boolean
 }
 
-export function AssemblyPromptSection({ prompt, onSave, versionsApiUrl, readOnly }: Props) {
+export function AssemblyPromptSection({
+  prompt, onSave, versionsApiUrl, readOnly,
+  models, assemblyModel, onAssemblyModelChange,
+  assemblyEffort, onAssemblyEffortChange,
+  assemblyTemperature, onAssemblyTemperatureChange,
+  onAssemble, assembling,
+}: Props) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(prompt?.title ?? "")
   const [content, setContent] = useState(prompt?.content ?? "")
@@ -110,6 +140,52 @@ export function AssemblyPromptSection({ prompt, onSave, versionsApiUrl, readOnly
         {showVersions && prompt.id && (
           <CardContent className="border-t pt-3">
             <VersionHistory versionsApiUrl={versionsApiUrl} promptId={prompt.id} />
+          </CardContent>
+        )}
+
+        {/* Assembly controls */}
+        {models && onAssemble && (
+          <CardContent className="border-t pt-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Select value={assemblyModel ?? ""} onValueChange={(v) => onAssemblyModelChange?.(v)}>
+                  <SelectTrigger className="w-[120px] h-7 text-[10px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.short}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={assemblyEffort ?? "max"} onValueChange={(v) => onAssemblyEffortChange?.(v)}>
+                  <SelectTrigger className="w-[60px] h-7 text-[10px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+                    <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+                  </SelectContent>
+                </Select>
+                {assemblyEffort === "off" && (
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={assemblyTemperature ?? 0.7}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      onAssemblyTemperatureChange?.(isNaN(v) ? 0.7 : v);
+                    }}
+                    className="w-[52px] h-7 text-[10px] px-1"
+                  />
+                )}
+              </div>
+              <Button size="sm" className="text-xs" onClick={onAssemble} disabled={assembling}>
+                <Play className="h-3 w-3 mr-1" /> Assemble
+              </Button>
+            </div>
           </CardContent>
         )}
 

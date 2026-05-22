@@ -994,6 +994,19 @@ export default function ChapterPage() {
           fetchPrompts()
         }}
         versionsApiUrl={`/api/projects/${params.id}/prompts/${assemblyPrompt?.id}/versions`}
+        models={MODELS}
+        assemblyModel={assemblyModel}
+        onAssemblyModelChange={(v) => {
+          setAssemblyModel(v);
+          const fixed = fixedTempFor(v);
+          if (fixed !== undefined) setAssemblyTemperature(fixed);
+        }}
+        assemblyEffort={assemblyEffort}
+        onAssemblyEffortChange={setAssemblyEffort}
+        assemblyTemperature={assemblyTemperature}
+        onAssemblyTemperatureChange={setAssemblyTemperature}
+        onAssemble={() => setAssemblyModalOpen(true)}
+        assembling={assembling}
       />
 
       {/* Assembly Modal */}
