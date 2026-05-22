@@ -25,18 +25,18 @@ import { toast } from "sonner";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
 const MODELS = [
-  { id: "gpt-5.4", label: "GPT 5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini" },
-  { id: "gpt-5.5", label: "GPT 5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini" },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { id: "gpt-5.4", label: "GPT 5.4", short: "GPT5.4" },
+  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "G5.4M" },
+  { id: "gpt-5.5", label: "GPT 5.5", short: "GPT5.5" },
+  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini", short: "G5.5M" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", short: "Haiku" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", short: "Sonnet" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6", short: "Opus6" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", short: "GemPr" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "GemFl" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DSPro" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", short: "DSFlash" },
 ];
 
 interface SearchResult {
@@ -64,6 +64,9 @@ export function PlaceholderFillSection({
   const [fillModel, setFillModel] = useState("deepseek-v4-pro");
   const [effort, setEffort] = useState<string>("max");
   const [temperature, setTemperature] = useState(0.7);
+  const [placeholderModels, setPlaceholderModels] = useState<Record<string, string>>({});
+  const [placeholderEfforts, setPlaceholderEfforts] = useState<Record<string, string>>({});
+  const [placeholderTemperatures, setPlaceholderTemperatures] = useState<Record<string, number>>({});
   const [filling, setFilling] = useState(false);
   const [fillingName, setFillingName] = useState<string | null>(null);
   const [definitions, setDefinitions] = useState<Record<string, string>>({});
@@ -160,6 +163,9 @@ export function PlaceholderFillSection({
   }
 
   async function fillOne(name: string) {
+    const m = placeholderModels[name] ?? fillModel;
+    const e = placeholderEfforts[name] ?? effort;
+    const t = placeholderTemperatures[name] ?? temperature;
     setFillingName(name);
     try {
       const res = await fetch(
@@ -167,7 +173,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel, effort, temperature }),
+          body: JSON.stringify({ model: m, effort: e, ...(e === "off" ? { temperature: t } : {}) }),
         },
       );
       if (res.ok) {
@@ -256,14 +262,69 @@ export function PlaceholderFillSection({
             const def = getDefinition(ph.name);
             const srcs = sources[ph.name] ?? [];
             const isFillingThis = fillingName === ph.name;
+            const phModel = placeholderModels[ph.name] ?? fillModel;
+            const phEffort = placeholderEfforts[ph.name] ?? effort;
+            const phTemp = placeholderTemperatures[ph.name] ?? temperature;
 
             return (
               <div key={ph.id} className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">
-                  {"{"}
-                  {ph.name}
-                  {"}"}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground">
+                    {"{"}
+                    {ph.name}
+                    {"}"}
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Select
+                      value={phModel}
+                      onValueChange={(v) =>
+                        setPlaceholderModels((prev) => ({ ...prev, [ph.name]: v }))
+                      }
+                    >
+                      <SelectTrigger className="w-[85px] h-6 text-[9px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MODELS.map((m) => (
+                          <SelectItem key={m.id} value={m.id} className="text-[9px]">
+                            {m.short}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={phEffort}
+                      onValueChange={(v) =>
+                        setPlaceholderEfforts((prev) => ({ ...prev, [ph.name]: v }))
+                      }
+                    >
+                      <SelectTrigger className="w-[52px] h-6 text-[9px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="max" className="text-[9px]">Max</SelectItem>
+                        <SelectItem value="off" className="text-[9px]">Alto</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {phEffort === "off" && (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={phTemp}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setPlaceholderTemperatures((prev) => ({
+                            ...prev,
+                            [ph.name]: isNaN(v) ? 0.7 : v,
+                          }));
+                        }}
+                        className="w-[48px] h-6 text-[9px] px-1"
+                      />
+                    )}
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <Input
                     value={def}
