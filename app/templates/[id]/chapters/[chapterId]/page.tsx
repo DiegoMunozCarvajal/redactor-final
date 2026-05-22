@@ -330,7 +330,7 @@ export default function ChapterPromptEditorPage() {
                     setNewPrompt((prev) => ({ ...prev, content: e.target.value }))
                   }
                   className="text-xs min-h-[100px]"
-                  placeholder="Prompt content with [TEMA] placeholder..."
+                  placeholder="Prompt content with {tema} placeholder..."
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
@@ -553,7 +553,7 @@ export default function ChapterPromptEditorPage() {
                 onClick={() => {
                   setNewPrompt({
                     title: "Assembly",
-                    content: "[TEMA]\n\n[SUBTÍTULO]\n\nAssembles the fragments...",
+                    content: "{tema}\n\nAssembles the fragments...",
                   })
                   setAddingAssembly(true)
                   setAddingPrompt(true)

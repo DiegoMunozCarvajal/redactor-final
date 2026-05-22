@@ -85,22 +85,9 @@ export function PromptEditor({
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label htmlFor={`content-${prompt.id}`} className="text-xs font-medium text-muted-foreground">Content</label>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => insertPlaceholder("[TEMA]")}
-                className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
-              >
-                + [TEMA]
-              </button>
-              <button
-                type="button"
-                onClick={() => insertPlaceholder("[SUBTITLE]")}
-                className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent transition-colors"
-              >
-                + [SUBTITLE]
-              </button>
-            </div>
+            <span className="text-[10px] text-muted-foreground">
+              Use {"{name}"} for placeholders
+            </span>
           </div>
           <Textarea id={`content-${prompt.id}`} {...register("content")} rows={10} className="font-mono text-sm" />
         </div>
