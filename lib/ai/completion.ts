@@ -452,7 +452,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      temperature,
+      ...(effortConfig.budgetTokens ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.budgetTokens
@@ -494,7 +494,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      temperature,
+      ...(effortConfig.budgetTokens ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.budgetTokens
