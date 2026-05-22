@@ -29,7 +29,7 @@ export function ContinueWritingCard({ project, onDelete }: ContinueWritingCardPr
         <div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
             <BookOpen className="h-3.5 w-3.5 text-brand-500" />
-            Continue Writing
+            Latest Project
           </div>
           <h3 className="text-lg font-semibold mb-1 line-clamp-1">
             {project.title ?? project.name}

@@ -120,7 +120,7 @@
 }
 
 .density-compact {
-  --density: 0.6;
+  --density: 0.65;
 }
 
 /* =============================================
@@ -174,13 +174,13 @@
    ============================================= */
 
 body {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
 }
 
 h1 { font-size: clamp(1.5rem, 4vw, 2.25rem); }

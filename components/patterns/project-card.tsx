@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { BookOpen, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
+import { enUS } from "date-fns/locale";
 
 export function ProjectCard({
   project,
@@ -57,7 +57,7 @@ export function ProjectCard({
               <Clock className="h-3 w-3" />
               {formatDistanceToNow(project.createdAt, {
                 addSuffix: true,
-                locale: es,
+                locale: enUS,
               })}
             </span>
           </CardContent>

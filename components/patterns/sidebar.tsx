@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "motion/react";
 import {
   BookOpen,
   Layers,
@@ -284,11 +283,9 @@ export function Sidebar() {
   const width = collapsed ? 56 : 240;
 
   return (
-    <motion.aside
-      animate={{ width }}
-      initial={{ width }}
-      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-      className="h-screen sticky top-0 border-r border-border bg-background flex flex-col shrink-0 overflow-hidden"
+    <aside
+      style={{ width: `${width}px` }}
+      className="h-screen sticky top-0 border-r border-border bg-background flex flex-col shrink-0 overflow-hidden transition-all duration-200"
     >
       <SidebarContent
         navItems={navItems}
@@ -297,7 +294,7 @@ export function Sidebar() {
         onToggleCollapse={toggleCollapsed}
         onToggleDensity={toggleDensity}
       />
-    </motion.aside>
+    </aside>
   );
 }
 

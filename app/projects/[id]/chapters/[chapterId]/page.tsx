@@ -931,7 +931,7 @@ export default function ChapterPage() {
                   value={newPrompt.content}
                   onChange={(e) => setNewPrompt(prev => ({ ...prev, content: e.target.value }))}
                   className="text-xs min-h-[100px]"
-                  placeholder="Prompt content with [TEMA] placeholder..."
+                  placeholder="Prompt content with {tema} placeholder..."
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
