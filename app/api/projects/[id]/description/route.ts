@@ -40,11 +40,22 @@ export async function PATCH(
     );
   }
 
+  if (description.length > 5000) {
+    return NextResponse.json(
+      { error: "description must be 5000 characters or less" },
+      { status: 400 },
+    );
+  }
+
   const [updated] = await db
     .update(projects)
-    .set({ description })
+    .set(description !== undefined ? { description } : {})
     .where(eq(projects.id, id))
     .returning();
+
+  if (!updated) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
 
   return NextResponse.json(updated);
 }
