@@ -63,6 +63,7 @@ export default function ProjectPage() {
   const [description, setDescription] = useState("");
   const [savingDescription, setSavingDescription] = useState(false);
   const [descModel, setDescModel] = useState("deepseek-v4-pro");
+  const [descEffort, setDescEffort] = useState<string>("off");
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const fetchingRef = useRef(false);
 
@@ -114,6 +115,7 @@ export default function ProjectPage() {
     });
     if (res.ok) {
       setProject({ ...project, title: editTitle });
+      window.dispatchEvent(new CustomEvent("project-renamed", { detail: { id: project.id, title: editTitle } }));
       setEditingTitle(false);
     } else {
       toast.error("Error saving title");
@@ -127,7 +129,7 @@ export default function ProjectPage() {
       const res = await fetch(`/api/projects/${params.id}/description/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: descModel }),
+        body: JSON.stringify({ model: descModel, effort: descEffort }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -216,7 +218,7 @@ export default function ProjectPage() {
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
-          { label: project.name },
+          { label: project.title || project.name },
         ]}
       />
 
@@ -272,13 +274,22 @@ export default function ProjectPage() {
         />
         <div className="flex justify-end gap-2">
           <Select value={descModel} onValueChange={setDescModel}>
-            <SelectTrigger className="w-[130px] h-7 text-[10px]">
+            <SelectTrigger className="w-[110px] h-7 text-[10px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {MODELS.map((m) => (
                 <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.label}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={descEffort} onValueChange={setDescEffort}>
+            <SelectTrigger className="w-[70px] h-7 text-[10px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+              <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
             </SelectContent>
           </Select>
           <Button

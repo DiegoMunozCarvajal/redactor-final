@@ -55,6 +55,7 @@ export function PlaceholderFillSection({
   savingPlaceholders,
 }: Props) {
   const [fillModel, setFillModel] = useState("deepseek-v4-pro");
+  const [effort, setEffort] = useState<string>("max");
   const [filling, setFilling] = useState(false);
   const [fillingName, setFillingName] = useState<string | null>(null);
   const [definitions, setDefinitions] = useState<Record<string, string>>({});
@@ -80,7 +81,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel }),
+          body: JSON.stringify({ model: fillModel, effort }),
         },
       );
 
@@ -158,7 +159,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel }),
+          body: JSON.stringify({ model: fillModel, effort }),
         },
       );
       if (res.ok) {
@@ -194,7 +195,7 @@ export function PlaceholderFillSection({
         </h2>
         <div className="flex items-center gap-2">
           <Select value={fillModel} onValueChange={setFillModel}>
-            <SelectTrigger className="w-[130px] h-7 text-[10px]">
+            <SelectTrigger className="w-[110px] h-7 text-[10px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -203,6 +204,15 @@ export function PlaceholderFillSection({
                   {m.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={effort} onValueChange={setEffort}>
+            <SelectTrigger className="w-[70px] h-7 text-[10px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+              <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
             </SelectContent>
           </Select>
           <Button
