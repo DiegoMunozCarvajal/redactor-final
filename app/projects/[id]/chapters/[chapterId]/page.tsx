@@ -48,6 +48,8 @@ import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
+import { ChapterBriefSection } from "@/components/projects/chapter-brief-section";
+import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
 const MODEL_FIXED_TEMP = new Map(
@@ -150,6 +152,7 @@ export default function ChapterPage() {
   const fetchingRef = useRef(false);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
   const [placeholderForm, setPlaceholderForm] = useState<Record<string, string>>({});
+  const [chapterBrief, setChapterBrief] = useState<string | null>(null);
   const [savingPlaceholders, setSavingPlaceholders] = useState(false);
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
@@ -224,11 +227,22 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
 
+  const fetchBrief = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/projects/${params.id}/chapters/${params.chapterId}/brief`, { signal });
+      if (signal?.aborted) return;
+      if (res.ok) {
+        const data = await res.json();
+        setChapterBrief(data.content ?? null);
+      }
+    } catch { /* supplementary */ }
+  }, [params.id, params.chapterId]);
+
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([fetchChapter(controller.signal), fetchPrompts(controller.signal), fetchPlaceholders(controller.signal)]);
+    Promise.all([fetchChapter(controller.signal), fetchPrompts(controller.signal), fetchPlaceholders(controller.signal), fetchBrief(controller.signal)]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchBrief]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -639,51 +653,20 @@ export default function ChapterPage() {
         </div>
       </div>
 
-      {/* Placeholders */}
-      {placeholders.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Placeholders
-          </h2>
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              {placeholders.map((ph) => (
-                <div key={ph.id} className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground">
-                    {"{"}{ph.name}{"}"}
-                  </Label>
-                  <Input
-                    value={placeholderForm[ph.name] ?? ""}
-                    onChange={(e) =>
-                      setPlaceholderForm((prev) => ({
-                        ...prev,
-                        [ph.name]: e.target.value,
-                      }))
-                    }
-                    className="text-xs h-8"
-                    placeholder={`Define "${ph.name}"...`}
-                  />
-                </div>
-              ))}
-              <div className="flex justify-end pt-2">
-                <Button
-                  size="sm"
-                  className="text-xs"
-                  onClick={savePlaceholders}
-                  disabled={savingPlaceholders}
-                >
-                  {savingPlaceholders ? (
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <Save className="h-3 w-3 mr-1" />
-                  )}
-                  Save
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <ChapterBriefSection
+        projectId={params.id as string}
+        chapterId={params.chapterId as string}
+        initialContent={chapterBrief}
+        onSaved={(content) => setChapterBrief(content)}
+      />
+
+      <PlaceholderFillSection
+        projectId={params.id as string}
+        chapterId={params.chapterId as string}
+        placeholders={placeholders}
+        onSaveDefinitions={savePlaceholders}
+        savingPlaceholders={savingPlaceholders}
+      />
 
       {/* No prompts */}
       {prompts.length === 0 && !addingPrompt && (

@@ -13,7 +13,7 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { Loader2, ArrowLeft, Trash2 } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Save } from "lucide-react";
 
 interface ProjectPrompt {
   id: string;
@@ -33,7 +33,9 @@ export default function PromptEditPage() {
   const [chapterPosition, setChapterPosition] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function PromptEditPage() {
         const found = prompts.find((p) => p.id === params.promptId);
         if (!found) throw new Error("Prompt not found");
         setPrompt(found);
+        setContent(found.content);
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -77,16 +80,19 @@ export default function PromptEditPage() {
     return () => controller.abort();
   }, [params.id, params.chapterId, params.promptId]);
 
-  async function saveContent(value: string) {
-    if (!prompt || value === prompt.content) return;
+  async function saveContent() {
+    if (!prompt || content === prompt.content) return;
     setSaving(true);
+    setSaved(false);
     await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: value }),
+      body: JSON.stringify({ content }),
     });
-    setPrompt((prev) => prev ? { ...prev, content: value } : prev);
+    setPrompt((prev) => prev ? { ...prev, content } : prev);
     setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   async function deletePrompt() {
@@ -151,9 +157,21 @@ export default function PromptEditPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Content</CardTitle>
             <div className="flex items-center gap-2">
+              {saved && (
+                <span className="text-xs text-green-600">Saved</span>
+              )}
               {saving && (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               )}
+              <Button
+                size="sm"
+                variant="default"
+                onClick={saveContent}
+                disabled={saving || content === prompt.content}
+              >
+                <Save className="h-4 w-4 mr-1" />
+                Save
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
@@ -168,9 +186,8 @@ export default function PromptEditPage() {
         </CardHeader>
         <CardContent>
           <Textarea
-            key={prompt.id}
-            defaultValue={prompt.content}
-            onBlur={(e) => saveContent(e.target.value)}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
             rows={20}
             className="text-sm font-mono"
           />
