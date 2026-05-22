@@ -20,7 +20,7 @@ const RESEARCH_MODEL = "deepseek-v4-flash";
 // Default model for generation if none specified
 const DEFAULT_MODEL = DEFAULT_GENERATION_MODEL;
 
-function extractJson(text: string): any {
+function extractJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {}
@@ -89,8 +89,8 @@ export async function researchPlaceholders(
     });
     const parsed = extractJson(decision.data as string);
     needsResearch = Array.isArray(parsed)
-      ? parsed
-      : (parsed.needsResearch ?? []);
+      ? (parsed as string[])
+      : ((parsed as Record<string, unknown>).needsResearch as string[] ?? []);
   } catch {
     // If provider fails or parsing fails, research all
     needsResearch = placeholderNames;
@@ -182,8 +182,8 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
   }
 
   try {
-    const parsed = extractJson(result.data as string);
-    const definitions: Record<string, string> = parsed.placeholders ?? parsed;
+    const parsed = extractJson(result.data as string) as Record<string, unknown>;
+    const definitions = (parsed.placeholders ?? parsed) as Record<string, string>;
 
     for (const name of placeholderNames) {
       const definition = definitions[name];
@@ -263,8 +263,8 @@ Return JSON: {"definition": "your concise definition"}`;
   });
 
   try {
-    const parsed = extractJson(result.data as string);
-    return { definition: parsed.definition ?? "", sources };
+    const parsed = extractJson(result.data as string) as Record<string, unknown>;
+    return { definition: (parsed.definition as string) ?? "", sources };
   } catch {
     return { definition: (result.data as string).trim(), sources };
   }
