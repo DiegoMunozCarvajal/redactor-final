@@ -128,7 +128,7 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
                 max={1}
                 step={0.1}
                 value={briefTemperature}
-                onChange={(e) => setBriefTemperature(parseFloat(e.target.value) || 0.7)}
+                onChange={(e) => { const v = parseFloat(e.target.value); setBriefTemperature(isNaN(v) ? 0.7 : v); }}
                 className="w-[60px] h-7 text-[10px] px-1"
               />
             )}
