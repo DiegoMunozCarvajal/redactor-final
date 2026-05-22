@@ -40,7 +40,7 @@ export async function PATCH(
     );
   }
 
-  if (description.length > 5000) {
+  if (description !== undefined && description.length > 5000) {
     return NextResponse.json(
       { error: "description must be 5000 characters or less" },
       { status: 400 },
