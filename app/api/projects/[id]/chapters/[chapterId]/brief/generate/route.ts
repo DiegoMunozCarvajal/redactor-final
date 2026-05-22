@@ -9,7 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
-import { generateCompletion } from "@/lib/ai/completion";
+import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { csrfCheck } from "@/lib/api/csrf";
 
 const DEFAULT_BRIEF_PROMPT = `You are a book editor. Based on the chapter title, the content prompts, and the project description, write a 2-3 sentence brief describing the chapter's scope, target reader, and desired outcome. Be specific and concise. Output ONLY the brief text, no JSON wrapper.`;
@@ -51,6 +51,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
+  const effort = body.effort as ReasoningEffort | undefined;
 
   // Load prompts for context
   const promptList = await db
@@ -98,6 +99,7 @@ Write a 2-3 sentence chapter brief.`;
       model: model || "deepseek-v4-flash",
       systemPrompt,
       userPrompt,
+      ...(effort ? { effort } : {}),
     });
     briefContent = (result.data as string).trim();
   } catch (err) {

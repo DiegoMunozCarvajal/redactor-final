@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { type ReasoningEffort } from "@/lib/ai/completion";
 import { researchPlaceholders, fillPlaceholders } from "@/lib/ai/placeholder-fill";
 
 export async function POST(
@@ -49,6 +50,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
+  const effort = body.effort as ReasoningEffort | undefined;
 
   // Load context
   const [brief] = await db
@@ -105,6 +107,7 @@ export async function POST(
           searchResults,
           model,
           config?.content,
+          effort,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));

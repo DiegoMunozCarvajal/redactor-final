@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillSinglePlaceholder } from "@/lib/ai/placeholder-fill";
 
 export async function POST(
@@ -49,6 +50,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
+  const effort = body.effort as ReasoningEffort | undefined;
 
   const [brief] = await db
     .select()
@@ -91,6 +93,7 @@ export async function POST(
       existingDefinitions,
       model,
       config?.content,
+      effort,
     );
 
     // Persist definition to DB

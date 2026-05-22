@@ -4,7 +4,7 @@ import { projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { generateCompletion } from "@/lib/ai/completion";
+import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 
 const DESCRIPTION_PROMPT = `You are a book editor. Based on the book's name, write a concise 2-4 sentence description of what the book is about. The description should be specific, informative, and written in Spanish. Output ONLY the description text, no JSON wrapper, no labels.`;
 
@@ -32,6 +32,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
+  const effort = body.effort as ReasoningEffort | undefined;
 
   if (!project.name) {
     return NextResponse.json({ error: "project has no name" }, { status: 400 });
@@ -44,6 +45,7 @@ export async function POST(
       model: model || "deepseek-v4-flash",
       systemPrompt: DESCRIPTION_PROMPT,
       userPrompt,
+      ...(effort ? { effort } : {}),
     });
 
     const description = (result.data as string).trim();
