@@ -31,7 +31,11 @@ export interface GenerateResult {
 }
 
 function applyPlaceholders(content: string, placeholders: Record<string, string>): string {
-  for (const [name, value] of Object.entries(placeholders)) {
+  // Sort longest-first to prevent {foo} matching inside {foo_bar}
+  const entries = Object.entries(placeholders).sort(
+    ([a], [b]) => b.length - a.length,
+  );
+  for (const [name, value] of entries) {
     const token = `{${name}}`;
     if (!content.includes(token)) continue;
     const sanitized = sanitizeValue(value);
