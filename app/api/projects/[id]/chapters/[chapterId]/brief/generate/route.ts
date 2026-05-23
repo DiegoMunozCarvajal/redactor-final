@@ -4,7 +4,6 @@ import {
   projects,
   chapters,
   chapterBriefs,
-  chapterConfigPrompts,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
@@ -80,18 +79,7 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
-  // Load custom system prompt if exists
-  const [config] = await db
-    .select()
-    .from(chapterConfigPrompts)
-    .where(
-      and(
-        eq(chapterConfigPrompts.chapterId, chapterId),
-        eq(chapterConfigPrompts.type, "generate_brief"),
-      ),
-    );
-
-  const systemPrompt = config?.content || DEFAULT_BRIEF_PROMPT;
+  const systemPrompt = DEFAULT_BRIEF_PROMPT;
 
   const userPrompt = `## Proyecto
 - Nombre: ${(project.title ?? project.name) || "(unnamed)"}

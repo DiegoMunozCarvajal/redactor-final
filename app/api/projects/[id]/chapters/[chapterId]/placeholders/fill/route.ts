@@ -5,7 +5,6 @@ import {
   chapterBriefs,
   projectPrompts,
   chapterPlaceholders,
-  chapterConfigPrompts,
   chapters,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
@@ -74,16 +73,6 @@ export async function POST(
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
-  const [config] = await db
-    .select()
-    .from(chapterConfigPrompts)
-    .where(
-      and(
-        eq(chapterConfigPrompts.chapterId, chapterId),
-        eq(chapterConfigPrompts.type, "fill_placeholders"),
-      ),
-    );
-
   const placeholderNames = placeholderRows.map((p) => p.name);
   const chapterBrief = brief?.content ?? "";
   const projectDescription = project.description ?? "";
@@ -143,7 +132,7 @@ export async function POST(
           promptContents,
           searchResults,
           model,
-          config?.content,
+          undefined,
           effort,
           temperature,
         )) {

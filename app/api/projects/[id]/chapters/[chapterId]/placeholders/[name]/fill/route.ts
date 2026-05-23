@@ -5,7 +5,6 @@ import {
   chapterBriefs,
   projectPrompts,
   chapterPlaceholders,
-  chapterConfigPrompts,
   chapters,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
@@ -72,16 +71,6 @@ export async function POST(
     .from(chapterPlaceholders)
     .where(eq(chapterPlaceholders.chapterId, chapterId));
 
-  const [config] = await db
-    .select()
-    .from(chapterConfigPrompts)
-    .where(
-      and(
-        eq(chapterConfigPrompts.chapterId, chapterId),
-        eq(chapterConfigPrompts.type, "fill_placeholders"),
-      ),
-    );
-
   // Build existing definitions map (exclude the one being filled)
   const existingDefinitions: Record<string, string> = {};
   for (const row of existingRows) {
@@ -119,7 +108,7 @@ export async function POST(
       promptRows.map((p) => p.content),
       existingDefinitions,
       model,
-      config?.content,
+      undefined,
       effort,
       temperature,
     );

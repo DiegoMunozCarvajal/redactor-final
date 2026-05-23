@@ -27,8 +27,6 @@ export default function ChapterPromptEditorPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [showVersions, setShowVersions] = useState<Record<string, boolean>>({})
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([])
-  const [configFormData, setConfigFormData] = useState<Record<string, string>>({})
-  const [savingConfig, setSavingConfig] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -45,14 +43,6 @@ export default function ChapterPromptEditorPage() {
       fetch(`/api/chapters/${params.chapterId}/placeholders`)
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
         .then((data) => { if (!cancelled) setPlaceholders(data) }),
-      fetch(`/api/chapters/${params.chapterId}/config-prompts`)
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-        .then((data) => { if (!cancelled) {
-          const form: Record<string, string> = {};
-          for (const cp of data) form[cp.type] = cp.content;
-          setConfigFormData(form);
-        }})
-        .catch(() => {}), // non-critical
     ])
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -146,27 +136,6 @@ export default function ChapterPromptEditorPage() {
       const res = await fetch(`/api/chapters/${params.chapterId}/placeholders`)
       if (res.ok) setPlaceholders(await res.json())
     } catch { /* ignore */ }
-  }
-
-  async function saveConfigPrompts() {
-    setSavingConfig(true)
-    try {
-      const prompts = Object.entries(configFormData).map(([type, content]) => ({ type, content }))
-      const res = await fetch(`/api/chapters/${params.chapterId}/config-prompts`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompts }),
-      })
-      if (res.ok) {
-        toast.success("AI config saved")
-      } else {
-        toast.error("Error saving AI config")
-      }
-    } catch {
-      toast.error("Network error")
-    } finally {
-      setSavingConfig(false)
-    }
   }
 
   async function deletePrompt(promptId: string) {
@@ -428,43 +397,6 @@ export default function ChapterPromptEditorPage() {
           </Card>
         </div>
       )}
-
-      {/* AI Configuration */}
-      <div className="mb-6">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">AI Configuration</h2>
-        <Card>
-          <CardContent className="pt-4 space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-[10px] text-muted-foreground">
-                Placeholder Fill Prompt
-              </Label>
-              <Textarea
-                value={configFormData["fill_placeholders"] ?? ""}
-                onChange={(e) => setConfigFormData((prev) => ({ ...prev, fill_placeholders: e.target.value }))}
-                className="text-xs min-h-[80px]"
-                placeholder="System prompt for filling placeholders with AI..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] text-muted-foreground">
-                Brief Generation Prompt
-              </Label>
-              <Textarea
-                value={configFormData["generate_brief"] ?? ""}
-                onChange={(e) => setConfigFormData((prev) => ({ ...prev, generate_brief: e.target.value }))}
-                className="text-xs min-h-[80px]"
-                placeholder="System prompt for generating chapter briefs with AI..."
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button size="sm" className="text-xs" onClick={saveConfigPrompts} disabled={savingConfig}>
-                {savingConfig ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                Save
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Assembly Prompt */}
       <div className="mb-8">
