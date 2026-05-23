@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generateChapterAssembly } from "@/lib/generate";
@@ -89,17 +89,21 @@ export async function POST(
     );
   }
 
-  // Create a new generation for the assembly
-  const [gen] = await db
-    .insert(chapterGenerations)
-    .values({ projectId, chapterId, status: "generating" })
-    .returning();
+  let generationId: string | undefined;
 
   const lockResult = await withProjectLock(projectId, async () => {
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
+
+    // Create generation record inside lock, after rate check,
+    // so the check doesn't count this request's own record.
+    const [gen] = await db
+      .insert(chapterGenerations)
+      .values({ projectId, chapterId, status: "generating" })
+      .returning();
+    generationId = gen.id;
 
     try {
       const fragmentContents = selectedFragments.map((f) => ({
@@ -124,12 +128,6 @@ export async function POST(
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, gen.id));
-
-      // Clean up old "generating" generations that supplied the fragments
-      const oldGenIds = [...new Set(selectedFragments.map((f) => f.generationId))];
-      await db
-        .delete(chapterGenerations)
-        .where(inArray(chapterGenerations.id, oldGenIds));
 
       return { generationId: gen.id, assembledContent: assembled.text };
     } catch (err) {
@@ -161,7 +159,7 @@ export async function POST(
     userId: user.id,
     action: "chapter.assemble",
     resourceType: "chapter_generation",
-    resourceId: gen.id,
+    resourceId: generationId!,
     metadata: { projectId, chapterId, fragmentIds },
   });
 

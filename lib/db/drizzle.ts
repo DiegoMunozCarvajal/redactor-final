@@ -15,7 +15,7 @@ declare global {
 function createPostgresClient() {
   return postgres(databaseUrl, {
     prepare: false,
-    max: process.env.NODE_ENV === "production" ? 5 : 1,
+    max: process.env.NODE_ENV === "production" ? 10 : 3,
     idle_timeout: 20,
     connect_timeout: 10,
   });
@@ -29,3 +29,4 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const db = drizzle(client, { schema });
+export { client };

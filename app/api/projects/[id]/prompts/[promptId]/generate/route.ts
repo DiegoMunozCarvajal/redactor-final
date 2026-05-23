@@ -50,19 +50,24 @@ export async function POST(
   const model = body.model as string | undefined;
   const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
 
-  // Create generation record
-  const [gen] = await db
-    .insert(chapterGenerations)
-    .values({
-      projectId,
-      chapterId: prompt.chapterId,
-      status: "generating",
-    })
-    .returning();
+  let generationId: string | undefined;
 
   const lockResult = await withProjectLock(projectId, async () => {
     // Advisory lock serializes same-project access.
     // No sliding window check needed — single fragments are lightweight.
+
+    // Create generation record inside lock so concurrent requests
+    // don't see a stale "generating" record before the lock is acquired.
+    const [gen] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId: prompt.chapterId,
+        status: "generating",
+      })
+      .returning();
+    generationId = gen.id;
+
     try {
       const placeholders = await getChapterPlaceholders(prompt.chapterId);
 
@@ -124,7 +129,7 @@ export async function POST(
     action: "prompt.generate",
     resourceType: "project_prompt",
     resourceId: promptId,
-    metadata: { projectId, generationId: gen.id },
+    metadata: { projectId, generationId: generationId! },
   });
 
   return NextResponse.json(lockResult.result);

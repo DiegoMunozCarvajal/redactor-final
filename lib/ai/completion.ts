@@ -428,7 +428,6 @@ async function completeWithAnthropic<T extends z.ZodType>(
   systemPrompt: string,
   userPrompt: string,
   model: string,
-  temperature: number,
   maxTokens: number | undefined,
   schema: T | undefined,
   effortConfig: EffortConfig & { kind: "anthropic" },
@@ -453,7 +452,6 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      ...(effortConfig.effort ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.effort
@@ -495,7 +493,6 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const response = await client.messages.create({
       model,
       max_tokens: maxTokens ?? 4096,
-      ...(effortConfig.effort ? {} : { temperature }),
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.effort
@@ -795,7 +792,6 @@ export async function generateCompletion<T extends z.ZodType>(
           systemPrompt,
           userPrompt,
           model,
-          temperature,
           maxTokens,
           schema,
           effortConfig as EffortConfig & { kind: "anthropic" },

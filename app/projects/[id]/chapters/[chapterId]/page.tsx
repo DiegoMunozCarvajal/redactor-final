@@ -1027,6 +1027,51 @@ export default function ChapterPage() {
       </div>
       ) : null}
 
+      {/* Assembly Results */}
+      {generations.filter((g) => g.status === "completed" && g.assembledContent).length > 0 && (
+        <div className="space-y-3 mb-8">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Assembly Results
+          </h2>
+          {generations
+            .filter((g) => g.status === "completed" && g.assembledContent)
+            .map((gen) => (
+              <Card key={gen.id} className="border-success/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 mb-3 text-[10px] text-muted-foreground">
+                    {statusBadge(gen.status)}
+                    {gen.completedAt && (
+                      <span>
+                        {formatDistanceToNow(new Date(gen.completedAt), {
+                          addSuffix: true,
+                          locale: enUS,
+                        })}
+                      </span>
+                    )}
+                    <div className="flex-1" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(gen.assembledContent ?? "");
+                        toast.success("Assembly copied");
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1" /> Copy
+                    </Button>
+                  </div>
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                    <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
+                      {gen.assembledContent!}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+        </div>
+      )}
+
       <AssemblyPromptSection
         prompt={assemblyPrompt}
         onSave={async (data) => {

@@ -1,20 +1,9 @@
-import postgres from "postgres";
-import { db } from "@/lib/db/drizzle";
+import { db, client } from "@/lib/db/drizzle";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
 const WINDOW_SECONDS = 60;
 const MAX_GENERATIONS_PER_WINDOW = 1;
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("DATABASE_URL environment variable is required");
-
-const lockClient = postgres(databaseUrl, {
-  prepare: false,
-  max: 10,
-  idle_timeout: 300,
-  connect_timeout: 10,
-});
 
 function projectIdToLockKey(projectId: string): [number, number] {
   const hex = projectId.replace(/-/g, "");
@@ -30,23 +19,30 @@ export async function withProjectLock<T>(
 ): Promise<{ locked: false } | { locked: true; result: T }> {
   const [key1, key2] = projectIdToLockKey(projectId);
 
-  return lockClient.begin(async (tx) => {
-    const [row] = await tx.unsafe(
-      `SELECT pg_try_advisory_lock($1, $2) AS acquired`,
-      [key1, key2]
-    );
+  // Reserve a dedicated connection so the advisory lock binds to a distinct
+  // PostgreSQL session. Without this, max:1 pools share a single session and
+  // pg_try_advisory_lock is reentrant — two requests would both "acquire" it.
+  const reserved = await client.reserve();
 
-    if (!row.acquired) {
-      return { locked: false };
-    }
+  const [row] = await reserved.unsafe(
+    `SELECT pg_try_advisory_lock($1, $2) AS acquired`,
+    [key1, key2]
+  );
 
-    try {
-      const result = await fn();
-      return { locked: true, result };
-    } finally {
-      await tx.unsafe(`SELECT pg_advisory_unlock($1, $2)`, [key1, key2]).catch(() => {});
-    }
-  }) as Promise<{ locked: false } | { locked: true; result: T }>;
+  if (!row.acquired) {
+    reserved.release();
+    return { locked: false };
+  }
+
+  try {
+    const result = await fn();
+    return { locked: true, result };
+  } finally {
+    await reserved
+      .unsafe(`SELECT pg_advisory_unlock($1, $2)`, [key1, key2])
+      .catch(() => {});
+    reserved.release();
+  }
 }
 
 export async function checkProjectRateLimit(
