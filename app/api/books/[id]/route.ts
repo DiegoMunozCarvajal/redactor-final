@@ -47,7 +47,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [template] = await db
     .update(bookTemplates)
-    .set({ name, description })
+    .set({
+      ...(name !== undefined && { name }),
+      ...(description !== undefined && { description }),
+    })
     .where(eq(bookTemplates.id, id))
     .returning();
 
@@ -92,12 +95,31 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     .where(eq(bookTemplates.id, id))
     .limit(1);
 
-  await db.delete(bookTemplates).where(eq(bookTemplates.id, id));
+  try {
+    // Delete template-scoped chapters first so ON DELETE SET NULL + CHECK
+    // constraint don't conflict. Cascades to prompts, briefs, configs, etc.
+    await db
+      .delete(chapters)
+      .where(
+        and(
+          eq(chapters.bookTemplateId, id),
+          isNull(chapters.projectId),
+        ),
+      );
 
-  // Clean up orphaned template chapters (bookTemplateId set to null by FK)
-  await db.delete(chapters).where(
-    and(isNull(chapters.bookTemplateId), isNull(chapters.projectId))
-  );
+    await db.delete(bookTemplates).where(eq(bookTemplates.id, id));
+
+    // Belt-and-suspenders: clean up any remaining orphaned chapters
+    await db.delete(chapters).where(
+      and(isNull(chapters.bookTemplateId), isNull(chapters.projectId)),
+    );
+  } catch (error) {
+    console.error("Failed to delete template", { templateId: id, error });
+    return NextResponse.json(
+      { error: "Failed to delete template" },
+      { status: 500 },
+    );
+  }
 
   logAudit({
     userId: admin.user.id,

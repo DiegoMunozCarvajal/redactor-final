@@ -13,6 +13,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillSinglePlaceholder } from "@/lib/ai/placeholder-fill";
+import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 
 export async function POST(
   req: NextRequest,
@@ -87,6 +88,27 @@ export async function POST(
     if (row.definition && row.name !== name) {
       existingDefinitions[row.name] = row.definition;
     }
+  }
+
+  // Check if this placeholder can be resolved directly (no LLM)
+  const { resolved } = resolvePlaceholdersDirect(
+    [name],
+    project.topic ?? null,
+    brief?.content ?? "",
+  );
+
+  if (resolved[name]) {
+    await db
+      .update(chapterPlaceholders)
+      .set({ definition: resolved[name] })
+      .where(
+        and(
+          eq(chapterPlaceholders.chapterId, chapterId),
+          eq(chapterPlaceholders.name, name),
+        ),
+      );
+
+    return NextResponse.json({ name, definition: resolved[name], sources: [] });
   }
 
   try {

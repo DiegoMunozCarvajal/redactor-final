@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -112,6 +112,35 @@ export async function PATCH(
     .where(eq(projects.id, id))
     .returning();
 
+  // Sync {tema} placeholder definition when topic changes
+  // Only update chapters that haven't been manually filled or match the old topic
+  if (topic !== undefined && topic !== project.topic) {
+    const projectChapterIds = await db
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(eq(chapters.projectId, id));
+
+    for (const ch of projectChapterIds) {
+      await db
+        .update(chapterPlaceholders)
+        .set({ definition: topic })
+        .where(
+          and(
+            eq(chapterPlaceholders.chapterId, ch.id),
+            eq(chapterPlaceholders.name, "tema"),
+          ),
+        );
+    }
+  }
+
+  logAudit({
+    userId: user.id,
+    action: "project.update",
+    resourceType: "project",
+    resourceId: project.id,
+    metadata: { name: project.name },
+  });
+
   return NextResponse.json(updated);
 }
 
@@ -139,7 +168,15 @@ export async function DELETE(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  await db.delete(projects).where(eq(projects.id, id));
+  try {
+    await db.delete(projects).where(eq(projects.id, id));
+  } catch (error) {
+    console.error("Failed to delete project", { projectId: id, error });
+    return NextResponse.json(
+      { error: "Failed to delete project" },
+      { status: 500 },
+    );
+  }
 
   logAudit({
     userId: user.id,

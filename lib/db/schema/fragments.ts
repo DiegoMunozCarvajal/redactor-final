@@ -11,7 +11,7 @@ export const fragments = pgTable(
       .references(() => chapterGenerations.id, { onDelete: "cascade" }),
     projectPromptId: uuid("project_prompt_id")
       .notNull()
-      .references(() => projectPrompts.id, { onDelete: "restrict" }),
+      .references(() => projectPrompts.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     content: text("content"),
     metadata: jsonb("metadata"),
@@ -21,6 +21,7 @@ export const fragments = pgTable(
   },
   (table) => [
     index("idx_fragments_chapter_generation").on(table.chapterGenerationId),
+    index("idx_fragments_project_prompt").on(table.projectPromptId),
   ],
 );
 

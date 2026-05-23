@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Sparkles, Save } from "lucide-react";
 import { toast } from "sonner";
+import { MODEL_OPTIONS, EFFORT_OPTIONS } from "@/lib/ai/providers";
 
 interface Props {
   projectId: string;
@@ -22,24 +23,13 @@ interface Props {
   onSaved?: (content: string) => void;
 }
 
-const MODELS = [
-  { id: "gpt-5.4", label: "GPT 5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini" },
-  { id: "gpt-5.5", label: "GPT 5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini" },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-];
-
 export function ChapterBriefSection({ projectId, chapterId, initialContent, onSaved }: Props) {
   const [content, setContent] = useState(initialContent ?? "");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setContent(initialContent ?? "");
+  }, [initialContent]);
   const [generating, setGenerating] = useState(false);
   const [briefModel, setBriefModel] = useState("deepseek-v4-pro");
   const [briefEffort, setBriefEffort] = useState("max");
@@ -107,7 +97,7 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MODELS.map((m) => (
+                {MODEL_OPTIONS.map((m) => (
                   <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -117,8 +107,9 @@ export function ChapterBriefSection({ projectId, chapterId, initialContent, onSa
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-                <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+                {EFFORT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="text-[10px]">{o.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {briefEffort === "off" && (

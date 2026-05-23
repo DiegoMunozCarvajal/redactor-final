@@ -50,6 +50,7 @@ import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
+import { EFFORT_OPTIONS } from "@/lib/ai/providers";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { ChapterBriefSection } from "@/components/projects/chapter-brief-section";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
@@ -157,6 +158,7 @@ export default function ChapterPage() {
   const [assembling, setAssembling] = useState(false);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
   const fetchingRef = useRef(false);
+  const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
   const [placeholderForm, setPlaceholderForm] = useState<Record<string, string>>({});
   const [chapterBrief, setChapterBrief] = useState<string | null>(null);
@@ -197,8 +199,15 @@ export default function ChapterPage() {
       if (signal?.aborted) return;
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       setData(await res.json());
+      setError(null);
+      pollErrorCount.current = 0;
     } catch (err) {
       if (signal?.aborted) return;
+      // During polling, transient errors are retried; only set fatal error without signal
+      if (!signal) {
+        pollErrorCount.current++;
+        if (pollErrorCount.current < 3) return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       if (!signal?.aborted) {
@@ -659,7 +668,7 @@ export default function ChapterPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="max" className="text-xs">Max</SelectItem>
-              <SelectItem value="off" className="text-xs">Alto</SelectItem>
+              {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>))}
             </SelectContent>
           </Select>
           {defaultEffort === "off" && (
@@ -781,7 +790,7 @@ export default function ChapterPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-                          <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+                          {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-[10px]">{o.label}</SelectItem>))}
                         </SelectContent>
                       </Select>
                       {getEffort(prompt.id) === "off" && (
@@ -1219,7 +1228,7 @@ export default function ChapterPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="max" className="text-xs">Max</SelectItem>
-                  <SelectItem value="off" className="text-xs">Alto</SelectItem>
+                  {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>))}
                 </SelectContent>
               </Select>
               {assemblyEffort === "off" && (

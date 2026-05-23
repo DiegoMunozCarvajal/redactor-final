@@ -13,6 +13,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { researchPlaceholders, fillPlaceholders } from "@/lib/ai/placeholder-fill";
+import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 
 export async function POST(
   req: NextRequest,
@@ -92,20 +93,51 @@ export async function POST(
     return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
 
-  // Phase 1: Research (silent — no streaming)
-  const searchResults = await researchPlaceholders(
+  // Phase 0: Resolve placeholders directly from project data (no LLM)
+  const { resolved, unresolved } = resolvePlaceholdersDirect(
     placeholderNames,
+    project.topic ?? null,
     chapterBrief,
-    projectDescription,
   );
 
-  // Phase 2: Generate + stream via SSE
+  // Persist direct resolutions
+  for (const [name, definition] of Object.entries(resolved)) {
+    await db
+      .update(chapterPlaceholders)
+      .set({ definition })
+      .where(
+        and(
+          eq(chapterPlaceholders.chapterId, chapterId),
+          eq(chapterPlaceholders.name, name),
+        ),
+      );
+  }
+
+  // Phase 1: Research only unresolved placeholders
+  const searchResults =
+    unresolved.length > 0
+      ? await researchPlaceholders(unresolved, chapterBrief, projectDescription)
+      : {};
+
+  // Phase 2: Generate + stream via SSE (only unresolved)
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      // Emit directly resolved placeholders first
+      for (const [name, definition] of Object.entries(resolved)) {
+        const event = { type: "placeholder" as const, name, definition, sources: [] };
+        controller.enqueue(encoder.encode(`event: placeholder\ndata: ${JSON.stringify(event)}\n\n`));
+      }
+
+      if (unresolved.length === 0) {
+        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: "done" })}\n\n`));
+        controller.close();
+        return;
+      }
+
       try {
         for await (const event of fillPlaceholders(
-          placeholderNames,
+          unresolved,
           chapterBrief,
           projectDescription,
           promptContents,

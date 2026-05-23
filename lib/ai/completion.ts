@@ -404,15 +404,20 @@ async function completeWithOpenAI<T extends z.ZodType>(
     if (!choice) throw new Error("OpenAI returned empty choices array");
     const content = normalizePlainTextContent(choice.message.content);
 
-    if (!content.trim() && choice.finish_reason === "content_filter") {
+    if (choice.finish_reason === "content_filter") {
       throw new Error(
         "OpenAI returned a content filter refusal. The prompt or generated text triggered the safety filter."
       );
     }
 
-    if (!content.trim() && choice.finish_reason === "length") {
-      throw new Error(
-        "The model output hit the token limit before it produced usable visible text. Increase max completion tokens for this call."
+    if (choice.finish_reason === "length") {
+      if (!content.trim()) {
+        throw new Error(
+          "The model output hit the token limit before it produced usable visible text. Increase max completion tokens for this call."
+        );
+      }
+      console.warn(
+        `[completion] Output truncated by token limit (${completionTokens} tokens). Content may be cut off. Consider increasing maxTokens.`
       );
     }
 
@@ -511,9 +516,14 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const textBlock = response.content.find((b) => b.type === "text");
     const content = textBlock && textBlock.type === "text" ? textBlock.text : "";
 
-    if (!content.trim() && response.stop_reason === "max_tokens") {
-      throw new Error(
-        "The model output hit the token limit before it produced usable visible text. Increase max completion tokens for this call."
+    if (response.stop_reason === "max_tokens") {
+      if (!content.trim()) {
+        throw new Error(
+          "The model output hit the token limit before it produced usable visible text. Increase max completion tokens for this call."
+        );
+      }
+      console.warn(
+        `[completion] Output truncated by max_tokens limit (${completionTokens} tokens). Content may be cut off. Consider increasing maxTokens.`
       );
     }
 

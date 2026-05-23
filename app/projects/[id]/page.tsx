@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { MODEL_OPTIONS, EFFORT_OPTIONS } from "@/lib/ai/providers";
 
 interface GenerationData {
   id: string;
@@ -43,30 +44,15 @@ interface ProjectData {
   subtitle: string | null;
   description: string | null;
   chapters: ChapterData[];
-}
-
-const MODELS = [
-  { id: "gpt-5.4", label: "GPT 5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini" },
-  { id: "gpt-5.5", label: "GPT 5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini" },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-];
-
-export default function ProjectPage() {
+}export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [editTopic, setEditTopic] = useState("");
   const [description, setDescription] = useState("");
   const [savingDescription, setSavingDescription] = useState(false);
   const [descModel, setDescModel] = useState("deepseek-v4-pro");
@@ -74,6 +60,7 @@ export default function ProjectPage() {
   const [descTemperature, setDescTemperature] = useState(0.7);
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const fetchingRef = useRef(false);
+  const pollErrorCount = useRef(0);
 
   async function fetchProject(signal?: AbortSignal) {
     try {
@@ -82,8 +69,15 @@ export default function ProjectPage() {
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
       setProject(data);
+      setError(null);
+      pollErrorCount.current = 0;
     } catch (err) {
       if (signal?.aborted) return;
+      // During polling, transient errors are retried; only set fatal error without signal
+      if (!signal) {
+        pollErrorCount.current++;
+        if (pollErrorCount.current < 3) return; // retry up to 3 times
+      }
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       if (!signal?.aborted) {
@@ -127,6 +121,21 @@ export default function ProjectPage() {
       setEditingTitle(false);
     } else {
       toast.error("Error saving title");
+    }
+  }
+
+  async function saveTopic() {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: editTopic }),
+    });
+    if (res.ok) {
+      setProject({ ...project, topic: editTopic });
+      setEditingTopic(false);
+    } else {
+      toast.error("Error saving topic");
     }
   }
 
@@ -177,10 +186,11 @@ export default function ProjectPage() {
     }
   }
 
-  // Sync description from project data when it loads/changes
+  // Sync description and topic from project data when it loads/changes
   useEffect(() => {
     if (project) {
       setDescription(project.description ?? "");
+      setEditTopic(project.topic ?? "");
     }
   }, [project?.id]);
 
@@ -271,6 +281,51 @@ export default function ProjectPage() {
         )}
       </div>
 
+      {/* Topic */}
+      <div className="mb-4">
+        <Label className="text-xs text-muted-foreground">Topic</Label>
+        {editingTopic ? (
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              value={editTopic}
+              onChange={(e) => setEditTopic(e.target.value)}
+              className="text-sm h-auto py-1"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveTopic();
+                if (e.key === "Escape") setEditingTopic(false);
+              }}
+            />
+            <Button size="icon" variant="ghost" onClick={saveTopic}>
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                setEditTopic(project?.topic ?? "");
+                setEditingTopic(false);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <p
+            className="text-sm cursor-pointer hover:text-primary/80 transition-colors mt-1"
+            onClick={() => {
+              setEditTopic(project?.topic ?? "");
+              setEditingTopic(true);
+            }}
+            title="Click to edit topic"
+          >
+            {project?.topic || (
+              <span className="text-muted-foreground italic">Click to set the book topic</span>
+            )}
+          </p>
+        )}
+      </div>
+
       {/* Description */}
       <div className="space-y-2 mb-6">
         <Label className="text-xs text-muted-foreground">Description</Label>
@@ -286,7 +341,7 @@ export default function ProjectPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MODELS.map((m) => (
+              {MODEL_OPTIONS.map((m) => (
                 <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.label}</SelectItem>
               ))}
             </SelectContent>
@@ -296,8 +351,9 @@ export default function ProjectPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-              <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+              {EFFORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-[10px]">{o.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {descEffort === "off" && (

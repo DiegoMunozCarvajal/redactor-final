@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts, chapterGenerations, fragments } from "@/lib/db/schema";
+import { projects, projectPrompts, chapterGenerations, fragments, chapterBriefs } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { withProjectLock } from "@/lib/api/rate-limit";
 import { generatePromptContent } from "@/lib/generate";
 import { getProviderForModel } from "@/lib/ai/providers";
 import { getChapterPlaceholders } from "@/lib/placeholders";
+import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(
@@ -36,11 +37,11 @@ export async function POST(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // Load the prompt
+  // Load the prompt, verifying it belongs to this project
   const [prompt] = await db
     .select()
     .from(projectPrompts)
-    .where(eq(projectPrompts.id, promptId))
+    .where(and(eq(projectPrompts.projectId, projectId), eq(projectPrompts.id, promptId)))
     .limit(1);
   if (!prompt) {
     return NextResponse.json({ error: "prompt not found" }, { status: 404 });
@@ -48,7 +49,11 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
-  const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
+  const temperature = typeof body.temperature === "number" && body.temperature >= 0 && body.temperature <= 1 ? body.temperature : undefined;
+
+  if (body.temperature !== undefined && (typeof body.temperature !== "number" || body.temperature < 0 || body.temperature > 1)) {
+    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
+  }
 
   let generationId: string | undefined;
 
@@ -68,17 +73,25 @@ export async function POST(
       .values({
         projectId,
         chapterId: prompt.chapterId,
-        status: "generating",
+        status: "pending",
       })
       .returning();
     generationId = gen.id;
 
     try {
-      const placeholders = await getChapterPlaceholders(prompt.chapterId);
+      const placeholders = await getChapterPlaceholders(prompt.chapterId, project.topic);
+
+      const [brief] = await db
+        .select({ content: chapterBriefs.content })
+        .from(chapterBriefs)
+        .where(eq(chapterBriefs.chapterId, prompt.chapterId))
+        .limit(1);
 
       const result = await generatePromptContent({
         prompt,
         placeholders,
+        chapterBrief: brief?.content ?? undefined,
+        projectTopic: project.topic,
         ...(model ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
       });
@@ -105,8 +118,7 @@ export async function POST(
 
       return { generationId: gen.id, fragment };
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message.slice(0, 500) : "Unknown error";
+      const message = sanitizeError(err);
       await db
         .update(chapterGenerations)
         .set({ status: "failed", error: message })

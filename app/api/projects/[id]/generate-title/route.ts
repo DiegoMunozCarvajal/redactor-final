@@ -56,7 +56,7 @@ export async function POST(
       .limit(1);
 
     const placeholders = firstChapter
-      ? await getChapterPlaceholders(firstChapter.id)
+      ? await getChapterPlaceholders(firstChapter.id, project.topic)
       : {};
 
     const result = await generatePromptContent({
@@ -65,6 +65,7 @@ export async function POST(
           'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
       },
       placeholders,
+      projectTopic: project.topic,
     });
 
     let title = "";

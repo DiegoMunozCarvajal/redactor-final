@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, projectPrompts, chapterBriefs } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generateChapterAssembly } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
+import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(
@@ -45,7 +46,13 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const fragmentIds: string[] = body.fragmentIds ?? [];
   const model = body.model as string | undefined;
-  const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
+  const temperatureRaw = body.temperature;
+  const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
+  const effort = body.effort as "off" | "max" | undefined;
+
+  if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
+    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
+  }
 
   if (!Array.isArray(fragmentIds) || fragmentIds.length === 0) {
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
@@ -101,7 +108,7 @@ export async function POST(
     // so the check doesn't count this request's own record.
     const [gen] = await db
       .insert(chapterGenerations)
-      .values({ projectId, chapterId, status: "generating" })
+      .values({ projectId, chapterId, status: "pending" })
       .returning();
     generationId = gen.id;
 
@@ -110,7 +117,13 @@ export async function POST(
         content: f.content ?? "",
       }));
 
-      const placeholders = await getChapterPlaceholders(chapterId);
+      const placeholders = await getChapterPlaceholders(chapterId, project.topic);
+
+      const [brief] = await db
+        .select({ content: chapterBriefs.content })
+        .from(chapterBriefs)
+        .where(eq(chapterBriefs.chapterId, chapterId))
+        .limit(1);
 
       const assembled = await generateChapterAssembly(
         assemblyPrompt,
@@ -118,6 +131,9 @@ export async function POST(
         placeholders,
         model,
         temperature,
+        effort,
+        undefined,
+        brief?.content ?? undefined,
       );
 
       await db
@@ -131,8 +147,7 @@ export async function POST(
 
       return { generationId: gen.id, assembledContent: assembled.text };
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message.slice(0, 500) : "Unknown error";
+      const message = sanitizeError(err);
       await db
         .update(chapterGenerations)
         .set({ status: "failed", error: message })

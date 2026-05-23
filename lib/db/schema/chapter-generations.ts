@@ -3,7 +3,9 @@ import { projects } from "./projects";
 import { chapters } from "./chapters";
 
 export const generationStatusEnum = pgEnum("generation_status", [
+  "pending",
   "generating",
+  "assembling",
   "completed",
   "failed",
 ]);
@@ -18,7 +20,7 @@ export const chapterGenerations = pgTable(
     chapterId: uuid("chapter_id")
       .notNull()
       .references(() => chapters.id, { onDelete: "cascade" }),
-    status: generationStatusEnum("status").notNull().default("generating"),
+    status: generationStatusEnum("status").notNull().default("pending"),
     assembledContent: text("assembled_content"),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

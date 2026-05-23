@@ -140,6 +140,14 @@ export function getModelPricing(modelId: string): { input: number; output: numbe
   return { input: def.pricing.input / 1_000_000, output: def.pricing.output / 1_000_000 };
 }
 
+/** Flat { id, label } list for UI dropdowns — derived from AVAILABLE_MODELS */
+export const MODEL_OPTIONS = AVAILABLE_MODELS.map((m) => ({ id: m.id, label: m.label }));
+
+export const EFFORT_OPTIONS = [
+  { value: "max", label: "Max" },
+  { value: "off", label: "Apagado" },
+] as const;
+
 /**
  * Models suitable for each pipeline stage.
  * Used to filter the UI dropdowns.

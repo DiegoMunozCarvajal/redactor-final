@@ -13,10 +13,6 @@ export interface PlaceholderFillEvent {
   error?: string;
 }
 
-// Fast model for research decisions — same as DEFAULT_GENERATION_MODEL for now;
-// swap to a cheaper provider when one becomes available.
-const RESEARCH_MODEL = "deepseek-v4-flash";
-
 // Default model for generation if none specified
 const DEFAULT_MODEL = DEFAULT_GENERATION_MODEL;
 
@@ -39,36 +35,39 @@ function extractJson(text: string): unknown {
   throw new Error("Could not parse JSON from response");
 }
 
-const RESEARCH_DECISION_PROMPT = `You are a research planner. Given:
-1. A project description
-2. A chapter brief
-3. A list of placeholder names
+const RESEARCH_DECISION_PROMPT = `Eres un planificador de investigación. Dado:
+1. Una descripción de proyecto
+2. Un brief de capítulo
+3. Una lista de nombres de placeholder (todos factuales — los estilísticos ya fueron resueltos)
 
-For each placeholder, decide whether it needs web research to fill accurately.
-Return a JSON array of placeholder names that need research. Only include ones where factual accuracy matters (e.g., sources, papers, studies, historical facts, data points). Skip ones that are purely stylistic (e.g., tone, audience description, voice).
+Para cada placeholder, decide si necesita búsqueda web o puede inferirse del contexto.
+Devuelve un array JSON con los nombres que NECESITAN búsqueda web. Solo incluye aquellos donde la verificación factual externa agregue valor (ej. estudios específicos, papers, eventos históricos, estadísticas, expertos nombrados). Omite los que pueden definirse con confianza desde el brief del capítulo y la descripción del proyecto (ej. elegir un caso de estudio relevante, un ejemplo conocido).
 
-Example:
-Placeholders: ["TEMA_DEL_LIBRO", "TONO_DEL_LIBRO", "FUENTE_O_PAPER_BASE", "LECTOR_OBJETIVO"]
-Return: ["TEMA_DEL_LIBRO", "FUENTE_O_PAPER_BASE"]`;
+Ejemplo:
+Placeholders: ["FUENTE_PRINCIPAL", "EJEMPLO_HISTORICO", "ESTUDIO_CLAVE"]
+Resultado: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
+(Razón: EJEMPLO_HISTORICO puede elegirse del conocimiento general; los otros requieren citas específicas)`;
 
-const FILL_SYSTEM_PROMPT = `You are an expert book researcher and ghostwriter. Your task is to define placeholder values for a book chapter.
+const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu tarea es definir los valores de placeholders factuales para el capítulo de un libro.
 
-## Input
-- Project description: what the book is about
-- Chapter brief: what this specific chapter covers
-- Placeholder names: the {placeholders} that need definitions
-- Research results: web search findings for factual placeholders (if any)
+## Entrada
+- Descripción del proyecto: de qué trata el libro
+- Brief del capítulo: qué cubre este capítulo específico
+- Nombres de placeholders: los {placeholders} que necesitan definición (todos factuales)
+- Resultados de búsqueda: hallazgos de búsqueda web para placeholders investigados (si los hay)
 
-## Instructions
-1. Define each placeholder with a concise, research-backed value
-2. Use the research results when available for factual placeholders
-3. Each definition should be 1-3 sentences, specific and actionable
-4. Align with the chapter brief and project description
-5. Output ONLY valid JSON: {"placeholders": {"NAME": "definition", ...}}
+## Instrucciones
+1. Define cada placeholder con un valor conciso y específico, respaldado por los resultados de búsqueda cuando estén disponibles
+2. Para placeholders CON resultados de búsqueda: cita nombres, fechas, instituciones o datos específicos de las fuentes proporcionadas
+3. Para placeholders SIN resultados de búsqueda: elige el ejemplo, caso o referencia más relevante y específico que encaje con el brief del capítulo
+4. Cada definición debe ser de 1-3 oraciones, específica y directamente usable en un párrafo del libro (no una meta-descripción de qué es el placeholder)
+5. Alinea cada definición con el alcance del brief del capítulo y la descripción del proyecto
+6. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
 
-## Example
-Input placeholders: ["TEMA_DEL_LIBRO", "TONO_DEL_LIBRO"]
-Output: {"placeholders": {"TEMA_DEL_LIBRO": "Atomic habits and behavior change through systems thinking", "TONO_DEL_LIBRO": "Practical, authoritative but warm, backed by research"}}`;
+## Ejemplo
+Placeholders: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
+Resultados de búsqueda: un paper de PNAS 2018 por Milkman et al. sobre nudges de vacunación
+Respuesta: {"placeholders": {"FUENTE_PRINCIPAL": "El estudio de 2018 publicado en PNAS por Katherine Milkman y colegas de la Universidad de Pennsylvania, que demostró que los recordatorios de planificación aumentaron las tasas de vacunación contra la gripe en 4.2 puntos porcentuales entre 37,000 empleados", "ESTUDIO_CLAVE": "Un ensayo controlado aleatorizado publicado en The Lancet Digital Health (2021) que mostró que los recordatorios personalizados por mensaje de texto mejoraron la adherencia a la medicación en un 14% entre pacientes hipertensos durante 12 meses"}}`;
 
 export async function researchPlaceholders(
   placeholderNames: string[],
@@ -83,7 +82,7 @@ export async function researchPlaceholders(
   let needsResearch: string[] = [];
   try {
     const decision = await generateCompletion({
-      model: RESEARCH_MODEL,
+      model: DEFAULT_GENERATION_MODEL,
       systemPrompt: "",
       userPrompt: decisionPrompt,
     });
@@ -241,7 +240,14 @@ export async function fillSinglePlaceholder(
 
   const systemPrompt =
     customSystemPrompt ||
-    `You are an expert book researcher. Define this single placeholder with a concise, research-backed value that fits the chapter. Output ONLY: {"definition": "..."}`;
+    `Eres un investigador experto en libros. Define este placeholder con un valor conciso y específico que encaje en el capítulo.
+
+Reglas:
+- Si hay resultados de búsqueda, cita nombres, fechas, instituciones o datos específicos de las fuentes
+- Si no hay resultados de búsqueda, elige el ejemplo, caso o referencia más relevante y específico que encaje con el brief del capítulo
+- La definición debe ser de 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
+- Alinea la definición con el alcance del brief del capítulo y la descripción del proyecto
+- Responde ÚNICAMENTE: {"definition": "..."}`;
 
   const userPrompt = `## Project Description\n${projectDescription || "(none)"}
 

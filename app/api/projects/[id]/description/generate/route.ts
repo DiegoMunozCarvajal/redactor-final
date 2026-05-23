@@ -6,7 +6,28 @@ import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 
-const DESCRIPTION_PROMPT = `You are a book editor. Based on the book's name, write a concise 2-4 sentence description of what the book is about. The description should be specific, informative, and written in Spanish. Output ONLY the description text, no JSON wrapper, no labels.`;
+const DESCRIPTION_SYSTEM = `Eres un editor senior especializado en libros de no-ficción en español. Tu trabajo es escribir descripciones de libros que capturan la atención del lector correcto.
+
+Reglas estructurales:
+- 2-4 oraciones. No más de 80 palabras en total.
+- Primera oración: el problema que resuelve o la pregunta que responde el libro
+- Segunda oración: el enfoque único, metodología o ángulo del libro
+- Tercera oración: el lector ideal y el resultado que obtiene
+- Cuarta oración (opcional): diferenciador frente a otros enfoques del mismo tema
+
+Reglas de estilo:
+- Prohibido: adjetivos vacíos ("revolucionario", "innovador", "imprescindible", "fascinante")
+- Prohibido: empezar con "Este libro..." o "En este libro..."
+- Prohibido: clichés ("en la era digital", "en un mundo cada vez más...")
+- Obligatorio: incluir al menos un concepto concreto del tema (no generalidades)
+
+Ejemplo de buena descripción:
+"¿Por qué algunas ideas sobreviven y otras mueren? Made to Stick analiza seis principios que hacen que una idea sea memorable — desde la simplicidad hasta la emoción — usando casos reales como las leyendas urbanas de robos de riñones y la campaña de Subway. Para comunicadores, marketers y cualquiera que necesite que su mensaje se grabe en la mente de su audiencia."
+
+Ejemplo de mala descripción (NO hagas esto):
+"Este libro revolucionario explora el fascinante mundo de la comunicación efectiva, ofreciendo herramientas innovadoras para transmitir ideas de manera impactante en un mundo cada vez más conectado."
+
+Responde ÚNICAMENTE con la descripción. Sin comillas, sin etiquetas, sin JSON, sin introducción.`;
 
 export async function POST(
   req: NextRequest,
@@ -44,12 +65,19 @@ export async function POST(
   }
 
   const bookName = project.title ?? project.name;
-  const userPrompt = `Book name: ${bookName}\n\nWrite a concise 2-4 sentence description of this book in Spanish.`;
+
+  const userPrompt = `Escribe la descripción para este libro:
+
+## Datos del libro
+- Nombre: ${bookName}
+- Tema: ${project.topic || "(no definido)"}
+
+Escribe una descripción de 2-4 oraciones en español.`;
 
   try {
     const result = await generateCompletion({
       model: model || "deepseek-v4-flash",
-      systemPrompt: DESCRIPTION_PROMPT,
+      systemPrompt: DESCRIPTION_SYSTEM,
       userPrompt,
       ...(effort ? { effort } : {}),
       ...(temperature !== undefined ? { temperature } : {}),

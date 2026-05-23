@@ -48,11 +48,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, bookTemplateId } = body;
+  const { name, topic, bookTemplateId } = body;
 
   // Server-side validation
   if (typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
+  }
+  if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
+    return NextResponse.json({ error: "topic must be a string of 500 characters or less" }, { status: 400 });
   }
 
   let project: typeof projects.$inferSelect;
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     project = await db.transaction(async (tx) => {
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, bookTemplateId: bookTemplateId ?? null })
+        .values({ userId: user.id, name, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters
@@ -127,6 +130,20 @@ export async function POST(req: NextRequest) {
                 .values({ chapterId: projectChapterId, name: ph.name })
                 .onConflictDoNothing();
             }
+          }
+        }
+
+        // Backfill {tema} placeholder from project topic for all new project chapters
+        if (p.topic) {
+          const projectChapterIds = [...chapterIdMap.values()];
+          for (const projectChapterId of projectChapterIds) {
+            await tx
+              .insert(chapterPlaceholders)
+              .values({ chapterId: projectChapterId, name: "tema", definition: p.topic })
+              .onConflictDoUpdate({
+                target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
+                set: { definition: p.topic },
+              });
           }
         }
       }

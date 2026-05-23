@@ -1,5 +1,4 @@
 import { task } from "@trigger.dev/sdk";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   chapterGenerations,
@@ -7,18 +6,12 @@ import {
   fragments,
   projects,
   chapters,
+  chapterBriefs,
 } from "@/lib/db/schema";
-import { eq, asc, and, isNull } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssembly } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
-import { withProjectLock } from "@/lib/api/rate-limit";
-
 import { sanitizeError } from "@/lib/sanitize-error";
-
-const titleResponseSchema = z.object({
-  title: z.string().min(1),
-  subtitle: z.string().optional(),
-});
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -42,6 +35,14 @@ export const generateChapter = task({
     // Idempotency guard — if already completed, skip
     if (gen.status === "completed") {
       return;
+    }
+
+    // Transition pending → generating
+    if (gen.status === "pending") {
+      await db
+        .update(chapterGenerations)
+        .set({ status: "generating" })
+        .where(eq(chapterGenerations.id, generationId));
     }
 
     // If fragments already exist (partial retry), clean them up before regenerating
@@ -93,12 +94,21 @@ export const generateChapter = task({
 
     try {
       // Generate each content fragment
-      const placeholders = await getChapterPlaceholders(gen.chapterId);
+      const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
+
+      // Load chapter brief for context
+      const [brief] = await db
+        .select({ content: chapterBriefs.content })
+        .from(chapterBriefs)
+        .where(eq(chapterBriefs.chapterId, gen.chapterId))
+        .limit(1);
 
       for (const prompt of contentPrompts) {
         const result = await generatePromptContent({
           prompt,
           placeholders,
+          chapterBrief: brief?.content ?? undefined,
+          projectTopic: project.topic,
           ...(model ? { model } : {}),
           ...(temperature !== undefined ? { temperature } : {}),
           ...(effort !== undefined ? { effort } : {}),
@@ -125,6 +135,12 @@ export const generateChapter = task({
         });
       }
 
+      // Transition generating → assembling
+      await db
+        .update(chapterGenerations)
+        .set({ status: "assembling" })
+        .where(eq(chapterGenerations.id, generationId));
+
       // Assemble chapter
       if (assemblyPrompt && fragmentContents.length > 0) {
         const assembled = await generateChapterAssembly(
@@ -134,6 +150,8 @@ export const generateChapter = task({
           model,
           temperature,
           effort,
+          undefined,
+          brief?.content ?? undefined,
         );
 
         await db
@@ -154,77 +172,6 @@ export const generateChapter = task({
           .where(eq(chapterGenerations.id, generationId));
       }
 
-      // Auto-generate title if all chapters completed and no title set
-      const allChapters = await db
-        .select()
-        .from(chapters)
-        .where(eq(chapters.projectId, projectId))
-        .orderBy(asc(chapters.position));
-
-      const completedGens = await db
-        .select()
-        .from(chapterGenerations)
-        .where(
-          and(
-            eq(chapterGenerations.projectId, projectId),
-            eq(chapterGenerations.status, "completed"),
-          ),
-        );
-
-      const chapterIds = allChapters.map(c => c.id);
-      const completedChapterIds = new Set(completedGens.map(g => g.chapterId));
-      const allChaptersHaveCompletedGen = chapterIds.every(id => completedChapterIds.has(id));
-
-      if (allChaptersHaveCompletedGen && !project.title) {
-        // Wrap in advisory lock to prevent concurrent title generation.
-        // Two parallel chapter completions could both see !project.title and
-        // both call generatePromptContent — the lock ensures only one wins.
-        const lockResult = await withProjectLock(projectId, async () => {
-          // Re-read title inside lock: another task may have set it while we waited
-          const [fresh] = await db
-            .select({ title: projects.title })
-            .from(projects)
-            .where(eq(projects.id, projectId))
-            .limit(1);
-          if (fresh?.title) return null;
-
-          const titleResult = await generatePromptContent({
-            prompt: {
-              content:
-                'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
-            },
-            placeholders,
-            ...(model ? { model } : {}),
-            ...(effort !== undefined ? { effort } : {}),
-          });
-          let title = "";
-          let subtitle = "";
-          try {
-            const parsed = titleResponseSchema.parse(JSON.parse(titleResult.text));
-            title = parsed.title;
-            subtitle = parsed.subtitle ?? "";
-          } catch (err) {
-            console.error(
-              "[generate-chapter] Failed to parse title JSON:",
-              err instanceof Error ? err.message : "Unknown error",
-            );
-          }
-
-          if (title) {
-            await db
-              .update(projects)
-              .set({ title, subtitle: subtitle || null })
-              .where(eq(projects.id, projectId));
-          }
-          return title;
-        });
-
-        if (!lockResult.locked) {
-          console.warn(
-            "[generate-chapter] Could not acquire advisory lock for title generation — will retry on next chapter completion",
-          );
-        }
-      }
     } catch (err) {
       const message = sanitizeError(err);
       await db

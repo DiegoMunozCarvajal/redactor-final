@@ -3,16 +3,38 @@ import { db } from "@/lib/db";
 import {
   projects,
   chapters,
-  projectPrompts,
   chapterBriefs,
   chapterConfigPrompts,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { csrfCheck } from "@/lib/api/csrf";
 
-const DEFAULT_BRIEF_PROMPT = `Eres un editor de libros. Basándote en el título del capítulo, los prompts de contenido y la descripción del proyecto, escribe un brief de 2-3 oraciones en español describiendo el alcance del capítulo, el lector objetivo y el resultado esperado. Sé específico y conciso. Responde ÚNICAMENTE con el texto del brief, sin envoltura JSON.`;
+const DEFAULT_BRIEF_PROMPT = `Eres un editor senior de no-ficción en español. Tu trabajo es escribir el brief de un capítulo que guiará a otro escritor AI para redactar con precisión.
+
+El brief debe tener exactamente 3 partes, una oración cada una:
+
+1. ALCANCE: qué cubre el capítulo — conceptos, ideas o habilidades específicas que debe transmitir. Nada genérico. Menciona al menos un concepto concreto del capítulo.
+
+2. LECTOR: para quién se escribe — qué sabe ya, qué necesita saber, qué nivel de familiaridad tiene con el tema.
+
+3. RESULTADO: qué debe saber/hacer/pensar el lector al terminar — el takeaway concreto, no "entenderá X" vago sino "podrá aplicar X en situación Y".
+
+Reglas de estilo:
+- Prohibido: adjetivos vacíos ("integral", "profundo", "completo")
+- Prohibido: "Este capítulo explora/examina/presenta..." (muletilla)
+- Prohibido: mencionar prompts, fragmentos o aspectos técnicos de la generación (el lector del brief es otro sistema, no el usuario final)
+- Cada oración debe aportar información distinta. Sin redundancia.
+- Usar lenguaje concreto, no abstracto.
+
+Ejemplo de buen brief:
+"Este capítulo desglosa los seis principios de sticky ideas — simplicidad, concreción, credibilidad, emociones, historias y lo inesperado — con ejemplos del mundo publicitario y el periodismo. Está escrito para profesionales de comunicación que ya dominan conceptos básicos de marketing pero buscan un marco sistemático para evaluar y mejorar sus mensajes. Al terminar, el lector podrá auditar cualquier pieza de comunicación usando la checklist SUCCESs e identificar exactamente qué principio falta y cómo incorporarlo."
+
+Ejemplo de mal brief (NO hagas esto):
+"Este capítulo explora los principios fundamentales de la comunicación efectiva, ofreciendo una visión integral de las estrategias más importantes para transmitir ideas. Está diseñado para un público amplio interesado en mejorar sus habilidades comunicativas. Al finalizar, el lector tendrá una comprensión más profunda de cómo comunicar mejor."
+
+Responde ÚNICAMENTE con el brief. Sin etiquetas, sin JSON, sin comillas.`;
 
 export async function POST(
   req: NextRequest,
@@ -58,18 +80,6 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
-  // Load prompts for context
-  const promptList = await db
-    .select({ title: projectPrompts.title, content: projectPrompts.content })
-    .from(projectPrompts)
-    .where(
-      and(
-        eq(projectPrompts.projectId, id),
-        eq(projectPrompts.chapterId, chapterId),
-      ),
-    )
-    .orderBy(asc(projectPrompts.position));
-
   // Load custom system prompt if exists
   const [config] = await db
     .select()
@@ -83,20 +93,15 @@ export async function POST(
 
   const systemPrompt = config?.content || DEFAULT_BRIEF_PROMPT;
 
-  const userPrompt = `## Project
-Name: ${(project.title ?? project.name) || "(unnamed)"}
-Topic: ${project.topic || "(none)"}
-Description: ${project.description || "(none)"}
+  const userPrompt = `## Proyecto
+- Nombre: ${(project.title ?? project.name) || "(unnamed)"}
+- Tema: ${project.topic || "(no definido)"}
+- Descripción: ${project.description || "(no definida)"}
 
-## Chapter Prompts
-${promptList
-    .map(
-      (p, i) =>
-        `### ${p.title}\n${p.content.slice(0, 300)}${p.content.length > 300 ? "..." : ""}`,
-    )
-    .join("\n\n")}
+## Capítulo
+- Título: ${chapter.title}
 
-Escribe un brief de 2-3 oraciones en español.`;
+Escribe el brief de este capítulo en 3 oraciones: alcance, lector, resultado.`;
 
   let briefContent: string;
   try {

@@ -28,29 +28,29 @@ pnpm trigger:deploy   # Deploy Trigger.dev tasks
 ### Core Data Model
 
 ```
-book_templates ──< chapters ──< prompts (9 per chapter: 8 content + 1 assembly)
-projects ──< runs ──< chapter_runs ──< fragments
+book_templates ──< chapters ──< prompts (8 content + 1 assembly per chapter)
+projects ──< chapter_generations ──< fragments
 ```
 
 - **book_templates**: A book structure — name + description. Admin creates via UI.
-- **chapters**: Belongs to a template, ordered by `position`.
-- **prompts**: Each prompt has `type` (apertura, modelo, contraste, amplificacion, anécdota, acumulación, proceso, cierre, ensamblaje), `content` with `[TEMA]` placeholder, `styleRules`, `knowledgeAreas`, `suggestedLength`. Stored in DB — not code. Admin edits via `/admin/books/`.
-- **projects**: A user's book instance — has `topic` (replaces `[TEMA]`) and links to a `book_template`.
-- **runs**: A generation execution. Status: pending → running → completed/failed.
-- **chapter_runs**: Tracks generation per chapter. Status: pending → generating_fragments → assembling → completed/failed.
-- **fragments**: Individual AI responses for each prompt in a chapter run.
+- **chapters**: Belongs to a template or project, ordered by `position`. Has CHECK constraint: `book_template_id IS NOT NULL OR project_id IS NOT NULL`.
+- **prompts**: Template-level prompts. Each has `isAssembly` boolean (true = assembly prompt, false = content prompt), `content` with `{tema}` placeholder, `styleRules`, `knowledgeAreas`, `suggestedLength`. Stored in DB — not code. Admin edits via `/admin/books/`.
+- **projectPrompts**: Project-scoped copies of template prompts. Created when a template is applied to a project.
+- **projects**: A user's book instance — has `topic` (replaces `{tema}` placeholder) and links to a `book_template`.
+- **chapterGenerations**: Per-chapter generation execution. Status: pending → generating → assembling → completed/failed. Created per-chapter, not per-book.
+- **fragments**: Individual AI responses for each prompt in a chapter generation.
+- **chapterPlaceholders**: Dynamic `{name}` tokens extracted from prompts, with optional AI-filled definitions. Unique per (chapterId, name).
 
-### Book Generation Pipeline (`trigger/generate-book.ts`)
+### Book Generation Pipeline
 
-Trigger.dev job orchestrated by `generateBook` task:
+Per-chapter generation triggered via `trigger/generate-chapter.ts` (Trigger.dev task):
 
-1. Load run + project + chapters with their prompts
-2. For each chapter: generate 8 content fragments sequentially via `generatePromptContent()`
-3. Then run the assembly prompt (type=ensamblaje) with all 8 fragments via `generateChapterAssembly()`
-4. After all chapters: generate book title
-5. Mark run completed; on error, mark failed
+1. API route creates a `chapterGeneration` row with status `pending`, triggers `generateChapter` task
+2. Task transitions pending → generating, then generates content fragments for non-assembly prompts sequentially via `generatePromptContent()`
+3. After all content fragments: transitions generating → assembling, runs the assembly prompt with all fragments via `generateChapterAssembly()`
+4. Marks generation completed; on error, marks failed
 
-The `[TEMA]` placeholder is replaced with `project.topic` before each prompt is sent.
+No book-level orchestrator — each chapter is triggered individually from the UI or API. The `{tema}` placeholder (and other `{name}` tokens) are resolved from `chapterPlaceholders` definitions, with `project.topic` as fallback when the `tema` definition is NULL.
 
 ### AI Layer (`lib/ai/`)
 
@@ -73,8 +73,8 @@ Two layers: PostgreSQL advisory lock per project (serializes same-project runs a
 
 ### UI
 
-- **Admin** (`/admin/books/`): Prompt editor UI. Edit book templates, chapters, and individual prompts with `[TEMA]` placeholder insertion.
-- **Projects** (`/projects/`): User dashboard. Create projects, start generation, view run progress with polling (3s interval while running).
+- **Admin** (`/admin/books/`): Prompt editor UI. Edit book templates, chapters, and individual prompts with `{tema}` placeholder insertion.
+- **Projects** (`/projects/`): User dashboard. Create projects, start generation, view chapter generation progress with polling (3s interval while running).
 - **Auth** (`/login`, `/signup`, etc.): Copied from redactor-v2.
 - **Components**: shadcn/ui + Radix primitives in `components/ui/`. Custom components in `components/prompts/` and `components/projects/`.
 

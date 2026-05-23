@@ -39,6 +39,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
   const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
+  const effort = body.effort as "off" | "max" | undefined;
 
   // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two
@@ -50,7 +51,7 @@ export async function POST(
   const lockResult = await withProjectLock(projectId, async () => {
     const [row] = await db
       .insert(chapterGenerations)
-      .values({ projectId, chapterId, status: "generating" })
+      .values({ projectId, chapterId, status: "pending" })
       .returning();
     gen = row;
     const rateCheck = await checkProjectRateLimit(projectId);
@@ -67,6 +68,7 @@ export async function POST(
         projectId,
         ...(model ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
+        ...(effort !== undefined ? { effort } : {}),
       });
       return gen;
     } catch (err) {
