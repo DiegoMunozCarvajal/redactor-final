@@ -22,6 +22,15 @@ export async function withProjectLock<T>(
   // Reserve a dedicated connection so the advisory lock binds to a distinct
   // PostgreSQL session. Without this, max:1 pools share a single session and
   // pg_try_advisory_lock is reentrant — two requests would both "acquire" it.
+  //
+  // Trade-off: each call grabs a dedicated connection from the pool (max 10
+  // in production). Under high concurrency, many callers waiting on the same
+  // project lock could exhaust the pool. This is acceptable because:
+  // 1. Same-project calls are serialized by the advisory lock itself.
+  // 2. Cross-project calls use different lock keys and don't contend.
+  // 3. Realistic concurrency is low (one user, one project at a time).
+  // If pool exhaustion becomes an issue, either increase the pool max or use
+  // a separate pool instance for advisory lock operations.
   const reserved = await client.reserve();
 
   const [row] = await reserved.unsafe(

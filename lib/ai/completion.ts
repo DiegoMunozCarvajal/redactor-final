@@ -265,7 +265,10 @@ function getErrorMessage(error: unknown): string {
 // Provider-specific completion handlers
 // ---------------------------------------------------------------------------
 
-const OPENAI_FIXED_TEMPERATURE_MODELS = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
+// Models that reject the `temperature` parameter entirely (legacy reasoning models).
+// This is distinct from ModelDefinition.fixedTemperature, which locks temperature
+// to a specific value only when reasoning is active.
+const MODELS_WITHOUT_TEMPERATURE_SUPPORT = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
 
 // ---------------------------------------------------------------------------
 // Reasoning effort → provider-specific mappings
@@ -323,7 +326,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
 ): Promise<ProviderResult<z.infer<T>>> {
   const openaiClient = client ?? getOpenAIClient();
   const modelDef = requireModelDefinition(model);
-  const supportsTemperature = !OPENAI_FIXED_TEMPERATURE_MODELS.has(model);
+  const supportsTemperature = !MODELS_WITHOUT_TEMPERATURE_SUPPORT.has(model);
 
   // Reasoning models (GPT-5.x) only support temperature=1 when reasoning_effort is active.
   // GPT-5.5 defaults to medium reasoning, GPT-5.4 defaults to none.
@@ -836,6 +839,10 @@ export async function generateCompletion<T extends z.ZodType>(
       durationMs,
     };
   } catch (error) {
+    console.error(
+      "[generateCompletion] Unexpected error:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
     throw error;
   }
 }

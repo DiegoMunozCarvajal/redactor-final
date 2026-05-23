@@ -7,6 +7,8 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth/admin";
 
+// GET is intentionally open to all authenticated users — templates must be
+// browsable so users can select one when creating a project.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

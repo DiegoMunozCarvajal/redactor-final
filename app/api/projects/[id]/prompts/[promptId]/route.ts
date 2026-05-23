@@ -4,11 +4,15 @@ import { projects, projectPrompts, promptVersions, fragments } from "@/lib/db/sc
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
+import { csrfCheck } from "@/lib/api/csrf";
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; promptId: string }> },
 ) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -41,7 +45,7 @@ export async function PUT(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { title, content, position, isAssembly } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
@@ -81,9 +85,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; promptId: string }> },
 ) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
   const supabase = await createClient();
   const {
     data: { user },

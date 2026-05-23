@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicEnv, SupabaseConfigurationError } from "@/lib/auth/supabase-config";
 import type { UserResponse } from "@supabase/supabase-js";
 
+// ---------------------------------------------------------------------------
+// Auth deduplication
+// ---------------------------------------------------------------------------
+
 // Deduplicate concurrent getUser() calls across requests to prevent
 // single-use refresh token race conditions.
 // Supabase refresh tokens can only be used once. When multiple requests
@@ -12,6 +16,7 @@ import type { UserResponse } from "@supabase/supabase-js";
 // This map ensures only one refresh is in flight per session at a time.
 const MAX_INFLIGHT = 500;
 const inFlightRefresh = new Map<string, Promise<UserResponse>>();
+const lastAccess = new Map<string, number>();
 
 async function dedupedGetUser(
   supabase: ReturnType<typeof createServerClient>,
@@ -19,6 +24,7 @@ async function dedupedGetUser(
 ): Promise<UserResponse> {
   const existing = inFlightRefresh.get(refreshTokenHint);
   if (existing) {
+    lastAccess.set(refreshTokenHint, Date.now());
     try {
       return await existing;
     } catch {
@@ -27,15 +33,18 @@ async function dedupedGetUser(
   }
 
   const promise = supabase.auth.getUser();
-  // Prune oldest entries if map grows too large
+  // Prune oldest entries if map grows too large (LRU-style eviction)
   if (inFlightRefresh.size >= MAX_INFLIGHT) {
-    const keys = inFlightRefresh.keys();
-    // Evict roughly 10% of entries
-    for (let i = 0; i < Math.floor(MAX_INFLIGHT / 10); i++) {
-      const { value: key } = keys.next();
-      if (key) inFlightRefresh.delete(key);
+    const sorted = [...lastAccess.entries()].sort(([, a], [, b]) => a - b);
+    // Evict oldest 10%
+    const toEvict = Math.floor(MAX_INFLIGHT / 10);
+    for (let i = 0; i < toEvict && i < sorted.length; i++) {
+      const [key] = sorted[i];
+      inFlightRefresh.delete(key);
+      lastAccess.delete(key);
     }
   }
+  lastAccess.set(refreshTokenHint, Date.now());
   inFlightRefresh.set(refreshTokenHint, promise);
 
   try {
@@ -44,9 +53,20 @@ async function dedupedGetUser(
   } finally {
     if (inFlightRefresh.get(refreshTokenHint) === promise) {
       inFlightRefresh.delete(refreshTokenHint);
+      lastAccess.delete(refreshTokenHint);
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Route configuration
+// ---------------------------------------------------------------------------
+
+const publicPaths = new Set(["/login", "/forgot-password", "/reset-password", "/callback"]);
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -55,13 +75,7 @@ export async function middleware(request: NextRequest) {
   const supabaseConfig = getSupabasePublicEnv();
 
   if (!supabaseConfig) {
-    const error = new SupabaseConfigurationError(
-      "Authentication middleware",
-      ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"].filter(
-        (key) => !process.env[key],
-      ),
-    );
-    console.error(error.message);
+    console.error("Authentication middleware: missing Supabase environment variables");
     return new NextResponse("Service Unavailable", {
       status: 503,
       headers: {
@@ -108,8 +122,6 @@ export async function middleware(request: NextRequest) {
   } = await dedupedGetUser(supabase, refreshTokenHint);
 
   // If not authenticated and not on an auth page, redirect to login
-  // /signup removed — account creation disabled. Create accounts via DB insert only.
-  const publicPaths = new Set(["/login", "/forgot-password", "/reset-password", "/callback"]);
   if (
     !user &&
     !publicPaths.has(request.nextUrl.pathname)
@@ -124,15 +136,28 @@ export async function middleware(request: NextRequest) {
 
   // Add Content-Security-Policy header
   const isProduction = process.env.NODE_ENV === "production";
+  const supabaseUrlCsp = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://*.supabase.co";
+  const connectSrc = [
+    "'self'",
+    supabaseUrlCsp,
+    "https://api.anthropic.com",
+    "https://api.openai.com",
+    "https://generativelanguage.googleapis.com",
+    "https://api.deepseek.com",
+    "https://api.trigger.dev",
+    "https://api.exa.ai",
+    "https://api.tavily.com",
+    "https://api.cohere.com",
+  ].join(" ");
   const csp = [
     "default-src 'self'",
     isProduction
-      ? "script-src 'self' 'unsafe-inline'"
+      ? "script-src 'self'"
       : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self'",
-    "connect-src 'self' https:", // API calls
+    `connect-src ${connectSrc}`,
     "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

@@ -9,27 +9,16 @@ import {
   chapters,
 } from "@/lib/db/schema";
 import { eq, asc, and, isNull } from "drizzle-orm";
-import {
-  generatePromptContent,
-  generateChapterAssembly,
-} from "@/lib/generate";
+import { generatePromptContent, generateChapterAssembly } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
+import { withProjectLock } from "@/lib/api/rate-limit";
+
+import { sanitizeError } from "@/lib/sanitize-error";
 
 const titleResponseSchema = z.object({
   title: z.string().min(1),
   subtitle: z.string().optional(),
 });
-
-export function sanitizeError(err: unknown): string {
-  const message = err instanceof Error ? err.message : "Unknown error";
-  // Redact common secret patterns before truncation
-  const redacted = message
-    .replace(/sk-[a-zA-Z0-9]{24,}/g, "sk-***")
-    .replace(/Bearer\s+[a-zA-Z0-9_\-.]{20,}/g, "Bearer ***")
-    .replace(/ghp_[a-zA-Z0-9]{36}/g, "ghp_***")
-    .replace(/gho_[a-zA-Z0-9]{36}/g, "gho_***");
-  return redacted.slice(0, 500);
-}
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -187,39 +176,53 @@ export const generateChapter = task({
       const allChaptersHaveCompletedGen = chapterIds.every(id => completedChapterIds.has(id));
 
       if (allChaptersHaveCompletedGen && !project.title) {
-        const titleResult = await generatePromptContent({
-          prompt: {
-            content:
-              'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
-          },
-          placeholders,
-          ...(model ? { model } : {}),
-          ...(effort !== undefined ? { effort } : {}),
-        });
-        let title = "";
-        let subtitle = "";
-        try {
-          const parsed = titleResponseSchema.parse(JSON.parse(titleResult.text));
-          title = parsed.title;
-          subtitle = parsed.subtitle ?? "";
-        } catch (err) {
-          console.error(
-            "[generate-chapter] Failed to parse title JSON:",
-            err instanceof Error ? err.message : "Unknown error",
-          );
-          // Don't set title on parse failure
-        }
+        // Wrap in advisory lock to prevent concurrent title generation.
+        // Two parallel chapter completions could both see !project.title and
+        // both call generatePromptContent — the lock ensures only one wins.
+        const lockResult = await withProjectLock(projectId, async () => {
+          // Re-read title inside lock: another task may have set it while we waited
+          const [fresh] = await db
+            .select({ title: projects.title })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+          if (fresh?.title) return null;
 
-        if (title) {
-          await db
-            .update(projects)
-            .set({ title, subtitle: subtitle || null })
-            .where(
-              and(
-                eq(projects.id, projectId),
-                isNull(projects.title),
-              ),
+          const titleResult = await generatePromptContent({
+            prompt: {
+              content:
+                'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
+            },
+            placeholders,
+            ...(model ? { model } : {}),
+            ...(effort !== undefined ? { effort } : {}),
+          });
+          let title = "";
+          let subtitle = "";
+          try {
+            const parsed = titleResponseSchema.parse(JSON.parse(titleResult.text));
+            title = parsed.title;
+            subtitle = parsed.subtitle ?? "";
+          } catch (err) {
+            console.error(
+              "[generate-chapter] Failed to parse title JSON:",
+              err instanceof Error ? err.message : "Unknown error",
             );
+          }
+
+          if (title) {
+            await db
+              .update(projects)
+              .set({ title, subtitle: subtitle || null })
+              .where(eq(projects.id, projectId));
+          }
+          return title;
+        });
+
+        if (!lockResult.locked) {
+          console.warn(
+            "[generate-chapter] Could not acquire advisory lock for title generation — will retry on next chapter completion",
+          );
         }
       }
     } catch (err) {

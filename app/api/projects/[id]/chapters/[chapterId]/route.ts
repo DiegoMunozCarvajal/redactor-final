@@ -111,7 +111,7 @@ export async function PATCH(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { title, position } = body;
 
   if (position !== undefined && (position < 0 || position > 1000))

@@ -58,6 +58,11 @@ export async function POST(
 
     // Create generation record inside lock so concurrent requests
     // don't see a stale "generating" record before the lock is acquired.
+    // NOTE: This creates a full chapterGeneration row for a single-fragment
+    // run. While this shows as a "completed" generation in the chapter UI,
+    // it's required by the fragments FK (fragments.chapterGenerationId is
+    // NOT NULL). Single-fragment runs are distinguishable from full chapter
+    // runs by checking whether all prompt types have fragments.
     const [gen] = await db
       .insert(chapterGenerations)
       .values({

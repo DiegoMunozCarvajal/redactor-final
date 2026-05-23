@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { promptVersions } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { promptVersions, projectPrompts, projects } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
@@ -14,9 +14,11 @@ export async function GET(
 
   const { id } = await params;
   const [version] = await db
-    .select()
+    .select({ id: promptVersions.id, title: promptVersions.title, content: promptVersions.content, createdAt: promptVersions.createdAt })
     .from(promptVersions)
-    .where(eq(promptVersions.id, id))
+    .innerJoin(projectPrompts, eq(promptVersions.promptId, projectPrompts.id))
+    .innerJoin(projects, eq(projectPrompts.projectId, projects.id))
+    .where(and(eq(promptVersions.id, id), eq(projects.userId, user.id)))
     .limit(1);
 
   if (!version) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -6,7 +6,8 @@ import { eq } from "drizzle-orm";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
-import { generateChapter, sanitizeError } from "@/trigger/generate-chapter";
+import { generateChapter } from "@/trigger/generate-chapter";
+import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(

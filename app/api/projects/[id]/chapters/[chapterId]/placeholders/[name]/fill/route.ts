@@ -53,7 +53,7 @@ export async function POST(
   const effort = body.effort as ReasoningEffort | undefined;
   const temperatureRaw = body.temperature;
   if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
-    return NextResponse.json({ error: "temperature must be a number between 0 and 2" }, { status: 400 });
+    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
   }
   const temperature = temperatureRaw as number | undefined;
 
@@ -116,6 +116,6 @@ export async function POST(
     return NextResponse.json({ name, definition, sources });
   } catch (err) {
     console.error("[fill/single] Failed:", err);
-    return NextResponse.json({ error: "Generation failed", detail: (err as Error).message }, { status: 502 });
+    return NextResponse.json({ error: "Generation failed" }, { status: 502 });
   }
 }

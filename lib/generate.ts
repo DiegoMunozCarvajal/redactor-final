@@ -2,7 +2,10 @@ import { generateCompletion } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 
-function sanitizeValue(value: string): string {
+const DEFAULT_SYSTEM_PROMPT =
+  "Escribe siempre en español. Responde únicamente con el contenido solicitado, sin introducciones ni comentarios adicionales.";
+
+export function sanitizeValue(value: string): string {
   return value
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .replace(/<</g, "‹‹")
@@ -20,6 +23,8 @@ export interface GeneratePromptParams {
   model?: string;
   temperature?: number;
   effort?: ReasoningEffort;
+  /** Override the default system prompt. Defaults to Spanish-only output instruction. */
+  systemPrompt?: string;
 }
 
 export interface GenerateResult {
@@ -32,7 +37,7 @@ export interface GenerateResult {
   };
 }
 
-function applyPlaceholders(content: string, placeholders: Record<string, string>): string {
+export function applyPlaceholders(content: string, placeholders: Record<string, string>): string {
   // Sort longest-first to prevent {foo} matching inside {foo_bar}
   const entries = Object.entries(placeholders).sort(
     ([a], [b]) => b.length - a.length,
@@ -52,12 +57,19 @@ function applyPlaceholders(content: string, placeholders: Record<string, string>
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
-  const { prompt, placeholders, model = DEFAULT_GENERATION_MODEL, temperature, effort } = params;
+  const {
+    prompt,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+  } = params;
   const content = applyPlaceholders(prompt.content, placeholders);
 
   const result = await generateCompletion({
     model,
-    systemPrompt: "Escribe siempre en español. Responde únicamente con el contenido solicitado, sin introducciones ni comentarios adicionales.",
+    systemPrompt,
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),

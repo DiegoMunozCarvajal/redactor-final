@@ -4,6 +4,7 @@ import { projects, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
+import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
   req: NextRequest,
@@ -46,6 +47,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -64,7 +68,7 @@ export async function POST(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { chapterId, title, content, isAssembly } = body;
 
   if (!chapterId || !title || !content) {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { chapterGenerations, fragments, projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc } from "drizzle-orm";
+import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
   _req: NextRequest,
@@ -48,6 +49,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -74,7 +78,7 @@ export async function PATCH(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { status, error } = body;
 
   if (status && !["failed"].includes(status)) {

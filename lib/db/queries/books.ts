@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { bookTemplates, chapters, prompts } from "@/lib/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 
 export async function getBookTemplateWithChapters(bookTemplateId: string) {
   const template = await db
@@ -42,9 +42,28 @@ export async function getFullBookTemplate(bookTemplateId: string) {
   const template = await getBookTemplateWithChapters(bookTemplateId);
   if (!template) return null;
 
-  const chaptersWithPrompts = await Promise.all(
-    template.chapters.map(async (ch) => getChapterWithPrompts(ch.id))
-  );
+  // Batch-load all prompts for all chapters in one query instead of N+1
+  const chapterIds = template.chapters.map((c) => c.id);
+  const allPrompts = await db
+    .select()
+    .from(prompts)
+    .where(inArray(prompts.chapterId, chapterIds))
+    .orderBy(asc(prompts.position));
 
-  return { ...template, chapters: chaptersWithPrompts.filter((ch): ch is NonNullable<typeof ch> => ch !== null) };
+  const promptsByChapter = new Map<string, typeof allPrompts>();
+  for (const p of allPrompts) {
+    const list = promptsByChapter.get(p.chapterId);
+    if (list) {
+      list.push(p);
+    } else {
+      promptsByChapter.set(p.chapterId, [p]);
+    }
+  }
+
+  const chaptersWithPrompts = template.chapters.map((ch) => ({
+    ...ch,
+    prompts: promptsByChapter.get(ch.id) ?? [],
+  }));
+
+  return { ...template, chapters: chaptersWithPrompts };
 }
