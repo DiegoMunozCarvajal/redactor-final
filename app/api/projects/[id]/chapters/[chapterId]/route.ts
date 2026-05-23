@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and } from "drizzle-orm";
+import { eq, asc, desc, and, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -35,6 +35,18 @@ export async function GET(
   if (!chapter) {
     return NextResponse.json({ error: "chapter not found" }, { status: 404 });
   }
+
+  // Compute display number: 1-based rank among project chapters sorted by position
+  const [rankResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chapters)
+    .where(
+      and(
+        eq(chapters.projectId, projectId),
+        sql`${chapters.position} < ${chapter.position}`,
+      ),
+    );
+  const chapterNumber = (rankResult?.count ?? 0) + 1;
 
   // All generations for this chapter+project, newest first
   const genList = await db
@@ -81,6 +93,7 @@ export async function GET(
       id: chapter.id,
       position: chapter.position,
       title: chapter.title,
+      chapterNumber,
     },
     generations: generationsWithFragments,
   });

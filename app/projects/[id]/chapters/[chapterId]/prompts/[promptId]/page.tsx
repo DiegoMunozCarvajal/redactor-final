@@ -30,7 +30,7 @@ export default function PromptEditPage() {
   const [prompt, setPrompt] = useState<ProjectPrompt | null>(null);
   const [projectName, setProjectName] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
-  const [chapterPosition, setChapterPosition] = useState(0);
+  const [chapterNumber, setChapterNumber] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [content, setContent] = useState("");
@@ -53,7 +53,7 @@ export default function PromptEditPage() {
         if (controller.signal.aborted) return;
         setProjectName(chData.projectName);
         setChapterTitle(chData.chapter.title);
-        setChapterPosition(chData.chapter.position);
+        setChapterNumber(chData.chapter.chapterNumber);
 
         // Fetch all prompts for this chapter
         const pRes = await fetch(
@@ -131,7 +131,7 @@ export default function PromptEditPage() {
         items={[
           { label: "Projects", href: "/projects" },
           { label: projectName || "Project", href: `/projects/${params.id}` },
-          { label: `Capítulo ${chapterPosition + 1}`, href: `/projects/${params.id}/chapters/${params.chapterId}` },
+          { label: `Capítulo ${chapterNumber}`, href: `/projects/${params.id}/chapters/${params.chapterId}` },
           { label: prompt.title },
         ]}
       />

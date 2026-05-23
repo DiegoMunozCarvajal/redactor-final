@@ -113,14 +113,14 @@ async function fetchChapterLabel(parentId: string, chapterId: string, parentType
       const data = await res.json();
       const chapter = data.chapter;
       if (!chapter) return null;
-      return `Capítulo ${chapter.position + 1}`;
+      return `Capítulo ${chapter.chapterNumber ?? chapter.position + 1}`;
     } else {
       const res = await fetch(`/api/books/${parentId}/chapters`);
       if (!res.ok) return null;
       const chapters = await res.json();
       const chapter = Array.isArray(chapters) ? chapters.find((c: { id: string; position: number }) => c.id === chapterId) : null;
       if (!chapter) return null;
-      return `Capítulo ${chapter.position + 1}`;
+      return `Capítulo ${chapter.chapterNumber ?? chapter.position + 1}`;
     }
   } catch {
     return null;
