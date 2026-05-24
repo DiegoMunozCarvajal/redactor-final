@@ -48,11 +48,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, topic, bookTemplateId } = body;
+  const { name, topic, title, bookTemplateId } = body;
 
   // Server-side validation
   if (typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
+  }
+  if (title !== undefined && (typeof title !== "string" || title.length < 1 || title.length > 300)) {
+    return NextResponse.json({ error: "title must be 1-300 characters" }, { status: 400 });
   }
   if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
     return NextResponse.json({ error: "topic must be a string of 500 characters or less" }, { status: 400 });
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest) {
     project = await db.transaction(async (tx) => {
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
+        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters

@@ -82,7 +82,7 @@ export async function POST(
   const systemPrompt = DEFAULT_BRIEF_PROMPT;
 
   const userPrompt = `## Proyecto
-- Nombre: ${(project.title ?? project.name) || "(unnamed)"}
+${project.title ? `\n- Título: ${project.title}` : ""}
 - Tema: ${project.topic || "(no definido)"}
 - Descripción: ${project.description || "(no definida)"}
 

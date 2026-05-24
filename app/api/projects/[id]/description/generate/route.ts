@@ -64,12 +64,9 @@ export async function POST(
     return NextResponse.json({ error: "project has no name" }, { status: 400 });
   }
 
-  const bookName = project.title ?? project.name;
-
   const userPrompt = `Escribe la descripción para este libro:
 
-## Datos del libro
-- Nombre: ${bookName}
+## Datos del libro${project.title ? `\n- Título: ${project.title}` : ""}
 - Tema: ${project.topic || "(no definido)"}
 
 Escribe una descripción de 2-4 oraciones en español.`;
