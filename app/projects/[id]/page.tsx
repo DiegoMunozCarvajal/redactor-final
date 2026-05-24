@@ -6,20 +6,11 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen, Save, Sparkles } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Loader2, Check, X, BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import { MODEL_OPTIONS, EFFORT_OPTIONS } from "@/lib/ai/providers";
 
 interface GenerationData {
   id: string;
@@ -42,7 +33,6 @@ interface ProjectData {
   topic: string;
   title: string | null;
   subtitle: string | null;
-  description: string | null;
   chapters: ChapterData[];
 }export default function ProjectPage() {
   const params = useParams<{ id: string }>();
@@ -53,12 +43,6 @@ interface ProjectData {
   const [editTitle, setEditTitle] = useState("");
   const [editingTopic, setEditingTopic] = useState(false);
   const [editTopic, setEditTopic] = useState("");
-  const [description, setDescription] = useState("");
-  const [savingDescription, setSavingDescription] = useState(false);
-  const [descModel, setDescModel] = useState("deepseek-v4-pro");
-  const [descEffort, setDescEffort] = useState<string>("off");
-  const [descTemperature, setDescTemperature] = useState(0.7);
-  const [generatingDescription, setGeneratingDescription] = useState(false);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
 
@@ -139,57 +123,9 @@ interface ProjectData {
     }
   }
 
-  async function generateDescription() {
-    if (!project) return;
-    setGeneratingDescription(true);
-    try {
-      const res = await fetch(`/api/projects/${params.id}/description/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: descModel, effort: descEffort, temperature: descTemperature }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDescription(data.description);
-        setProject({ ...project, description: data.description });
-        toast.success("Description generated");
-      } else {
-        toast.error("Error generating description");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setGeneratingDescription(false);
-    }
-  }
-
-  async function saveDescription() {
-    if (!project) return;
-    setSavingDescription(true);
-    try {
-      const res = await fetch(`/api/projects/${params.id}/description`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setProject({ ...project, description: updated.description });
-        toast.success("Description saved");
-      } else {
-        toast.error("Error saving description");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setSavingDescription(false);
-    }
-  }
-
-  // Sync description and topic from project data when it loads/changes
+  // Sync topic from project data when it loads/changes
   useEffect(() => {
     if (project) {
-      setDescription(project.description ?? "");
       setEditTopic(project.topic ?? "");
     }
   }, [project?.id]);
@@ -324,64 +260,6 @@ interface ProjectData {
             )}
           </p>
         )}
-      </div>
-
-      {/* Description */}
-      <div className="space-y-2 mb-6">
-        <Label className="text-xs text-muted-foreground">Description</Label>
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="text-xs min-h-[80px]"
-          placeholder="What is this book about? This helps the AI understand context for filling placeholders..."
-        />
-        <div className="flex justify-end gap-2">
-          <Select value={descModel} onValueChange={setDescModel}>
-            <SelectTrigger className="w-[110px] h-7 text-[10px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODEL_OPTIONS.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="text-[10px]">{m.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={descEffort} onValueChange={setDescEffort}>
-            <SelectTrigger className="w-[70px] h-7 text-[10px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EFFORT_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-[10px]">{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {descEffort === "off" && (
-            <Input
-              type="number"
-              min={0}
-              max={1}
-              step={0.1}
-              value={descTemperature}
-              onChange={(e) => { const v = parseFloat(e.target.value); setDescTemperature(isNaN(v) ? 0.7 : v); }}
-              className="w-[60px] h-7 text-[10px] px-1"
-            />
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs"
-            onClick={generateDescription}
-            disabled={generatingDescription}
-          >
-            {generatingDescription ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-            Generate
-          </Button>
-          <Button size="sm" className="text-xs" onClick={saveDescription} disabled={savingDescription}>
-            {savingDescription ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-            Save
-          </Button>
-        </div>
       </div>
 
       {/* Progress */}

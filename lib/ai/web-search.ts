@@ -53,7 +53,7 @@ async function searchExa(query: string): Promise<SearchResult[]> {
   return (data.results ?? []).map((r: ExaResultItem) => ({
     title: r.title ?? "",
     url: r.url ?? "",
-    snippet: (r.text ?? "").slice(0, 300),
+    snippet: (r.text ?? "").slice(0, 600),
     provider: "exa" as const,
     publishedDate: r.publishedDate,
   }));
@@ -79,7 +79,7 @@ async function searchTavily(query: string): Promise<SearchResult[]> {
   return (data.results ?? []).map((r: TavilyResultItem) => ({
     title: r.title ?? "",
     url: r.url ?? "",
-    snippet: (r.content ?? "").slice(0, 300),
+    snippet: (r.content ?? "").slice(0, 600),
     provider: "tavily" as const,
     publishedDate: r.published_date,
   }));
@@ -102,7 +102,7 @@ async function searchSemanticScholar(query: string): Promise<SearchResult[]> {
   return (data.data ?? []).map((r: SSPaper) => ({
     title: r.title ?? "",
     url: r.url ?? `https://api.semanticscholar.org/CorpusID:${r.paperId}`,
-    snippet: (r.abstract ?? "").slice(0, 300),
+    snippet: (r.abstract ?? "").slice(0, 600),
     provider: "semantic-scholar" as const,
     publishedDate: r.publicationDate,
   }));

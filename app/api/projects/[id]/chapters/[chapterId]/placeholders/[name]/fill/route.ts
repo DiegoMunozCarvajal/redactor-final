@@ -104,7 +104,7 @@ export async function POST(
     const { definition, sources } = await fillSinglePlaceholder(
       name,
       brief?.content ?? "",
-      project.description ?? "",
+      project.topic ?? null,
       promptRows.map((p) => p.content),
       existingDefinitions,
       model,

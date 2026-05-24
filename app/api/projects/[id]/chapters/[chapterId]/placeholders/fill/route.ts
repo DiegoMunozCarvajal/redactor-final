@@ -75,7 +75,6 @@ export async function POST(
 
   const placeholderNames = placeholderRows.map((p) => p.name);
   const chapterBrief = brief?.content ?? "";
-  const projectDescription = project.description ?? "";
   const promptContents = promptRows.map((p) => p.content);
 
   if (placeholderNames.length === 0) {
@@ -105,7 +104,7 @@ export async function POST(
   // Phase 1: Research only unresolved placeholders
   const searchResults =
     unresolved.length > 0
-      ? await researchPlaceholders(unresolved, chapterBrief, projectDescription)
+      ? await researchPlaceholders(unresolved, chapterBrief, project.topic ?? null)
       : {};
 
   // Phase 2: Generate + stream via SSE (only unresolved)
@@ -128,7 +127,6 @@ export async function POST(
         for await (const event of fillPlaceholders(
           unresolved,
           chapterBrief,
-          projectDescription,
           promptContents,
           searchResults,
           model,

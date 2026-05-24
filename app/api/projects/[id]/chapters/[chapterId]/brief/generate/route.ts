@@ -4,34 +4,31 @@ import {
   projects,
   chapters,
   chapterBriefs,
+  projectPrompts,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { csrfCheck } from "@/lib/api/csrf";
 
 const DEFAULT_BRIEF_PROMPT = `Eres un editor senior de no-ficción en español. Tu trabajo es escribir el brief de un capítulo que guiará a otro escritor AI para redactar con precisión.
 
-El brief debe tener exactamente 3 partes, una oración cada una:
+El brief debe tener exactamente 2 partes, una oración cada una:
 
-1. ALCANCE: qué cubre el capítulo — conceptos, ideas o habilidades específicas que debe transmitir. Nada genérico. Menciona al menos un concepto concreto del capítulo.
+1. ALCANCE: qué cubre el capítulo — los conceptos, ideas o habilidades específicas que transmite. Sé concreto: menciona al menos un concepto o ejemplo real que el capítulo desarrollará.
 
-2. LECTOR: para quién se escribe — qué sabe ya, qué necesita saber, qué nivel de familiaridad tiene con el tema.
+2. RESULTADO: qué podrá hacer el lector al terminar — una acción observable, como "podrá aplicar X en situación Y" o "sabrá distinguir X de Y en contexto Z".
 
-3. RESULTADO: qué debe saber/hacer/pensar el lector al terminar — el takeaway concreto, no "entenderá X" vago sino "podrá aplicar X en situación Y".
-
-Reglas de estilo:
-- Prohibido: adjetivos vacíos ("integral", "profundo", "completo")
-- Prohibido: "Este capítulo explora/examina/presenta..." (muletilla)
-- Prohibido: mencionar prompts, fragmentos o aspectos técnicos de la generación (el lector del brief es otro sistema, no el usuario final)
-- Cada oración debe aportar información distinta. Sin redundancia.
-- Usar lenguaje concreto, no abstracto.
+Reglas:
+- Entra directo al contenido. Arranca con el concepto o problema central.
+- Usa adjetivos que describan cualidades verificables (no "profundo" sino "de tres pasos", no "integral" sino "que cubre desde X hasta Y").
+- Cada oración debe aportar información nueva. Sin redundancia.
 
 Ejemplo de buen brief:
-"Este capítulo desglosa los seis principios de sticky ideas — simplicidad, concreción, credibilidad, emociones, historias y lo inesperado — con ejemplos del mundo publicitario y el periodismo. Está escrito para profesionales de comunicación que ya dominan conceptos básicos de marketing pero buscan un marco sistemático para evaluar y mejorar sus mensajes. Al terminar, el lector podrá auditar cualquier pieza de comunicación usando la checklist SUCCESs e identificar exactamente qué principio falta y cómo incorporarlo."
+"Los seis principios que hacen que una idea sea memorable — simplicidad, concreción, credibilidad, emociones, historias y lo inesperado — explicados con casos como las leyendas urbanas de robos de riñones y la campaña Millones de Subway. Al terminar, el lector podrá auditar cualquier mensaje usando la checklist SUCCESs e identificar exactamente qué principio falta y cómo incorporarlo."
 
-Ejemplo de mal brief (NO hagas esto):
-"Este capítulo explora los principios fundamentales de la comunicación efectiva, ofreciendo una visión integral de las estrategias más importantes para transmitir ideas. Está diseñado para un público amplio interesado en mejorar sus habilidades comunicativas. Al finalizar, el lector tendrá una comprensión más profunda de cómo comunicar mejor."
+Ejemplo de mal brief:
+"Este capítulo examina los factores que influyen en las decisiones alimentarias, ofreciendo una visión integral de cómo el entorno afecta lo que comemos. Al finalizar, el lector tendrá una comprensión más profunda de la psicología de la alimentación."
 
 Responde ÚNICAMENTE con el brief. Sin etiquetas, sin JSON, sin comillas.`;
 
@@ -79,17 +76,39 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
+  // Load content prompts (non-assembly) for this chapter
+  const promptRows = await db
+    .select({ content: projectPrompts.content })
+    .from(projectPrompts)
+    .where(
+      and(
+        eq(projectPrompts.chapterId, chapterId),
+        eq(projectPrompts.isAssembly, false),
+      ),
+    )
+    .orderBy(asc(projectPrompts.position));
+
   const systemPrompt = DEFAULT_BRIEF_PROMPT;
 
+  const promptsContext =
+    promptRows.length > 0
+      ? promptRows
+          .map(
+            (p, i) =>
+              `Prompt ${i + 1}:\n${p.content}`,
+          )
+          .join("\n\n")
+      : "(sin prompts de contenido)";
+
   const userPrompt = `## Proyecto
-${project.title ? `\n- Título: ${project.title}` : ""}
-- Tema: ${project.topic || "(no definido)"}
-- Descripción: ${project.description || "(no definida)"}
+${project.title ? `- Título: ${project.title}\n` : ""}- Tema: ${project.topic || "(no definido)"}
 
-## Capítulo
-- Título: ${chapter.title}
+## Contenido del capítulo
+Los textos entre {llaves} son placeholders que serán sustituidos por definiciones específicas antes de la redacción. Interpreta cada placeholder por su nombre para entender qué tipo de contenido irá en ese lugar.
 
-Escribe el brief de este capítulo en 3 oraciones: alcance, lector, resultado.`;
+${promptsContext}
+
+Escribe el brief de este capítulo en 2 oraciones: alcance, resultado.`;
 
   let briefContent: string;
   try {

@@ -36,12 +36,11 @@ function extractJson(text: string): unknown {
 }
 
 const RESEARCH_DECISION_PROMPT = `Eres un planificador de investigación. Dado:
-1. Una descripción de proyecto
-2. Un brief de capítulo
-3. Una lista de nombres de placeholder (todos factuales — los estilísticos ya fueron resueltos)
+1. Un brief de capítulo
+2. Una lista de nombres de placeholder (todos factuales — los estilísticos ya fueron resueltos)
 
 Para cada placeholder, decide si necesita búsqueda web o puede inferirse del contexto.
-Devuelve un array JSON con los nombres que NECESITAN búsqueda web. Solo incluye aquellos donde la verificación factual externa agregue valor (ej. estudios específicos, papers, eventos históricos, estadísticas, expertos nombrados). Omite los que pueden definirse con confianza desde el brief del capítulo y la descripción del proyecto (ej. elegir un caso de estudio relevante, un ejemplo conocido).
+Devuelve un array JSON con los nombres que NECESITAN búsqueda web. Solo incluye aquellos donde la verificación factual externa agregue valor (ej. estudios específicos, papers, eventos históricos, estadísticas, expertos nombrados). Omite los que pueden definirse con confianza desde el brief del capítulo (ej. elegir un caso de estudio relevante, un ejemplo conocido).
 
 Ejemplo:
 Placeholders: ["FUENTE_PRINCIPAL", "EJEMPLO_HISTORICO", "ESTUDIO_CLAVE"]
@@ -51,33 +50,41 @@ Resultado: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
 const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu tarea es definir los valores de placeholders factuales para el capítulo de un libro.
 
 ## Entrada
-- Descripción del proyecto: de qué trata el libro
 - Brief del capítulo: qué cubre este capítulo específico
 - Nombres de placeholders: los {placeholders} que necesitan definición (todos factuales)
-- Resultados de búsqueda: hallazgos de búsqueda web para placeholders investigados (si los hay)
+- Resultados de búsqueda: hallazgos de búsqueda web (si los hay)
 
 ## Instrucciones
-1. Define cada placeholder con un valor conciso y específico, respaldado por los resultados de búsqueda cuando estén disponibles
-2. Para placeholders CON resultados de búsqueda: cita nombres, fechas, instituciones o datos específicos de las fuentes proporcionadas
-3. Para placeholders SIN resultados de búsqueda: elige el ejemplo, caso o referencia más relevante y específico que encaje con el brief del capítulo
-4. Cada definición debe ser de 1-3 oraciones, específica y directamente usable en un párrafo del libro (no una meta-descripción de qué es el placeholder)
-5. Alinea cada definición con el alcance del brief del capítulo y la descripción del proyecto
-6. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
+
+### Calidad de fuentes
+Antes de definir cada placeholder, evalúa los resultados de búsqueda:
+- ¿El resultado trata directamente el tema del placeholder y del brief del capítulo? Si no, descártalo.
+- ¿El contenido es específico (nombres, fechas, datos) o es genérico (reformulaciones vagas)? Solo usa contenido específico.
+- ¿La fuente es confiable (paper académico, institución reconocida, publicación verificable)? Prioriza estas.
+
+Si ningún resultado pasa estos criterios, NO uses los resultados. Responde con tu mejor conocimiento pero no inventes fuentes ni cifras.
+
+### Definiciones
+1. Para placeholders CON fuentes de calidad: extrae y cita nombres, fechas, instituciones o datos de las fuentes
+2. Para placeholders SIN fuentes de calidad: elige el ejemplo, caso o referencia más pertinente y específico que se ajuste al brief. No inventes citas
+3. Cada definición: 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
+4. Alinea cada definición con el alcance del brief del capítulo
+5. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
 
 ## Ejemplo
 Placeholders: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
-Resultados de búsqueda: un paper de PNAS 2018 por Milkman et al. sobre nudges de vacunación
+Resultados de búsqueda: un paper de PNAS 2018 por Milkman et al. sobre nudges de vacunación (relevante, específico, académico — cumple los criterios de calidad)
 Respuesta: {"placeholders": {"FUENTE_PRINCIPAL": "El estudio de 2018 publicado en PNAS por Katherine Milkman y colegas de la Universidad de Pennsylvania, que demostró que los recordatorios de planificación aumentaron las tasas de vacunación contra la gripe en 4.2 puntos porcentuales entre 37,000 empleados", "ESTUDIO_CLAVE": "Un ensayo controlado aleatorizado publicado en The Lancet Digital Health (2021) que mostró que los recordatorios personalizados por mensaje de texto mejoraron la adherencia a la medicación en un 14% entre pacientes hipertensos durante 12 meses"}}`;
 
 export async function researchPlaceholders(
   placeholderNames: string[],
   chapterBrief: string,
-  projectDescription: string,
+  projectTopic: string | null,
 ): Promise<Record<string, SearchResult[]>> {
   if (placeholderNames.length === 0) return {};
 
   // Phase 1a: Decide which placeholders need research
-  const decisionPrompt = `${RESEARCH_DECISION_PROMPT}\n\nProject: ${projectDescription || "(none)"}\nChapter brief: ${chapterBrief || "(none)"}\nPlaceholders: ${JSON.stringify(placeholderNames)}`;
+  const decisionPrompt = `${RESEARCH_DECISION_PROMPT}\n\nChapter brief: ${chapterBrief || "(none)"}\nPlaceholders: ${JSON.stringify(placeholderNames)}`;
 
   let needsResearch: string[] = [];
   try {
@@ -102,7 +109,7 @@ export async function researchPlaceholders(
   const queryToName = new Map<string, string>();
   const searchQueries = needsResearch.map((name) => {
     const readable = name.replace(/_/g, " ").toLowerCase();
-    const query = `${readable} ${projectDescription || ""} ${chapterBrief || ""}`.trim();
+    const query = `${readable} ${projectTopic || ""} ${chapterBrief || ""}`.trim();
     queryToName.set(query, name);
     return query;
   });
@@ -123,7 +130,6 @@ export async function researchPlaceholders(
 export async function* fillPlaceholders(
   placeholderNames: string[],
   chapterBrief: string,
-  projectDescription: string,
   promptContents: string[],
   searchResults: Record<string, SearchResult[]>,
   model: string = DEFAULT_MODEL,
@@ -146,9 +152,7 @@ export async function* fillPlaceholders(
     }
   }
 
-  const userPrompt = `## Project Description\n${projectDescription || "(none)"}
-
-## Chapter Brief
+  const userPrompt = `## Chapter Brief
 ${chapterBrief || "(none)"}
 
 ## Content Prompts (for context)
@@ -217,7 +221,7 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
 export async function fillSinglePlaceholder(
   name: string,
   chapterBrief: string,
-  projectDescription: string,
+  projectTopic: string | null,
   promptContents: string[],
   existingDefinitions: Record<string, string>,
   model: string = DEFAULT_MODEL,
@@ -226,7 +230,7 @@ export async function fillSinglePlaceholder(
   temperature?: number,
 ): Promise<{ definition: string; sources: SearchResult[] }> {
   // Research this specific placeholder
-  const query = `${name.replace(/_/g, " ")} ${projectDescription || ""}`.trim();
+  const query = `${name.replace(/_/g, " ")} ${projectTopic || ""} ${chapterBrief || ""}`.trim();
   const searchResults = await webSearchBatch([query]);
   const sources = searchResults[query] ?? [];
 
@@ -242,16 +246,23 @@ export async function fillSinglePlaceholder(
     customSystemPrompt ||
     `Eres un investigador experto en libros. Define este placeholder con un valor conciso y específico que encaje en el capítulo.
 
+Calidad de fuentes:
+- Evalúa los resultados de búsqueda: ¿tratan directamente el tema del placeholder y del brief? ¿Son específicos o genéricos? ¿La fuente es confiable?
+- Si los resultados son relevantes y específicos, extrae datos, nombres, fechas e instituciones de ellos
+- Si ningún resultado es útil, descártalos y responde con tu mejor conocimiento sin inventar fuentes ni cifras
+
 Reglas:
-- Si hay resultados de búsqueda, cita nombres, fechas, instituciones o datos específicos de las fuentes
-- Si no hay resultados de búsqueda, elige el ejemplo, caso o referencia más relevante y específico que encaje con el brief del capítulo
 - La definición debe ser de 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
-- Alinea la definición con el alcance del brief del capítulo y la descripción del proyecto
-- Responde ÚNICAMENTE: {"definition": "..."}`;
+- Alinea la definición con el alcance del brief del capítulo
+- Responde ÚNICAMENTE: {"definition": "..."}
 
-  const userPrompt = `## Project Description\n${projectDescription || "(none)"}
+Ejemplo:
+Placeholder: {CASO_ESTUDIO}
+Brief del capítulo: "La aplicación de los seis principios de persuasión de Cialdini en campañas de salud pública, cubriendo reciprocidad, escasez y prueba social con casos documentados de cambios de comportamiento a escala poblacional"
+Resultados de búsqueda: [resultados sobre campañas reales de salud pública]
+Respuesta: {"definition": "La campaña 'Truth' antitabaco en Estados Unidos (2000-2014), que aplicó el principio de prueba social al mostrar adolescentes rechazando la manipulación de las tabacaleras, redujo el tabaquismo juvenil del 23% al 7% según un estudio del CDC publicado en 2015 en American Journal of Public Health"}`;
 
-## Chapter Brief
+  const userPrompt = `## Chapter Brief
 ${chapterBrief || "(none)"}
 
 ## Existing Placeholder Definitions (for context)
