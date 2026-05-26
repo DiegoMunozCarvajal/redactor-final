@@ -4,7 +4,6 @@ import { chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
 
 // GET is intentionally open to all authenticated users — chapter details must be
@@ -26,8 +25,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json();
@@ -42,7 +42,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!chapter) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
-    userId: admin.user.id,
+    userId: user.id,
     action: "chapter.update",
     resourceType: "chapter",
     resourceId: chapter.id,
@@ -56,14 +56,15 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const csrfError = csrfCheck(_req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   await db.delete(chapters).where(eq(chapters.id, id));
 
   logAudit({
-    userId: admin.user.id,
+    userId: user.id,
     action: "chapter.delete",
     resourceType: "chapter",
     resourceId: id,

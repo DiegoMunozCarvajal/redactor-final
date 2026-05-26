@@ -211,10 +211,14 @@ export function AssemblyPromptSection({
                 size="sm"
                 className="text-xs"
                 disabled={saving}
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
                   setSaving(true);
-                  onSave({ title, content }).finally(() => setSaving(false));
+                  try {
+                    await onSave({ title, content });
+                  } finally {
+                    setSaving(false);
+                  }
                   setEditing(false);
                 }}
               >

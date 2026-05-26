@@ -14,6 +14,8 @@ export const projectPrompts = pgTable("project_prompts", {
   isAssembly: boolean("is_assembly").notNull().default(false),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  function: text("function"),
+  notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_project_prompts_chapter_position").on(table.chapterId, table.position),

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { prompts, promptVersions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { requireAdmin } from "@/lib/auth/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 
@@ -13,8 +13,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json();
@@ -47,7 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!prompt) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
-    userId: admin.user.id,
+    userId: user.id,
     action: "prompt.update",
     resourceType: "prompt",
     resourceId: prompt.id,
@@ -70,8 +71,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const csrfError = csrfCheck(_req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
@@ -94,7 +96,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   logAudit({
-    userId: admin.user.id,
+    userId: user.id,
     action: "prompt.delete",
     resourceType: "prompt",
     resourceId: id,

@@ -163,10 +163,11 @@ export const generateChapter = task({
           })
           .where(eq(chapterGenerations.id, generationId));
       } else {
+        // No assembly prompt configured — mark as awaiting manual assembly
         await db
           .update(chapterGenerations)
           .set({
-            status: "completed",
+            status: "awaiting_assembly",
             completedAt: new Date(),
           })
           .where(eq(chapterGenerations.id, generationId));

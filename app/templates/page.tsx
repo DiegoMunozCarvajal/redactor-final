@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { BookOpen, Loader2, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Loader2, Plus, Trash2, Wand2 } from "lucide-react";
 
 interface Template {
   id: string;
@@ -32,7 +32,7 @@ interface Template {
   chapterCount: number;
 }
 
-export default function AdminBooksPage() {
+export default function TemplatesPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +96,11 @@ export default function AdminBooksPage() {
     <div className="py-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Book Templates</h1>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => router.push("/templates/create")}>
+            <Wand2 className="h-4 w-4" />
+            Generate from Meta-Prompt
+          </Button>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -138,6 +143,7 @@ export default function AdminBooksPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {templates.length === 0 ? (

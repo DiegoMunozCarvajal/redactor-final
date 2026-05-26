@@ -4,7 +4,6 @@ import { prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 
@@ -26,8 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json();
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .returning();
 
   logAudit({
-    userId: admin.user.id,
+    userId: user.id,
     action: "prompt.create",
     resourceType: "prompt",
     resourceId: prompt.id,

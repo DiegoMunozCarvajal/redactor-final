@@ -112,6 +112,8 @@ export async function POST(req: NextRequest) {
                 isAssembly: prompt.isAssembly,
                 title: prompt.title,
                 content: prompt.content,
+                function: prompt.function,
+                notes: prompt.notes,
               })),
             );
           }
@@ -130,7 +132,12 @@ export async function POST(req: NextRequest) {
             if (projectChapterId) {
               await tx
                 .insert(chapterPlaceholders)
-                .values({ chapterId: projectChapterId, name: ph.name })
+                .values({
+                  chapterId: projectChapterId,
+                  name: ph.name,
+                  function: ph.function,
+                  notes: ph.notes,
+                })
                 .onConflictDoNothing();
             }
           }

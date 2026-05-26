@@ -12,6 +12,8 @@ import {
   Columns2,
   ChevronRight,
   FileText,
+  Wand2,
+  Puzzle,
 } from "lucide-react";
 import { useDensity } from "@/lib/hooks/use-density";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,8 @@ interface NavItem {
 const STATIC_ITEMS: NavItem[] = [
   { href: "/projects", label: "Projects", icon: BookOpen },
   { href: "/templates", label: "Templates", icon: Layers },
+  { href: "/templates/metaprompts", label: "Meta-Prompts", icon: Wand2 },
+  { href: "/templates/assemblies", label: "Assembly", icon: Puzzle },
 ];
 
 function getStoredCollapsed(): boolean {
@@ -62,7 +66,7 @@ function parsePathname(pathname: string): PathSegment[] {
         break;
       case "templates":
         segments.push({ type: "templates" });
-        if (parts[i + 1] && !["chapters"].includes(parts[i + 1])) {
+        if (parts[i + 1] && !["chapters", "metaprompts", "assemblies", "create"].includes(parts[i + 1])) {
           segments.push({ type: "templates", id: parts[i + 1] });
           i++;
         }
@@ -321,13 +325,15 @@ function buildNavItems(pathname: string, resolvedLabels: Record<string, string>)
     return { ...item, active: isParentActive };
   });
 
+  const SKIP_ENTITY = new Set(["metaprompts", "assemblies", "create", "chapters"]);
+
   if (parts.length < 2) return items;
 
   const rootType = parts[0] === "projects" || parts[0] === "templates" ? parts[0] : null;
   if (!rootType) return items;
 
   const entityId = parts[1];
-  if (!entityId) return items;
+  if (!entityId || SKIP_ENTITY.has(entityId)) return items;
 
   const entityKey = `${rootType}:${entityId}`;
   const entityLabel = resolvedLabels[entityKey] ?? "...";

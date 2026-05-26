@@ -10,6 +10,8 @@ export const chapterPlaceholders = pgTable(
       .references(() => chapters.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     definition: text("definition"),
+    function: text("function"),
+    notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("idx_chapter_placeholders_unique").on(table.chapterId, table.name)],

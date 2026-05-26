@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, projectPrompts, chapterBriefs } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, projectPrompts, chapterBriefs, assemblyPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -49,6 +49,7 @@ export async function POST(
   const temperatureRaw = body.temperature;
   const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
   const effort = body.effort as "off" | "max" | undefined;
+  const assemblyPromptId = body.assemblyPromptId as string | undefined;
 
   if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
     return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
@@ -77,23 +78,43 @@ export async function POST(
     );
   }
 
-  // Load the assembly prompt for this chapter
-  const [assemblyPrompt] = await db
-    .select()
-    .from(projectPrompts)
-    .where(
-      and(
-        eq(projectPrompts.chapterId, chapterId),
-        eq(projectPrompts.isAssembly, true),
-      ),
-    )
-    .limit(1);
+  // Load the assembly prompt — either from the global assembly_prompts table (if assemblyPromptId provided)
+  // or from the chapter's embedded project prompt (backward compat).
+  let assemblyPrompt: { title: string; content: string } | null = null;
 
-  if (!assemblyPrompt) {
-    return NextResponse.json(
-      { error: "no assembly prompt configured" },
-      { status: 400 },
-    );
+  if (assemblyPromptId) {
+    const [ap] = await db
+      .select()
+      .from(assemblyPrompts)
+      .where(eq(assemblyPrompts.id, assemblyPromptId))
+      .limit(1);
+
+    if (!ap) {
+      return NextResponse.json(
+        { error: "assembly prompt not found" },
+        { status: 400 },
+      );
+    }
+    assemblyPrompt = { title: ap.name, content: ap.content };
+  } else {
+    const [embedded] = await db
+      .select()
+      .from(projectPrompts)
+      .where(
+        and(
+          eq(projectPrompts.chapterId, chapterId),
+          eq(projectPrompts.isAssembly, true),
+        ),
+      )
+      .limit(1);
+
+    if (!embedded) {
+      return NextResponse.json(
+        { error: "no assembly prompt configured. Provide assemblyPromptId or configure an assembly prompt for this chapter." },
+        { status: 400 },
+      );
+    }
+    assemblyPrompt = { title: embedded.title, content: embedded.content };
   }
 
   let generationId: string | undefined;
@@ -170,11 +191,16 @@ export async function POST(
     );
   }
 
+  const genId = generationId;
+  if (!genId) {
+    return NextResponse.json({ error: "failed to create generation" }, { status: 500 });
+  }
+
   logAudit({
     userId: user.id,
     action: "chapter.assemble",
     resourceType: "chapter_generation",
-    resourceId: generationId!,
+    resourceId: genId,
     metadata: { projectId, chapterId, fragmentIds },
   });
 

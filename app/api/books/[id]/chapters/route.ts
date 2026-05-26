@@ -4,7 +4,6 @@ import { chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql, and, isNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { requireAdmin } from "@/lib/auth/admin";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -12,6 +11,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Validate UUID format to prevent Postgres errors on non-UUID params
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(id)) {
+    return NextResponse.json([], { status: 200 });
+  }
+
   const result = await db
     .select()
     .from(chapters)
@@ -29,8 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));

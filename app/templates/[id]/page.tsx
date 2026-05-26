@@ -79,7 +79,7 @@ function SortableChapterRow({
   );
 }
 
-export default function AdminBookPage() {
+export default function TemplateDetailPage() {
   const params = useParams<{ id: string }>();
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [loading, setLoading] = useState(true);

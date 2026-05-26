@@ -44,6 +44,7 @@ import {
   Save,
   History,
   Copy,
+  Puzzle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -129,6 +130,8 @@ function statusBadge(status: string) {
       return <Badge className="bg-info/10 text-info border-info/20">Generating</Badge>;
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
+    case "awaiting_assembly":
+      return <Badge className="bg-warning/10 text-warning border-warning/20">Awaiting Assembly</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
@@ -156,6 +159,8 @@ export default function ChapterPage() {
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [assemblyTemperature, setAssemblyTemperature] = useState(0.7);
   const [assembling, setAssembling] = useState(false);
+  const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
+  const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
@@ -331,6 +336,11 @@ export default function ChapterPage() {
       toast.error("Select at least one fragment");
       return;
     }
+    // If no embedded assembly prompt, require assemblyPromptId
+    if (!assemblyPrompt && !assemblyPromptId) {
+      toast.error("Select an assembly prompt");
+      return;
+    }
     setAssembling(true);
     try {
       const res = await fetch(
@@ -343,6 +353,7 @@ export default function ChapterPage() {
             model: assemblyModel,
             effort: assemblyEffort,
             ...(assemblyEffort === "off" ? { temperature: assemblyTemperature } : {}),
+            ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
       );
@@ -527,11 +538,22 @@ export default function ChapterPage() {
     const sel: Record<string, string> = {};
     for (const [promptId, versions] of fragmentVersions) {
       if (versions.length > 0) {
-        // Latest version (first in the list since we iterate in order)
-        sel[promptId] = versions[versions.length - 1].id;
+        // fragments are iterated newest-first, so index 0 = latest version
+        sel[promptId] = versions[0].id;
       }
     }
     setSelectedFragments(sel);
+
+    // If no embedded assembly prompt, fetch assembly prompts for the picker
+    if (!assemblyPrompt) {
+      fetch("/api/assembly-prompts")
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data)) setAssemblyPromptList(data);
+        })
+        .catch(() => {});
+    }
+
     setAssemblyModalOpen(true);
   }
 
@@ -602,16 +624,20 @@ export default function ChapterPage() {
         </div>
       </div>
 
-      {/* Generation error */}
-      {activeGen?.status === "failed" && activeGen.error && (
-        <Card className="mb-6 border-destructive/30">
-          <CardContent className="pt-4">
-            <p className="text-sm text-destructive bg-destructive/5 rounded-md p-3">
-              {activeGen.error}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Generation error — show from any failed generation */}
+      {(() => {
+        const failedGen = generations.find((g) => g.status === "failed" && g.error);
+        if (!failedGen?.error) return null;
+        return (
+          <Card className="mb-6 border-destructive/30">
+            <CardContent className="pt-4">
+              <p className="text-sm text-destructive bg-destructive/5 rounded-md p-3">
+                {failedGen.error}
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <ChapterBriefSection
         projectId={params.id as string}
@@ -1081,6 +1107,29 @@ export default function ChapterPage() {
         </div>
       )}
 
+      {!assemblyPrompt && contentPrompts.length > 0 && totalContentDone > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center">
+              <Puzzle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground mb-3">
+                {activeGen?.status === "awaiting_assembly"
+                  ? "Content generation complete. Ready to assemble."
+                  : "No embedded assembly prompt. Select one to assemble this chapter."}
+              </p>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={openAssemblyModal}
+              >
+                <Play className="h-3 w-3 mr-1" /> Assemble Chapter
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <AssemblyPromptSection
         prompt={assemblyPrompt}
         onSave={async (data) => {
@@ -1088,7 +1137,7 @@ export default function ChapterPage() {
           await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
+            body: JSON.stringify({ ...data, isAssembly: true }),
           })
           fetchPrompts()
         }}
@@ -1126,6 +1175,30 @@ export default function ChapterPage() {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-6">
+            {/* Assembly prompt picker — shown when no embedded assembly prompt */}
+            {!assemblyPrompt && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium flex items-center gap-1.5">
+                  <Puzzle className="h-3.5 w-3.5 text-muted-foreground" />
+                  Assembly Prompt
+                </h4>
+                {assemblyPromptList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Loading assembly prompts…</p>
+                ) : (
+                  <select
+                    value={assemblyPromptId}
+                    onChange={(e) => setAssemblyPromptId(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select an assembly prompt…</option>
+                    {assemblyPromptList.map((ap) => (
+                      <option key={ap.id} value={ap.id}>{ap.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
             {contentPrompts.map((prompt) => {
               const versions = fragmentVersions.get(prompt.id) ?? [];
               const selectedId = selectedFragments[prompt.id];
