@@ -59,7 +59,9 @@ export const generateTemplate = task({
 
     for (const chapter of chapters) {
       try {
-        const userPrompt = `Analiza el siguiente capítulo fuente y genera la biblioteca de prompts. Responde en el mismo idioma del meta-prompt (español). Todos los bloques generados (name, function, content, notes, y valores de placeholders) deben estar en español.\n\n# ${chapter.title}\n\n${chapter.contentMd}`;
+        const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
+        const userPrompt = (metaPrompt.userPrompt ?? `Analiza el siguiente capítulo fuente y extrae su arquitectura funcional.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de los bloques en formato JSON.`)
+          .replace(/{{CAPITULO_FUENTE}}/g, capituloFuente);
 
         const result = await generateCompletion({
           systemPrompt: metaPrompt.content,

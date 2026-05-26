@@ -16,6 +16,7 @@ export default function MetaPromptEditorPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
+  const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function MetaPromptEditorPage() {
     setLoading(true);
     fetch(`/api/meta-prompts/${params.id}`, { signal: controller.signal })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((mp) => { setName(mp.name); setDescription(mp.description ?? ""); setContent(mp.content); })
+      .then((mp) => { setName(mp.name); setDescription(mp.description ?? ""); setContent(mp.content); setUserPrompt(mp.userPrompt ?? ""); })
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -40,7 +41,7 @@ export default function MetaPromptEditorPage() {
     const res = await fetch(`/api/meta-prompts/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), description: description.trim() || null, content }),
+      body: JSON.stringify({ name: name.trim(), description: description.trim() || null, content, userPrompt: userPrompt || null }),
     });
     if (res.ok) {
       toast.success("Saved");
@@ -95,6 +96,11 @@ export default function MetaPromptEditorPage() {
         <div className="space-y-2">
           <Label htmlFor="content">System Prompt</Label>
           <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} rows={30} className="font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="userPrompt">User Prompt</Label>
+          <p className="text-xs text-muted-foreground">Usa {'{{'} CAPITULO_FUENTE {'}}'} como placeholder para el capítulo completo.</p>
+          <Textarea id="userPrompt" value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} rows={10} className="font-mono text-xs" />
         </div>
       </div>
     </div>

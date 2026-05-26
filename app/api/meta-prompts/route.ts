@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, description, content } = body;
+  const { name, description, content, userPrompt } = body;
 
   if (!name || !content) {
     return NextResponse.json({ error: "name and content are required" }, { status: 400 });
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const [metaPrompt] = await db
     .insert(metaPrompts)
-    .values({ name, description: description ?? null, content })
+    .values({ name, description: description ?? null, content, userPrompt: userPrompt ?? null })
     .returning();
 
   logAudit({

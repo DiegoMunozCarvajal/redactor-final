@@ -18,6 +18,7 @@ interface MetaPrompt {
   name: string;
   description: string | null;
   content: string;
+  userPrompt: string | null;
   createdAt: string;
 }
 
@@ -30,6 +31,7 @@ export default function MetaPromptsPage() {
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newContent, setNewContent] = useState("");
+  const [newUserPrompt, setNewUserPrompt] = useState("");
 
   const fetchMetaPrompts = useCallback(async () => {
     const res = await fetch("/api/meta-prompts");
@@ -45,13 +47,14 @@ export default function MetaPromptsPage() {
     const res = await fetch("/api/meta-prompts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null, content: newContent }),
+      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null, content: newContent, userPrompt: newUserPrompt || null }),
     });
     if (res.ok) {
       setCreateOpen(false);
       setNewName("");
       setNewDescription("");
       setNewContent("");
+      setNewUserPrompt("");
       router.refresh();
       fetchMetaPrompts();
       toast.success("Meta-prompt created");
@@ -114,6 +117,11 @@ export default function MetaPromptsPage() {
                 <Label htmlFor="content">System Prompt</Label>
                 <Textarea id="content" value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="Actúa como un arquitecto narrativo..." rows={10} className="font-mono text-xs" />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="userPrompt">User Prompt</Label>
+                <Textarea id="userPrompt" value={newUserPrompt} onChange={(e) => setNewUserPrompt(e.target.value)} placeholder="Analiza el siguiente capítulo fuente y extrae su arquitectura funcional.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de los bloques en formato JSON." rows={6} className="font-mono text-xs" />
+                <p className="text-xs text-muted-foreground">Template para user message. Usa {'{{'} CAPITULO_FUENTE {'}}'} como placeholder.</p>
+              </div>
               <Button onClick={create} disabled={creating || !newName.trim() || !newContent.trim()} className="w-full">
                 {creating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Create
@@ -142,7 +150,11 @@ export default function MetaPromptsPage() {
                   ) : (
                     <CardDescription className="italic">No description</CardDescription>
                   )}
-                  <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">{mp.content.slice(0, 120)}</p>
+                  {mp.userPrompt ? (
+                    <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">User: {mp.userPrompt.slice(0, 120)}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">{mp.content.slice(0, 120)}</p>
+                  )}
                 </CardContent>
               </Link>
               <Button

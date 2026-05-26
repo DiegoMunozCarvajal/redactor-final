@@ -34,7 +34,7 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const { name, description, content } = body;
+  const { name, description, content, userPrompt } = body;
 
   const [updated] = await db
     .update(metaPrompts)
@@ -42,6 +42,7 @@ export async function PUT(
       ...(name !== undefined ? { name } : {}),
       ...(description !== undefined ? { description } : {}),
       ...(content !== undefined ? { content } : {}),
+      ...(userPrompt !== undefined ? { userPrompt } : {}),
       updatedAt: new Date(),
     })
     .where(eq(metaPrompts.id, id))
