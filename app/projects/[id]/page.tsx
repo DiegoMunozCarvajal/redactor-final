@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen } from "lucide-react";
+import { Loader2, Check, X, BookOpen, Library } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SourcesManager } from "@/components/projects/sources-manager";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -45,6 +47,7 @@ interface ProjectData {
   const [editTopic, setEditTopic] = useState("");
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
+  const [activeTab, setActiveTab] = useState<"chapters" | "sources">("chapters");
 
   async function fetchProject(signal?: AbortSignal) {
     try {
@@ -262,27 +265,63 @@ interface ProjectData {
         )}
       </div>
 
-      {/* Progress */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <BookOpen className="h-4 w-4" />
-        <span>
-          {completedCount}/{project.chapters.length} chapters completed
-        </span>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-border mb-6">
+        <button
+          onClick={() => setActiveTab("chapters")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            activeTab === "chapters"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <BookOpen className="h-4 w-4 inline mr-2" />
+          Capítulos
+        </button>
+        <button
+          onClick={() => setActiveTab("sources")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            activeTab === "sources"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Library className="h-4 w-4 inline mr-2" />
+          Fuentes RAG
+        </button>
       </div>
 
-      {/* Chapters */}
-      <SortableChapterList
-        chapters={project.chapters}
-        projectId={project.id}
-        onDelete={deleteChapter}
-      />
+      {activeTab === "chapters" && (
+        <>
+          {/* Progress */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+            <BookOpen className="h-4 w-4" />
+            <span>
+              {completedCount}/{project.chapters.length} chapters completed
+            </span>
+          </div>
 
-      <div className="mt-4">
-        <AddChapterDialog
-          projectId={project.id}
-          onChapterAdded={fetchProject}
-        />
-      </div>
+          {/* Chapters */}
+          <SortableChapterList
+            chapters={project.chapters}
+            projectId={project.id}
+            onDelete={deleteChapter}
+          />
+
+          <div className="mt-4">
+            <AddChapterDialog
+              projectId={project.id}
+              onChapterAdded={fetchProject}
+            />
+          </div>
+        </>
+      )}
+
+      {activeTab === "sources" && (
+        <SourcesManager projectId={project.id} />
+      )}
     </div>
   );
 }

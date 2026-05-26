@@ -1,0 +1,39 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { projects, sources } from "@/lib/db/schema";
+import { createClient } from "@/lib/supabase/server";
+import { eq } from "drizzle-orm";
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string; sourceId: string }> },
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id: projectId, sourceId } = await params;
+
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project || project.userId !== user.id) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  const [source] = await db
+    .select()
+    .from(sources)
+    .where(eq(sources.id, sourceId))
+    .limit(1);
+  if (!source || source.projectId !== projectId) {
+    return NextResponse.json({ error: "source not found" }, { status: 404 });
+  }
+
+  await db.delete(sources).where(eq(sources.id, sourceId));
+
+  return NextResponse.json({ success: true });
+}

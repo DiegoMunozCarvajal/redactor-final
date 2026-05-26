@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
-import { researchPlaceholders, fillPlaceholders } from "@/lib/ai/placeholder-fill";
+import { researchPlaceholdersWithRag, fillPlaceholders } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 
 export async function POST(
@@ -81,6 +81,14 @@ export async function POST(
     return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
 
+  // Build placeholder functions map for RAG routing
+  const placeholderFunctions: Record<string, { function?: string | null; notes?: string | null }> = {};
+  for (const row of placeholderRows) {
+    if (row.function || row.notes) {
+      placeholderFunctions[row.name] = { function: row.function, notes: row.notes };
+    }
+  }
+
   // Phase 0: Resolve placeholders directly from project data (no LLM)
   const { resolved, unresolved } = resolvePlaceholdersDirect(
     placeholderNames,
@@ -101,11 +109,17 @@ export async function POST(
       );
   }
 
-  // Phase 1: Research only unresolved placeholders
-  const searchResults =
+  // Phase 1: Research only unresolved placeholders (RAG + web search)
+  const { searchResults, ragContexts } =
     unresolved.length > 0
-      ? await researchPlaceholders(unresolved, chapterBrief, project.topic ?? null)
-      : {};
+      ? await researchPlaceholdersWithRag(
+          unresolved,
+          chapterBrief,
+          project.topic ?? null,
+          projectId,
+          placeholderFunctions,
+        )
+      : { searchResults: {}, ragContexts: {} };
 
   // Phase 2: Generate + stream via SSE (only unresolved)
   const encoder = new TextEncoder();
@@ -133,6 +147,7 @@ export async function POST(
           undefined,
           effort,
           temperature,
+          ragContexts,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));

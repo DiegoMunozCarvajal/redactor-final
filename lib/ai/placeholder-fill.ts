@@ -1,6 +1,7 @@
 import { generateCompletion, type ReasoningEffort } from "./completion";
 import { DEFAULT_GENERATION_MODEL } from "./providers";
 import { webSearchBatch, type SearchResult } from "./web-search";
+import { retrieveContext } from "./rag";
 
 // Re-export SearchResult for convenience
 export type { SearchResult };
@@ -53,14 +54,16 @@ const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu
 - Brief del capítulo: qué cubre este capítulo específico
 - Nombres de placeholders: los {placeholders} que necesitan definición (todos factuales)
 - Resultados de búsqueda: hallazgos de búsqueda web (si los hay)
+- Source Material: fragmentos de tus documentos subidos que coinciden con este placeholder (si los hay)
 
 ## Instrucciones
 
 ### Calidad de fuentes
-Antes de definir cada placeholder, evalúa los resultados de búsqueda:
+Antes de definir cada placeholder, evalúa los resultados de búsqueda y el material de fuentes:
 - ¿El resultado trata directamente el tema del placeholder y del brief del capítulo? Si no, descártalo.
 - ¿El contenido es específico (nombres, fechas, datos) o es genérico (reformulaciones vagas)? Solo usa contenido específico.
 - ¿La fuente es confiable (paper académico, institución reconocida, publicación verificable)? Prioriza estas.
+- Si tienes Source Material de tus documentos, PREFIÉRELO sobre los resultados de búsqueda web. Son tus fuentes curadas.
 
 Si ningún resultado pasa estos criterios, NO uses los resultados. Responde con tu mejor conocimiento pero no inventes fuentes ni cifras.
 
@@ -75,6 +78,23 @@ Si ningún resultado pasa estos criterios, NO uses los resultados. Responde con 
 Placeholders: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
 Resultados de búsqueda: un paper de PNAS 2018 por Milkman et al. sobre nudges de vacunación (relevante, específico, académico — cumple los criterios de calidad)
 Respuesta: {"placeholders": {"FUENTE_PRINCIPAL": "El estudio de 2018 publicado en PNAS por Katherine Milkman y colegas de la Universidad de Pennsylvania, que demostró que los recordatorios de planificación aumentaron las tasas de vacunación contra la gripe en 4.2 puntos porcentuales entre 37,000 empleados", "ESTUDIO_CLAVE": "Un ensayo controlado aleatorizado publicado en The Lancet Digital Health (2021) que mostró que los recordatorios personalizados por mensaje de texto mejoraron la adherencia a la medicación en un 14% entre pacientes hipertensos durante 12 meses"}}`;
+
+// Keywords that suggest this placeholder should use RAG instead of web search
+const RAG_FUNCTION_KEYWORDS = [
+  "bibliografía", "bibliografia", "paper", "estudio", "ejemplo",
+  "fuente", "referencia", "cita", "investigación", "académico",
+  "academico", "paper", "artículo", "articulo", "publicación",
+  "publicacion", "autor", "evidence", "evidencia", "caso",
+];
+
+function shouldUseRag(
+  placeholderName: string,
+  functionStr?: string | null,
+  notes?: string | null,
+): boolean {
+  const text = `${placeholderName} ${functionStr ?? ""} ${notes ?? ""}`.toLowerCase();
+  return RAG_FUNCTION_KEYWORDS.some((kw) => text.includes(kw));
+}
 
 export async function researchPlaceholders(
   placeholderNames: string[],
@@ -127,6 +147,59 @@ export async function researchPlaceholders(
   return results;
 }
 
+/**
+ * Research placeholders splitting between RAG (source documents) and web search.
+ * Placeholders whose function/notes suggest bibliography, papers, examples, etc.
+ * use RAG retrieval from uploaded sources; the rest use web search.
+ */
+export async function researchPlaceholdersWithRag(
+  placeholderNames: string[],
+  chapterBrief: string,
+  projectTopic: string | null,
+  projectId: string,
+  placeholderFunctions: Record<string, { function?: string | null; notes?: string | null }>,
+): Promise<{
+  searchResults: Record<string, SearchResult[]>;
+  ragContexts: Record<string, string>;
+}> {
+  // Split placeholders into RAG vs web search
+  const ragNames: string[] = [];
+  const webNames: string[] = [];
+
+  for (const name of placeholderNames) {
+    const func = placeholderFunctions[name];
+    if (shouldUseRag(name, func?.function, func?.notes)) {
+      ragNames.push(name);
+    } else {
+      webNames.push(name);
+    }
+  }
+
+  // RAG: retrieve context for each placeholder
+  const ragContexts: Record<string, string> = {};
+  for (const name of ragNames) {
+    try {
+      const query = `${name.replace(/_/g, " ")} ${chapterBrief} ${projectTopic ?? ""}`;
+      const { contextText } = await retrieveContext(query, projectId, {
+        topK: 5,
+        tokenBudget: 3000,
+      });
+      if (contextText) {
+        ragContexts[name] = contextText;
+      }
+    } catch (err) {
+      console.warn(`[rag] Failed to retrieve context for {${name}}:`, (err as Error).message);
+    }
+  }
+
+  // Web search: use existing logic for remaining
+  const searchResults = webNames.length > 0
+    ? await researchPlaceholders(webNames, chapterBrief, projectTopic)
+    : {};
+
+  return { searchResults, ragContexts };
+}
+
 export async function* fillPlaceholders(
   placeholderNames: string[],
   chapterBrief: string,
@@ -136,10 +209,11 @@ export async function* fillPlaceholders(
   customSystemPrompt?: string,
   effort?: ReasoningEffort,
   temperature?: number,
+  ragContexts?: Record<string, string>,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const systemPrompt = customSystemPrompt || FILL_SYSTEM_PROMPT;
 
-  // Build the research context
+  // Build the research context from web search results
   let researchContext = "";
   if (Object.keys(searchResults).length > 0) {
     researchContext = "\n\n## Research Results\n";
@@ -149,6 +223,15 @@ export async function* fillPlaceholders(
       for (const r of results) {
         researchContext += `- ${r.title}\n  ${r.snippet}\n  URL: ${r.url}\n`;
       }
+    }
+  }
+
+  // Build RAG context from source documents
+  let ragContext = "";
+  if (ragContexts && Object.keys(ragContexts).length > 0) {
+    ragContext = "\n\n## Source Material (from your documents)\n";
+    for (const [name, ctx] of Object.entries(ragContexts)) {
+      ragContext += `\n### ${name.replace(/_/g, " ")}\n${ctx}\n`;
     }
   }
 
@@ -164,6 +247,7 @@ ${promptContents
     .join("\n\n")}
 
 ${researchContext}
+${ragContext}
 
 ## Placeholders to Define
 ${JSON.stringify(placeholderNames)}
