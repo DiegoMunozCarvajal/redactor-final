@@ -15,7 +15,7 @@ declare global {
 function createPostgresClient() {
   return postgres(databaseUrl, {
     prepare: false,
-    max: process.env.NODE_ENV === "production" ? 2 : 3,
+    max: process.env.NODE_ENV === "production" ? 5 : 6,
     idle_timeout: 20,
     connect_timeout: 10,
   });
