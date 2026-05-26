@@ -143,7 +143,7 @@ export default function CreateTemplatePage() {
           ) : metaPrompts.length === 0 ? (
             <div className="text-sm text-muted-foreground">
               No meta-prompts available.{" "}
-              <Link href="/templates/metaprompts" className="text-primary hover:underline">Create one first</Link>.
+              <Link href="/meta-prompts" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
             <select

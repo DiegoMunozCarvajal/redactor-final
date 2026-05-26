@@ -32,8 +32,8 @@ interface NavItem {
 const STATIC_ITEMS: NavItem[] = [
   { href: "/projects", label: "Projects", icon: BookOpen },
   { href: "/templates", label: "Templates", icon: Layers },
-  { href: "/templates/metaprompts", label: "Meta-Prompts", icon: Wand2 },
-  { href: "/templates/assemblies", label: "Assembly", icon: Puzzle },
+  { href: "/meta-prompts", label: "Meta-Prompts", icon: Wand2 },
+  { href: "/assemblies", label: "Assembly", icon: Puzzle },
 ];
 
 function getStoredCollapsed(): boolean {
