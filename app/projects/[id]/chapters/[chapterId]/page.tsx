@@ -164,8 +164,6 @@ export default function ChapterPage() {
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
-  const [placeholderForm, setPlaceholderForm] = useState<Record<string, string>>({});
-  const [savingPlaceholders, setSavingPlaceholders] = useState(false);
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
   const [newPrompt, setNewPrompt] = useState({
@@ -240,13 +238,7 @@ export default function ChapterPage() {
       );
       if (signal?.aborted) return;
       if (res.ok) {
-        const data = await res.json();
-        setPlaceholders(data);
-        const form: Record<string, string> = {};
-        for (const ph of data) {
-          if (ph.definition) form[ph.name] = ph.definition;
-        }
-        setPlaceholderForm((prev) => ({ ...form, ...prev }));
+        setPlaceholders(await res.json());
       }
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
@@ -386,28 +378,24 @@ export default function ChapterPage() {
     }
   }
 
-  async function savePlaceholders() {
-    setSavingPlaceholders(true);
+  async function saveDefinition(name: string, definition: string) {
     try {
       const res = await fetch(
         `/api/projects/${params.id}/chapters/${params.chapterId}/placeholders`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ placeholders: placeholderForm }),
+          body: JSON.stringify({ placeholders: { [name]: definition } }),
         },
       );
       if (res.ok) {
         setPlaceholders(await res.json());
-        toast.success("Placeholders saved");
       } else {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.error ?? "Error saving placeholders");
+        toast.error(err.error ?? "Error saving placeholder");
       }
     } catch {
       toast.error("Network error");
-    } finally {
-      setSavingPlaceholders(false);
     }
   }
 
@@ -630,8 +618,7 @@ export default function ChapterPage() {
         projectId={params.id as string}
         chapterId={params.chapterId as string}
         placeholders={placeholders}
-        onSaveDefinitions={savePlaceholders}
-        savingPlaceholders={savingPlaceholders}
+        onSaveDefinition={saveDefinition}
       />
 
       {/* No prompts */}

@@ -10,8 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
-import { researchPlaceholdersWithRag, fillPlaceholders } from "@/lib/ai/placeholder-fill";
-import { resolvePlaceholdersDirect } from "@/lib/placeholders";
+import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
 
 export async function POST(
   req: NextRequest,
@@ -56,94 +55,51 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
-  // Load context
+  // Load placeholders with metadata
   const placeholderRows = await db
     .select()
     .from(chapterPlaceholders)
     .where(eq(chapterPlaceholders.chapterId, chapterId))
     .orderBy(asc(chapterPlaceholders.name));
+
+  if (placeholderRows.length === 0) {
+    return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
+  }
+
+  // Load prompt contents for context
   const promptRows = await db
     .select({ content: projectPrompts.content })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
-  const placeholderNames = placeholderRows.map((p) => p.name);
   const promptContents = promptRows.map((p) => p.content);
 
-  if (placeholderNames.length === 0) {
-    return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
-  }
+  // Build placeholder defs for the sequential pipeline
+  const placeholderDefs = placeholderRows.map((p) => ({
+    name: p.name,
+    function: p.function,
+    notes: p.notes,
+  }));
 
-  // Build placeholder functions map for RAG routing
-  const placeholderFunctions: Record<string, { function?: string | null; notes?: string | null }> = {};
-  for (const row of placeholderRows) {
-    if (row.function || row.notes) {
-      placeholderFunctions[row.name] = { function: row.function, notes: row.notes };
-    }
-  }
-
-  // Phase 0: Resolve placeholders directly from project data (no LLM)
-  const { resolved, unresolved } = resolvePlaceholdersDirect(
-    placeholderNames,
-    project.topic ?? null,
-  );
-
-  // Persist direct resolutions
-  for (const [name, definition] of Object.entries(resolved)) {
-    await db
-      .update(chapterPlaceholders)
-      .set({ definition })
-      .where(
-        and(
-          eq(chapterPlaceholders.chapterId, chapterId),
-          eq(chapterPlaceholders.name, name),
-        ),
-      );
-  }
-
-  // Phase 1: Research only unresolved placeholders (RAG + web search)
-  const { searchResults, ragContexts } =
-    unresolved.length > 0
-      ? await researchPlaceholdersWithRag(
-          unresolved,
-          project.topic ?? null,
-          projectId,
-          placeholderFunctions,
-        )
-      : { searchResults: {}, ragContexts: {} };
-
-  // Phase 2: Generate + stream via SSE (only unresolved)
+  // Stream results via SSE as each placeholder completes
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      // Emit directly resolved placeholders first
-      for (const [name, definition] of Object.entries(resolved)) {
-        const event = { type: "placeholder" as const, name, definition, sources: [] };
-        controller.enqueue(encoder.encode(`event: placeholder\ndata: ${JSON.stringify(event)}\n\n`));
-      }
-
-      if (unresolved.length === 0) {
-        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: "done" })}\n\n`));
-        controller.close();
-        return;
-      }
-
       try {
-        for await (const event of fillPlaceholders(
-          unresolved,
+        for await (const event of fillPlaceholdersSequential(
+          placeholderDefs,
           promptContents,
-          searchResults,
+          project.topic ?? null,
+          projectId,
           model,
-          undefined,
           effort,
           temperature,
-          ragContexts,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));
 
-          // Persist definition to DB on placeholder event
+          // Persist definition to DB on each placeholder event
           if (event.type === "placeholder" && event.name && event.definition) {
             await db
               .update(chapterPlaceholders)

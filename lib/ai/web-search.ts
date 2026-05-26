@@ -85,7 +85,7 @@ async function searchTavily(query: string): Promise<SearchResult[]> {
   }));
 }
 
-async function searchSemanticScholar(query: string): Promise<SearchResult[]> {
+export async function searchSemanticScholar(query: string): Promise<SearchResult[]> {
   const apiKey = process.env.SEMANTIC_SCHOLAR_API_KEY;
   const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=3&fields=title,url,abstract,publicationDate`;
 

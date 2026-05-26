@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -15,29 +15,30 @@ import {
 import {
   Loader2,
   Sparkles,
-  RefreshCw,
-  Play,
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  Save,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
 const MODELS = [
-  { id: "gpt-5.4", label: "GPT 5.4", short: "GPT5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "G5.4M" },
-  { id: "gpt-5.5", label: "GPT 5.5", short: "GPT5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini", short: "G5.5M" },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", short: "Haiku" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", short: "Sonnet" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6", short: "Opus6" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", short: "GemPr" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "GemFl" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DSPro" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", short: "DSFlash" },
+  { id: "gpt-5.4", label: "GPT 5.4" },
+  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini" },
+  { id: "gpt-5.5", label: "GPT 5.5" },
+  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
 ];
 
 interface SearchResult {
@@ -51,49 +52,66 @@ interface Props {
   projectId: string;
   chapterId: string;
   placeholders: ChapterPlaceholder[];
-  onSaveDefinitions: () => Promise<void>;
-  savingPlaceholders: boolean;
+  onSaveDefinition: (name: string, definition: string) => Promise<void>;
+}
+
+type FillStatus = "pending" | "generating" | "filled" | "error";
+
+interface PlaceholderState {
+  definition: string;
+  status: FillStatus;
+  sources: SearchResult[];
+  ragChunks?: number;
+  provider?: string;
 }
 
 export function PlaceholderFillSection({
   projectId,
   chapterId,
   placeholders,
-  onSaveDefinitions,
-  savingPlaceholders,
+  onSaveDefinition,
 }: Props) {
-  const [fillModel, setFillModel] = useState("deepseek-v4-pro");
+  const [model, setModel] = useState("deepseek-v4-pro");
   const [effort, setEffort] = useState<string>("max");
   const [temperature, setTemperature] = useState(0.7);
-  const [placeholderModels, setPlaceholderModels] = useState<Record<string, string>>({});
-  const [placeholderEfforts, setPlaceholderEfforts] = useState<Record<string, string>>({});
-  const [placeholderTemperatures, setPlaceholderTemperatures] = useState<Record<string, number>>({});
   const [filling, setFilling] = useState(false);
-  const [fillingName, setFillingName] = useState<string | null>(null);
-  const [definitions, setDefinitions] = useState<Record<string, string>>({});
-  const [sources, setSources] = useState<Record<string, SearchResult[]>>({});
-  const [expandedSources, setExpandedSources] = useState<
-    Record<string, boolean>
-  >({});
+  const [states, setStates] = useState<Record<string, PlaceholderState>>({});
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editRef = useRef<HTMLTextAreaElement>(null);
 
-  function getDefinition(name: string): string {
-    return (
-      definitions[name] ??
-      placeholders.find((p) => p.name === name)?.definition ??
-      ""
-    );
+  function getState(name: string): PlaceholderState {
+    return states[name] ?? {
+      definition: placeholders.find((p) => p.name === name)?.definition ?? "",
+      status: placeholders.find((p) => p.name === name)?.definition ? "filled" : "pending",
+      sources: [],
+    };
   }
 
-  async function fillAll() {
+  const progress = Object.values(states).filter((s) => s.status === "filled").length;
+  const total = placeholders.length;
+
+  const fillAll = useCallback(async () => {
     setFilling(true);
-    setSources({});
+    // Reset all to pending
+    const init: Record<string, PlaceholderState> = {};
+    for (const ph of placeholders) {
+      init[ph.name] = {
+        definition: ph.definition ?? "",
+        status: "pending",
+        sources: [],
+      };
+    }
+    setStates(init);
+
     try {
       const res = await fetch(
         `/api/projects/${projectId}/chapters/${chapterId}/placeholders/fill`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: fillModel, effort, temperature }),
+          body: JSON.stringify({ model, effort, temperature }),
         },
       );
 
@@ -119,23 +137,32 @@ export function PlaceholderFillSection({
           try {
             const event = JSON.parse(dataStr);
             if (event.type === "placeholder" && event.name) {
-              setDefinitions((prev) => ({
+              setStates((prev) => ({
                 ...prev,
-                [event.name]: event.definition,
+                [event.name]: {
+                  definition: event.definition ?? "",
+                  status: "filled",
+                  sources: event.sources ?? [],
+                  ragChunks: event.ragChunks,
+                  provider: event.provider,
+                },
               }));
-              if (event.sources?.length > 0) {
-                setSources((prev) => ({
+            } else if (event.type === "error") {
+              if (event.name) {
+                setStates((prev) => ({
                   ...prev,
-                  [event.name]: event.sources,
+                  [event.name]: {
+                    ...(prev[event.name] ?? { definition: "", sources: [] }),
+                    status: "error",
+                  },
                 }));
               }
+              toast.error(event.error ?? "Error filling placeholder");
             } else if (event.type === "done") {
-              toast.success("Placeholders filled");
-            } else if (event.type === "error") {
-              toast.error(event.error ?? "Error filling");
+              toast.success(`${event.total ?? total} placeholders filled`);
             }
           } catch {
-            // ignore malformed JSON in stream
+            // ignore malformed JSON
           }
         }
       }
@@ -147,11 +174,9 @@ export function PlaceholderFillSection({
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-
         processLines(lines);
       }
 
-      // Flush remaining decoder bytes
       buffer += decoder.decode();
       if (buffer.trim()) {
         processLines(buffer.split("\n"));
@@ -161,42 +186,50 @@ export function PlaceholderFillSection({
     } finally {
       setFilling(false);
     }
+  }, [projectId, chapterId, model, effort, temperature, placeholders, total]);
+
+  function startEdit(name: string) {
+    const state = getState(name);
+    setEditingName(name);
+    setEditValue(state.definition);
+    setTimeout(() => editRef.current?.focus(), 0);
   }
 
-  async function fillOne(name: string) {
-    const m = placeholderModels[name] ?? fillModel;
-    const e = placeholderEfforts[name] ?? effort;
-    const t = placeholderTemperatures[name] ?? temperature;
-    setFillingName(name);
-    try {
-      const res = await fetch(
-        `/api/projects/${projectId}/chapters/${chapterId}/placeholders/${encodeURIComponent(name)}/fill`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: m, effort: e, ...(e === "off" ? { temperature: t } : {}) }),
-        },
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setDefinitions((prev) => ({
-          ...prev,
-          [data.name]: data.definition,
-        }));
-        if (data.sources?.length > 0) {
-          setSources((prev) => ({
-            ...prev,
-            [data.name]: data.sources,
-          }));
-        }
-        toast.success(`{${name}} filled`);
-      } else {
-        toast.error(`Error filling {${name}}`);
+  async function commitEdit() {
+    if (!editingName) return;
+    const trimmed = editValue.trim();
+    setStates((prev) => ({
+      ...prev,
+      [editingName]: {
+        ...getState(editingName),
+        definition: trimmed,
+        status: trimmed ? "filled" : "pending",
+      },
+    }));
+    setEditingName(null);
+    if (trimmed) {
+      try {
+        await onSaveDefinition(editingName, trimmed);
+      } catch {
+        toast.error("Error saving definition");
       }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setFillingName(null);
+    }
+  }
+
+  function cancelEdit() {
+    setEditingName(null);
+  }
+
+  function statusIcon(status: FillStatus) {
+    switch (status) {
+      case "filled":
+        return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />;
+      case "generating":
+        return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500 flex-shrink-0" />;
+      case "error":
+        return <AlertCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />;
+      case "pending":
+        return <Circle className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />;
     }
   }
 
@@ -204,30 +237,36 @@ export function PlaceholderFillSection({
 
   return (
     <div className="mb-6">
+      {/* Header bar */}
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Placeholders
-        </h2>
         <div className="flex items-center gap-2">
-          <Select value={fillModel} onValueChange={setFillModel}>
-            <SelectTrigger className="w-[110px] h-7 text-[10px]">
+          <h2 className="text-sm font-medium text-muted-foreground">Placeholders</h2>
+          {filling && (
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {progress}/{total}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={model} onValueChange={setModel} disabled={filling}>
+            <SelectTrigger className="w-[140px] h-7 text-[11px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {MODELS.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="text-[10px]">
+                <SelectItem key={m.id} value={m.id} className="text-[11px]">
                   {m.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={effort} onValueChange={setEffort}>
-            <SelectTrigger className="w-[70px] h-7 text-[10px]">
+          <Select value={effort} onValueChange={setEffort} disabled={filling}>
+            <SelectTrigger className="w-[62px] h-7 text-[11px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-              <SelectItem value="off" className="text-[10px]">Alto</SelectItem>
+              <SelectItem value="max" className="text-[11px]">Max</SelectItem>
+              <SelectItem value="off" className="text-[11px]">Alto</SelectItem>
             </SelectContent>
           </Select>
           {effort === "off" && (
@@ -238,12 +277,13 @@ export function PlaceholderFillSection({
               step={0.1}
               value={temperature}
               onChange={(e) => { const v = parseFloat(e.target.value); setTemperature(isNaN(v) ? 0.7 : v); }}
-              className="w-[60px] h-7 text-[10px] px-1"
+              className="w-[52px] h-7 text-[11px] px-1"
+              disabled={filling}
             />
           )}
           <Button
             size="sm"
-            className="text-xs"
+            className="text-xs h-7"
             onClick={fillAll}
             disabled={filling}
           >
@@ -257,143 +297,161 @@ export function PlaceholderFillSection({
         </div>
       </div>
 
+      {/* Placeholder cards */}
       <Card>
-        <CardContent className="pt-4 space-y-3">
+        <CardContent className="pt-3 pb-1 space-y-0">
           {placeholders.map((ph) => {
-            const def = getDefinition(ph.name);
-            const srcs = sources[ph.name] ?? [];
-            const isFillingThis = fillingName === ph.name;
-            const phModel = placeholderModels[ph.name] ?? fillModel;
-            const phEffort = placeholderEfforts[ph.name] ?? effort;
-            const phTemp = placeholderTemperatures[ph.name] ?? temperature;
+            const state = getState(ph.name);
+            const isEditing = editingName === ph.name;
+            const hasSources = state.sources.length > 0;
+            const isExpanded = expandedSources[ph.name] ?? false;
 
             return (
-              <div key={ph.id} className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[10px] text-muted-foreground">
-                    {"{"}
-                    {ph.name}
-                    {"}"}
-                  </Label>
-                  <div className="flex items-center gap-1">
-                    <Select
-                      value={phModel}
-                      onValueChange={(v) =>
-                        setPlaceholderModels((prev) => ({ ...prev, [ph.name]: v }))
-                      }
-                    >
-                      <SelectTrigger className="w-[85px] h-6 text-[9px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MODELS.map((m) => (
-                          <SelectItem key={m.id} value={m.id} className="text-[9px]">
-                            {m.short}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={phEffort}
-                      onValueChange={(v) =>
-                        setPlaceholderEfforts((prev) => ({ ...prev, [ph.name]: v }))
-                      }
-                    >
-                      <SelectTrigger className="w-[52px] h-6 text-[9px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="max" className="text-[9px]">Max</SelectItem>
-                        <SelectItem value="off" className="text-[9px]">Alto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {phEffort === "off" && (
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        value={phTemp}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          setPlaceholderTemperatures((prev) => ({
-                            ...prev,
-                            [ph.name]: isNaN(v) ? 0.7 : v,
-                          }));
-                        }}
-                        className="w-[48px] h-6 text-[9px] px-1"
-                      />
+              <div
+                key={ph.id}
+                className={`py-2.5 -mx-3 px-3 rounded-md transition-colors ${
+                  state.status === "generating"
+                    ? "bg-amber-500/5"
+                    : state.status === "error"
+                      ? "bg-destructive/5"
+                      : ""
+                }`}
+              >
+                {/* Top row: name + status */}
+                <div className="flex items-center gap-2 mb-1">
+                  {statusIcon(state.status)}
+                  <code className="text-[11px] font-semibold text-foreground/80 bg-muted/50 px-1.5 py-0.5 rounded">
+                    {"{"}{ph.name}{"}"}
+                  </code>
+                  <div className="flex-1 min-w-0">
+                    {ph.function && (
+                      <span className="text-[10px] text-muted-foreground truncate block">
+                        {ph.function}
+                      </span>
                     )}
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={def}
-                    onChange={(e) =>
-                      setDefinitions((prev) => ({
-                        ...prev,
-                        [ph.name]: e.target.value,
-                      }))
-                    }
-                    className="text-xs h-8 flex-1"
-                    placeholder={
-                      isFillingThis
-                        ? "generating..."
-                        : `Define "${ph.name}"...`
-                    }
-                    disabled={isFillingThis}
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 flex-shrink-0"
-                    onClick={() => fillOne(ph.name)}
-                    disabled={isFillingThis || filling}
-                    aria-label={def ? `Regenerate {${ph.name}}` : `Generate {${ph.name}}`}
-                  >
-                    {isFillingThis ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : def ? (
-                      <RefreshCw className="h-3 w-3 text-muted-foreground" />
-                    ) : (
-                      <Play className="h-3 w-3 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-
-                {srcs.length > 0 && (
-                  <div className="text-[10px]">
+                  {state.provider && state.provider !== "none" && state.provider !== "direct" && (
+                    <span className={`text-[9px] px-1 py-0.5 rounded flex-shrink-0 ${
+                      state.provider === "rag"
+                        ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+                        : state.provider === "semantic-scholar"
+                          ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+                          : "bg-muted text-muted-foreground"
+                    }`}>
+                      {state.provider === "rag" && state.ragChunks
+                        ? `RAG (${state.ragChunks})`
+                        : state.provider === "semantic-scholar"
+                          ? "Semantic Scholar"
+                          : "Web"}
+                    </span>
+                  )}
+                  {state.status === "filled" && !isEditing && (
                     <button
                       type="button"
-                      className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                      className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 flex-shrink-0"
+                      onClick={() => startEdit(ph.name)}
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                      edit
+                    </button>
+                  )}
+                </div>
+
+                {/* Definition */}
+                {isEditing ? (
+                  <div className="space-y-1.5">
+                    <Textarea
+                      ref={editRef}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="text-xs min-h-[60px]"
+                      placeholder={`Define {${ph.name}}...`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          cancelEdit();
+                        } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          commitEdit();
+                        }
+                      }}
+                    />
+                    <div className="flex gap-1 justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px]"
+                        onClick={cancelEdit}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-6 text-[10px]"
+                        onClick={commitEdit}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : state.definition ? (
+                  <p className="text-[11px] leading-relaxed text-muted-foreground ml-5.5 pl-0.5">
+                    {state.definition}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/50 italic ml-5.5 pl-0.5">
+                    {filling ? "Waiting..." : "No definition"}
+                  </p>
+                )}
+
+                {/* Error message */}
+                {ph.notes && !isEditing && (
+                  <p className="text-[10px] text-muted-foreground/60 italic mt-0.5 ml-5.5 line-clamp-2">
+                    {ph.notes}
+                  </p>
+                )}
+
+                {state.status === "error" && (
+                  <p className="text-[11px] text-destructive mt-1 ml-5.5">
+                    Failed to generate. Click Fill All to retry.
+                  </p>
+                )}
+
+                {/* Sources */}
+                {hasSources && (
+                  <div className="mt-1.5 ml-5.5">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
                       onClick={() =>
                         setExpandedSources((prev) => ({
                           ...prev,
                           [ph.name]: !prev[ph.name],
                         }))
                       }
-                      aria-expanded={!!expandedSources[ph.name]}
+                      aria-expanded={isExpanded}
                     >
-                      {expandedSources[ph.name] ? (
-                        <ChevronDown className="h-3 w-3" />
+                      {isExpanded ? (
+                        <ChevronDown className="h-2.5 w-2.5" />
                       ) : (
-                        <ChevronRight className="h-3 w-3" />
+                        <ChevronRight className="h-2.5 w-2.5" />
                       )}
-                      Sources ({srcs.length})
+                      Sources ({state.sources.length})
                     </button>
-                    {expandedSources[ph.name] && (
-                      <div className="mt-1 space-y-1 ml-4">
-                        {srcs.map((s, i) => (
+                    {isExpanded && (
+                      <div className="mt-1 space-y-0.5 ml-3.5">
+                        {state.sources.map((s, i) => (
                           <a
                             key={i}
                             href={s.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-start gap-1 text-muted-foreground hover:text-foreground"
+                            className="flex items-start gap-1 text-[10px] text-muted-foreground hover:text-foreground block"
                           >
                             <ExternalLink className="h-2.5 w-2.5 mt-0.5 flex-shrink-0" />
-                            <span>
-                              {s.title} ({s.provider})
+                            <span className="truncate">
+                              {s.title}
+                              <span className="text-muted-foreground/50 ml-0.5">
+                                ({s.provider})
+                              </span>
                             </span>
                           </a>
                         ))}
@@ -404,22 +462,6 @@ export function PlaceholderFillSection({
               </div>
             );
           })}
-
-          <div className="flex justify-end pt-2">
-            <Button
-              size="sm"
-              className="text-xs"
-              onClick={onSaveDefinitions}
-              disabled={savingPlaceholders}
-            >
-              {savingPlaceholders ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <Save className="h-3 w-3 mr-1" />
-              )}
-              Save
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>
