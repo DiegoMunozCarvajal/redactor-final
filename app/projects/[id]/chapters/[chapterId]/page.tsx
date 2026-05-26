@@ -158,6 +158,7 @@ export default function ChapterPage() {
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [assemblyTemperature, setAssemblyTemperature] = useState(0.7);
   const [assembling, setAssembling] = useState(false);
+  const [selectingAssembly, setSelectingAssembly] = useState(false);
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
   const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
@@ -243,11 +244,27 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
 
+  const fetchAssemblyLibrary = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/assembly-prompts", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setAssemblyPromptList(data);
+      }
+    } catch { /* supplementary */ }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([fetchChapter(controller.signal), fetchPrompts(controller.signal), fetchPlaceholders(controller.signal)]);
+    Promise.all([
+      fetchChapter(controller.signal),
+      fetchPrompts(controller.signal),
+      fetchPlaceholders(controller.signal),
+      fetchAssemblyLibrary(controller.signal),
+    ]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -505,6 +522,42 @@ export default function ChapterPage() {
       if (!latestFragmentByPrompt.has(f.projectPromptId)) {
         latestFragmentByPrompt.set(f.projectPromptId, f);
       }
+    }
+  }
+
+  async function handleSelectAssemblyPrompt(libraryId: string) {
+    setSelectingAssembly(true);
+    try {
+      // Fetch the library prompt
+      const res = await fetch(`/api/assembly-prompts/${libraryId}`);
+      if (!res.ok) {
+        toast.error("Failed to load assembly prompt");
+        return;
+      }
+      const ap = await res.json();
+      // Create as project prompt for this chapter
+      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapterId: params.chapterId,
+          title: ap.name,
+          content: ap.content,
+          userPrompt: ap.userPrompt ?? null,
+          isAssembly: true,
+        }),
+      });
+      if (createRes.ok) {
+        toast.success(`Assembly prompt "${ap.name}" added`);
+        fetchPrompts();
+      } else {
+        const err = await createRes.json().catch(() => ({}));
+        toast.error(err.error ?? "Failed to add assembly prompt");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSelectingAssembly(false);
     }
   }
 
@@ -1109,6 +1162,9 @@ export default function ChapterPage() {
           fetchPrompts()
         }}
         versionsApiUrl={`/api/projects/${params.id}/prompts/${assemblyPrompt?.id}/versions`}
+        assemblyLibrary={assemblyPromptList}
+        onSelectFromLibrary={handleSelectAssemblyPrompt}
+        selectingFromLibrary={selectingAssembly}
         models={MODELS}
         assemblyModel={assemblyModel}
         onAssemblyModelChange={(v) => {

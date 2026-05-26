@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const { title, content, position, isAssembly } = body;
+  const { title, content, userPrompt, position, isAssembly } = body;
 
   if (!title || !content) {
     return NextResponse.json({ error: "title and content are required" }, { status: 400 });
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       chapterId: id,
       title,
       content,
+      userPrompt,
       position: pos,
       isAssembly: isAssembly ?? false,
     })
@@ -65,10 +66,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Sync placeholders for this chapter
   const allPrompts = await db
-    .select({ content: prompts.content })
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
     .from(prompts)
     .where(eq(prompts.chapterId, id));
-  await syncChapterPlaceholders(id, allPrompts.map((p) => p.content));
+  await syncChapterPlaceholders(
+    id,
+    allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+  );
 
   return NextResponse.json(prompt);
 }

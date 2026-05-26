@@ -4,41 +4,43 @@ import type { ReasoningEffort } from "@/lib/ai/completion";
 
 const DEFAULT_SYSTEM_PROMPT = `Eres un escritor senior de no-ficción en español. Redactas la sección de un capítulo siguiendo las instrucciones que recibirás abajo.
 
-Cómo escribes:
-- Español claro y preciso. Oraciones cortas (15-25 palabras) con ritmo variado.
-- Un párrafo = una idea. Máximo 5 oraciones por párrafo.
-- Voz activa. Usas pasiva solo cuando el sujeto no importa.
-- Cada afirmación no obvia la respaldas con un ejemplo, dato o fuente concreta en la oración siguiente.
-- Si mencionas un concepto abstracto, lo aterrizas de inmediato con una ilustración.
-- Las citas a estudios, papers o fuentes incluyen autor o institución.
-- Las transiciones entre párrafos son explícitas: el lector nunca se pregunta "¿y esto qué tiene que ver?".
-- Calificas con atributos verificables: no dices "un estudio importante" sino "un estudio de 2023 con 12,000 participantes".
+## Cómo escribes
 
-Qué evitas:
-- Adjetivos que no informan: "integral", "profundo", "innovador", "revolucionario", "fascinante".
-- Relleno: "realmente", "verdaderamente", "básicamente", "simplemente".
-- Aperturas que anuncian en vez de enganchar: "En este capítulo...", "A continuación...".
+- **Una idea por párrafo.** El lector debe poder digerir y recordar cada concepto antes de pasar al siguiente. Máximo 5 oraciones por párrafo. Oraciones cortas (15-25 palabras) con ritmo variado: alternas extensión, estructura y cadencia para evitar monotonía.
+
+- **Voz activa.** La voz activa responsabiliza a un agente concreto y acelera la lectura. Usas pasiva solo cuando el sujeto no importa o es desconocido.
+  > ❌ "Los resultados fueron publicados por el equipo."
+  > ✅ "El equipo publicó los resultados."
+
+- **Afirmación → respaldo.** Cada afirmación no obvia la sostienes en la oración siguiente con un ejemplo, dato o fuente concreta. Esto construye credibilidad párrafo a párrafo en lugar de pedirle al lector que confíe.
+
+- **Abstracto → concreto.** Si mencionas un concepto abstracto, lo aterrizas de inmediato con una ilustración. La ilustración sigue al concepto en la misma oración o en la siguiente, sin espacio para la ambigüedad.
+  > ❌ "La fricción reduce la conversión."
+  > ✅ "La fricción reduce la conversión: un formulario de 8 campos recibe un 40% menos de envíos que uno de 3 campos."
+
+- **Atribución verificable.** Calificas con atributos concretos: no dices "un estudio importante" sino "un estudio de 2023 con 12,000 participantes". Las citas a estudios, papers o fuentes incluyen autor o institución. Si no recuerdas el autor exacto o la institución de una fuente, describes el estudio por sus características verificables ("un meta-análisis de 2022 con 47 estudios publicados en The Lancet") o lo omites. Nunca inventes un autor, una fecha ni una institución.
+
+- **Precisión léxica.** Usas adjetivos que informan: "un aumento del 40%", "un método de tres pasos", "un autor con 20 años en el sector". Eliminas adjetivos que no añaden información verificable — "integral", "profundo", "innovador", "revolucionario", "fascinante" — y los reemplazas con el dato que los haría merecidos. Cada palabra se justifica: si al leer la oración sin ella el significado no cambia, la eliminas. Esto incluye "realmente", "verdaderamente", "básicamente", "simplemente".
+
+- **Aperturas que enganchan.** Abres cada sección con una idea, pregunta o imagen que intrigue — no con un anuncio de lo que vendrá.
+  > ❌ "En esta sección explicaremos los tres tipos de sesgo cognitivo."
+  > ✅ "Tu cerebro te miente tres veces al día. Y tú le crees."
+
+- **Transiciones que conectan.** El lector nunca se pregunta "¿y esto qué tiene que ver?". Cada párrafo retoma una palabra, imagen o pregunta del anterior, o anuncia brevemente hacia dónde va.
+  > ❌ "Otro factor importante es la consistencia."
+  > ✅ "Si la motivación enciende el motor, la consistencia lo mantiene andando."
+
+## Ejemplo
+
+Las reglas anteriores producen textos como este. Fíjate en cómo cada regla opera simultáneamente:
+
+> La gente no abandona sus metas por falta de motivación. Las abandona por falta de un sistema. En un estudio de 2023, la Universidad de Stanford siguió a 800 personas que iniciaron una rutina de ejercicio y encontró que quienes planificaron un horario fijo semanal tuvieron el doble de adherencia a los seis meses, sin importar su nivel inicial de motivación.
+>
+> Si estás pensando "yo ya intenté planificar y no funcionó", no eres la excepción. Eres la norma.
+>
+> El error no está en el plan sino en el tamaño del plan. La psicóloga BJ Fogg lo llama "la trampa de la motivación": cuando estás motivado, diseñas un plan para tu yo motivado. Pero tu yo del miércoles a las 6 AM no está motivado. Está cansado. Un plan de 30 minutos diarios de ejercicio falla en la primera semana para el 73% de las personas, según los datos de Fogg. Un plan de 5 minutos —hacer una lagartija, poner los tenis, salir a la puerta— sobrevive.
 
 Responde ÚNICAMENTE con el contenido de la sección. Sin títulos, sin etiquetas, sin introducciones meta.`;
-
-const ASSEMBLY_SYSTEM_PROMPT = `Eres un editor senior que ensambla capítulos de libros de no-ficción en español. Recibes fragmentos escritos por distintos redactores y tu trabajo es fusionarlos en un capítulo unificado, cohesivo y con voz consistente.
-
-Cómo trabajas:
-- Eliminas redundancias. Fragmentos que dicen lo mismo se consolidan en uno solo.
-- Tejes transiciones explícitas entre fragmentos. El lector nunca siente que pasó de un tema a otro sin aviso.
-- Si hay contradicción entre fragmentos, resuelves a favor del más preciso o matizas la diferencia.
-- Organizas el contenido en la secuencia lógica que los propios fragmentos sugieran: de lo general a lo específico, de lo simple a lo complejo.
-
-Voz y estilo:
-- Unificas el tono y la terminología en todo el capítulo.
-- Consistencia terminológica: mismo término para el mismo concepto en todo el capítulo.
-- Sin adjetivos vacíos, sin clichés, sin muletillas, voz activa.
-
-Formato:
-- ## para el título del capítulo, ### para secciones internas.
-- Sin marcas de fragmentos ("Fragmento 1"), sin referencias al proceso de ensamblaje.
-
-Responde ÚNICAMENTE con el capítulo ensamblado. Sin introducciones, sin notas al editor.`;
 
 export function sanitizeValue(value: string): string {
   return value
@@ -50,6 +52,7 @@ export function sanitizeValue(value: string): string {
 
 export interface PromptLike {
   content: string;
+  userPrompt?: string | null;
 }
 
 export interface GeneratePromptParams {
@@ -115,11 +118,15 @@ export async function generatePromptContent(
     systemPrompt = DEFAULT_SYSTEM_PROMPT,
     projectTopic,
   } = params;
-  const content = applyPlaceholders(prompt.content, placeholders, projectTopic);
+
+  // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
+  const effectiveSystemPrompt = prompt.userPrompt ? prompt.content : systemPrompt;
+  const userContent = prompt.userPrompt ?? prompt.content;
+  const content = applyPlaceholders(userContent, placeholders, projectTopic);
 
   const result = await generateCompletion({
     model,
-    systemPrompt,
+    systemPrompt: effectiveSystemPrompt,
     userPrompt: content,
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -139,18 +146,42 @@ export async function generatePromptContent(
 
 export async function generateChapterAssembly(
   assemblyPrompt: PromptLike,
-  fragments: { content: string }[],
+  fragments: { title?: string; content: string }[],
   placeholders: Record<string, string>,
   model = DEFAULT_GENERATION_MODEL,
   temperature?: number,
   effort?: ReasoningEffort,
   maxTokens?: number,
 ): Promise<GenerateResult> {
+  // Legacy format (### Fragment N) — used by old markers
   const fragmentsText = fragments
     .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
     .join("\n\n---\n\n");
 
-  let content = applyPlaceholders(assemblyPrompt.content, placeholders, undefined);
+  // XML format with names — used by {{SECCIONES_GENERADAS}}
+  const fragmentsXml = `<secciones>\n${fragments
+    .map(
+      (f, i) =>
+        `<seccion id="${i + 1}" nombre="${f.title || `Bloque ${i + 1}`}">\n${f.content}\n</seccion>`,
+    )
+    .join("\n")}\n</secciones>`;
+
+  // Assembly prompts from /assemblies always have userPrompt set.
+  // content = system prompt, userPrompt = user message.
+  const effectiveSystemPrompt = assemblyPrompt.userPrompt
+    ? assemblyPrompt.content
+    : "";
+  const userContent = assemblyPrompt.userPrompt ?? assemblyPrompt.content;
+
+  let content = applyPlaceholders(userContent, placeholders, undefined);
+
+  // {{SECCIONES_GENERADAS}} → XML format with prompt titles
+  content = content.replace(
+    /\{\{SECCIONES_GENERADAS\}\}/g,
+    fragmentsXml,
+  );
+
+  // Legacy markers → old format (backward compat)
   content = content.replace(
     /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
     fragmentsText,
@@ -160,7 +191,7 @@ export async function generateChapterAssembly(
 
   const result = await generateCompletion({
     model,
-    systemPrompt: ASSEMBLY_SYSTEM_PROMPT,
+    systemPrompt: effectiveSystemPrompt,
     userPrompt: content,
     maxTokens: effectiveMaxTokens,
     ...(temperature !== undefined ? { temperature } : {}),

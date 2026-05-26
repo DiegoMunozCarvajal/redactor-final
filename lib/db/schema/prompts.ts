@@ -10,6 +10,7 @@ export const prompts = pgTable("prompts", {
   isAssembly: boolean("is_assembly").notNull().default(false),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  userPrompt: text("user_prompt"),
   function: text("function"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -16,6 +16,7 @@ export default function AssemblyPromptEditorPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
+  const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function AssemblyPromptEditorPage() {
     setLoading(true);
     fetch(`/api/assembly-prompts/${params.id}`, { signal: controller.signal })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((ap) => { setName(ap.name); setDescription(ap.description ?? ""); setContent(ap.content); })
+      .then((ap) => { setName(ap.name); setDescription(ap.description ?? ""); setContent(ap.content); setUserPrompt(ap.userPrompt ?? ""); })
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -40,7 +41,7 @@ export default function AssemblyPromptEditorPage() {
     const res = await fetch(`/api/assembly-prompts/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), description: description.trim() || null, content }),
+      body: JSON.stringify({ name: name.trim(), description: description.trim() || null, content, userPrompt: userPrompt.trim() || null }),
     });
     if (res.ok) {
       toast.success("Saved");
@@ -94,7 +95,12 @@ export default function AssemblyPromptEditorPage() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="content">System Prompt</Label>
-          <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} rows={20} className="font-mono text-xs" />
+          <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} rows={15} className="font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="userPrompt">User Prompt</Label>
+          <Textarea id="userPrompt" value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} rows={10} className="font-mono text-xs" placeholder="[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO]\n\nEnsambla los fragmentos en un capítulo unificado sobre {tema}." />
+          <p className="text-[10px] text-muted-foreground">Leave empty to use System Prompt as user message with default system prompt.</p>
         </div>
       </div>
     </div>

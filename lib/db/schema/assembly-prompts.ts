@@ -5,6 +5,7 @@ export const assemblyPrompts = pgTable("assembly_prompts", {
   name: text("name").notNull(),
   description: text("description"),
   content: text("content").notNull(),
+  userPrompt: text("user_prompt"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -59,15 +59,17 @@ export async function POST(
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
   }
 
-  // Load selected fragments
+  // Load selected fragments with prompt titles
   const selectedFragments = await db
     .select({
       id: fragments.id,
       content: fragments.content,
       position: fragments.position,
       generationId: fragments.chapterGenerationId,
+      promptTitle: projectPrompts.title,
     })
     .from(fragments)
+    .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
     .where(inArray(fragments.id, fragmentIds))
     .orderBy(asc(fragments.position));
 
@@ -80,7 +82,7 @@ export async function POST(
 
   // Load the assembly prompt — either from the global assembly_prompts table (if assemblyPromptId provided)
   // or from the chapter's embedded project prompt (backward compat).
-  let assemblyPrompt: { title: string; content: string } | null = null;
+  let assemblyPrompt: { title: string; content: string; userPrompt?: string | null } | null = null;
 
   if (assemblyPromptId) {
     const [ap] = await db
@@ -95,7 +97,7 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = { title: ap.name, content: ap.content };
+    assemblyPrompt = { title: ap.name, content: ap.content, userPrompt: ap.userPrompt };
   } else {
     const [embedded] = await db
       .select()
@@ -114,7 +116,7 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = { title: embedded.title, content: embedded.content };
+    assemblyPrompt = { title: embedded.title, content: embedded.content, userPrompt: embedded.userPrompt };
   }
 
   let generationId: string | undefined;
@@ -135,6 +137,7 @@ export async function POST(
 
     try {
       const fragmentContents = selectedFragments.map((f) => ({
+        title: f.promptTitle ?? undefined,
         content: f.content ?? "",
       }));
 

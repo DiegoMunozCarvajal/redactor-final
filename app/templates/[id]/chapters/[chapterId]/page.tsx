@@ -22,8 +22,8 @@ export default function ChapterPromptEditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [addingPrompt, setAddingPrompt] = useState(false)
   const [addingAssembly, setAddingAssembly] = useState(false)
-  const [newPrompt, setNewPrompt] = useState({ title: "", content: "" })
-  const [promptFormData, setPromptFormData] = useState<Record<string, { title: string; content: string }>>({})
+  const [newPrompt, setNewPrompt] = useState({ title: "", content: "", userPrompt: "" })
+  const [promptFormData, setPromptFormData] = useState<Record<string, { title: string; content: string; userPrompt?: string | null }>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [showVersions, setShowVersions] = useState<Record<string, boolean>>({})
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([])
@@ -54,7 +54,7 @@ export default function ChapterPromptEditorPage() {
       const next = { ...prev }
       for (const p of prompts) {
         if (!next[p.id]) {
-          next[p.id] = { title: p.title, content: p.content }
+          next[p.id] = { title: p.title, content: p.content, userPrompt: p.userPrompt ?? null }
         }
       }
       return next
@@ -65,6 +65,7 @@ export default function ChapterPromptEditorPage() {
     return {
       title: promptFormData[promptId]?.title ?? prompt.title,
       content: promptFormData[promptId]?.content ?? prompt.content,
+      userPrompt: promptFormData[promptId]?.userPrompt ?? prompt.userPrompt ?? null,
     }
   }
 
@@ -82,6 +83,7 @@ export default function ChapterPromptEditorPage() {
         body: JSON.stringify({
           title: data.title,
           content: data.content,
+          userPrompt: data.userPrompt,
           isAssembly: prompt.isAssembly,
         }),
       })
@@ -102,7 +104,7 @@ export default function ChapterPromptEditorPage() {
   }
 
   async function createPrompt(isAssembly: boolean) {
-    const { title, content } = newPrompt
+    const { title, content, userPrompt } = newPrompt
     if (!title || !content) {
       toast.error("Title and content are required")
       return
@@ -113,6 +115,7 @@ export default function ChapterPromptEditorPage() {
       body: JSON.stringify({
         title,
         content,
+        userPrompt: isAssembly && userPrompt ? userPrompt : undefined,
         position: prompts.length,
         isAssembly,
       }),
@@ -122,7 +125,7 @@ export default function ChapterPromptEditorPage() {
       setPrompts([...prompts, p])
       setAddingPrompt(false)
       setAddingAssembly(false)
-      setNewPrompt({ title: "", content: "" })
+      setNewPrompt({ title: "", content: "", userPrompt: "" })
       fetchPlaceholders()
       toast.success("Prompt added")
     } else {
@@ -341,7 +344,7 @@ export default function ChapterPromptEditorPage() {
                   className="text-xs"
                   onClick={() => {
                     setAddingPrompt(false)
-                    setNewPrompt({ title: "", content: "" })
+                    setNewPrompt({ title: "", content: "", userPrompt: "" })
                   }}
                 >
                   <X className="h-3 w-3 mr-1" /> Cancel
@@ -358,7 +361,7 @@ export default function ChapterPromptEditorPage() {
             size="sm"
             className="w-full"
             onClick={() => {
-              setNewPrompt({ title: "", content: "" })
+              setNewPrompt({ title: "", content: "", userPrompt: "" })
               setAddingAssembly(false)
               setAddingPrompt(true)
             }}
@@ -465,7 +468,7 @@ export default function ChapterPromptEditorPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground">Content</Label>
+                  <Label className="text-[10px] text-muted-foreground">Content (System Prompt)</Label>
                   <Textarea
                     value={data.content}
                     onChange={(e) => {
@@ -475,7 +478,21 @@ export default function ChapterPromptEditorPage() {
                       }))
                     }}
                     className="text-xs min-h-[100px]"
-                    placeholder="Assembly prompt content..."
+                    placeholder="System prompt for assembly..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">User Prompt</Label>
+                  <Textarea
+                    value={data.userPrompt ?? ""}
+                    onChange={(e) => {
+                      setPromptFormData((prev) => ({
+                        ...prev,
+                        [assemblyPrompt.id]: { ...data, userPrompt: e.target.value || null },
+                      }))
+                    }}
+                    className="text-xs min-h-[100px]"
+                    placeholder="User message. Leave empty to use Content as user message with default system prompt."
                   />
                 </div>
                 <div className="flex justify-end">
@@ -514,14 +531,25 @@ export default function ChapterPromptEditorPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Content</Label>
+                <Label className="text-[10px] text-muted-foreground">Content (System Prompt)</Label>
                 <Textarea
                   value={newPrompt.content}
                   onChange={(e) =>
                     setNewPrompt((prev) => ({ ...prev, content: e.target.value }))
                   }
                   className="text-xs min-h-[100px]"
-                  placeholder="Assembly prompt content..."
+                  placeholder="System prompt for assembly..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">User Prompt</Label>
+                <Textarea
+                  value={newPrompt.userPrompt}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, userPrompt: e.target.value }))
+                  }
+                  className="text-xs min-h-[80px]"
+                  placeholder="User message. Leave empty to use Content as user message with default system prompt."
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
@@ -532,7 +560,7 @@ export default function ChapterPromptEditorPage() {
                   onClick={() => {
                     setAddingPrompt(false)
                     setAddingAssembly(false)
-                    setNewPrompt({ title: "", content: "" })
+                    setNewPrompt({ title: "", content: "", userPrompt: "" })
                   }}
                 >
                   <X className="h-3 w-3 mr-1" /> Cancel
@@ -555,7 +583,8 @@ export default function ChapterPromptEditorPage() {
                 onClick={() => {
                   setNewPrompt({
                     title: "Assembly",
-                    content: "{tema}\n\nAssembles the fragments...",
+                    content: "Eres un editor senior...",
+                    userPrompt: "[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO]\n\nEnsambla los fragmentos en un capítulo unificado sobre {tema}.",
                   })
                   setAddingAssembly(true)
                   setAddingPrompt(true)

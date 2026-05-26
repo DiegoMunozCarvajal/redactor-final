@@ -46,7 +46,7 @@ export async function PUT(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, content, position, isAssembly } = body;
+  const { title, content, userPrompt, position, isAssembly } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
@@ -58,6 +58,7 @@ export async function PUT(
       promptId: existing.id,
       title: existing.title,
       content: existing.content,
+      userPrompt: existing.userPrompt,
     });
   }
 
@@ -66,6 +67,7 @@ export async function PUT(
     .set({
       ...(title !== undefined && { title }),
       ...(content !== undefined && { content }),
+      ...(userPrompt !== undefined && { userPrompt }),
       ...(position !== undefined && { position }),
       ...(isAssembly !== undefined && { isAssembly }),
     })
@@ -75,10 +77,13 @@ export async function PUT(
   // Sync placeholders
   if (updated) {
     const allPrompts = await db
-      .select({ content: projectPrompts.content })
+      .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
       .from(projectPrompts)
       .where(eq(projectPrompts.chapterId, updated.chapterId));
-    await syncChapterPlaceholders(updated.chapterId, allPrompts.map((p) => p.content));
+    await syncChapterPlaceholders(
+      updated.chapterId,
+      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+    );
   }
 
   return NextResponse.json(updated);
@@ -128,10 +133,13 @@ export async function DELETE(
 
   // Sync placeholders
   const remainingPrompts = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, existing.chapterId));
-  await syncChapterPlaceholders(existing.chapterId, remainingPrompts.map((p) => p.content));
+  await syncChapterPlaceholders(
+    existing.chapterId,
+    remainingPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+  );
 
   return NextResponse.json({ ok: true });
 }

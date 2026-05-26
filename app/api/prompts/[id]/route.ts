@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const body = await req.json();
-  const { title, content, position, isAssembly } = body;
+  const { title, content, userPrompt, position, isAssembly } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
@@ -36,12 +36,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       promptId: current.id,
       title: current.title,
       content: current.content,
+      userPrompt: current.userPrompt,
     });
   }
 
   const [prompt] = await db
     .update(prompts)
-    .set({ title, content, position, isAssembly })
+    .set({ title, content, userPrompt, position, isAssembly })
     .where(eq(prompts.id, id))
     .returning();
 
@@ -58,10 +59,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Sync placeholders for the prompt's chapter
   if (prompt) {
     const allPrompts = await db
-      .select({ content: prompts.content })
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
       .from(prompts)
       .where(eq(prompts.chapterId, prompt.chapterId));
-    await syncChapterPlaceholders(prompt.chapterId, allPrompts.map((p) => p.content));
+    await syncChapterPlaceholders(
+      prompt.chapterId,
+      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+    );
   }
 
   return NextResponse.json(prompt);
@@ -89,10 +93,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   // Sync placeholders
   if (existing) {
     const allPrompts = await db
-      .select({ content: prompts.content })
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
       .from(prompts)
       .where(eq(prompts.chapterId, existing.chapterId));
-    await syncChapterPlaceholders(existing.chapterId, allPrompts.map((p) => p.content));
+    await syncChapterPlaceholders(
+      existing.chapterId,
+      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+    );
   }
 
   logAudit({

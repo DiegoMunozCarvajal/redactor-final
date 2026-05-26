@@ -13,6 +13,7 @@ import { Loader2, Save, Trash2 } from "lucide-react"
 const schema = z.object({
   title: z.string().min(1, "Required"),
   content: z.string().min(1, "Required"),
+  userPrompt: z.string().optional(),
   isAssembly: z.boolean(),
 })
 
@@ -36,6 +37,7 @@ export function PromptEditor({
       isAssembly: prompt.isAssembly,
       title: prompt.title,
       content: prompt.content,
+      userPrompt: prompt.userPrompt ?? "",
     },
   })
 
@@ -86,6 +88,18 @@ export function PromptEditor({
           </div>
           <Textarea id={`content-${prompt.id}`} {...register("content")} rows={10} className="font-mono text-sm" />
         </div>
+
+        {prompt.isAssembly && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label htmlFor={`userPrompt-${prompt.id}`} className="text-xs font-medium text-muted-foreground">User Prompt</label>
+              <span className="text-[10px] text-muted-foreground">
+                User message. Use {"{name}"} for placeholders. Use [PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO] marker.
+              </span>
+            </div>
+            <Textarea id={`userPrompt-${prompt.id}`} {...register("userPrompt")} rows={10} className="font-mono text-sm" />
+          </div>
+        )}
 
         <div className="flex justify-between items-center pt-2">
           <Button

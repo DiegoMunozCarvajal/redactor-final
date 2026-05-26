@@ -6,6 +6,7 @@ export const promptVersions = pgTable("prompt_versions", {
   promptId: uuid("prompt_id").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  userPrompt: text("user_prompt"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

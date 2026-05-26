@@ -18,6 +18,7 @@ interface AssemblyPrompt {
   name: string;
   description: string | null;
   content: string;
+  userPrompt: string | null;
   createdAt: string;
 }
 
@@ -30,6 +31,7 @@ export default function AssembliesPage() {
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newContent, setNewContent] = useState("");
+  const [newUserPrompt, setNewUserPrompt] = useState("");
 
   const fetchAssemblies = useCallback(async () => {
     const res = await fetch("/api/assembly-prompts");
@@ -45,13 +47,14 @@ export default function AssembliesPage() {
     const res = await fetch("/api/assembly-prompts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null, content: newContent }),
+      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null, content: newContent, userPrompt: newUserPrompt.trim() || null }),
     });
     if (res.ok) {
       setCreateOpen(false);
       setNewName("");
       setNewDescription("");
       setNewContent("");
+      setNewUserPrompt("");
       router.refresh();
       fetchAssemblies();
       toast.success("Assembly prompt created");
@@ -113,6 +116,11 @@ export default function AssembliesPage() {
               <div className="space-y-2">
                 <Label htmlFor="content">System Prompt</Label>
                 <Textarea id="content" value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="Eres un editor senior..." rows={10} className="font-mono text-xs" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="userPrompt">User Prompt</Label>
+                <Textarea id="userPrompt" value={newUserPrompt} onChange={(e) => setNewUserPrompt(e.target.value)} placeholder="[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO]&#10;&#10;Ensambla los fragmentos en un capítulo unificado sobre {tema}." rows={6} className="font-mono text-xs" />
+                <p className="text-[10px] text-muted-foreground">Leave empty to use System Prompt as user message with default system prompt.</p>
               </div>
               <Button onClick={create} disabled={creating || !newName.trim() || !newContent.trim()} className="w-full">
                 {creating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

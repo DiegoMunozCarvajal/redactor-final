@@ -69,7 +69,7 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { chapterId, title, content, isAssembly } = body;
+  const { chapterId, title, content, userPrompt, isAssembly } = body;
 
   if (!chapterId || !title || !content) {
     return NextResponse.json(
@@ -93,6 +93,7 @@ export async function POST(
       chapterId,
       title,
       content,
+      userPrompt,
       position: maxPos + 1,
       isAssembly: isAssembly ?? false,
     })
@@ -100,10 +101,13 @@ export async function POST(
 
   // Sync placeholders
   const allPrompts = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId));
-  await syncChapterPlaceholders(chapterId, allPrompts.map((p) => p.content));
+  await syncChapterPlaceholders(
+    chapterId,
+    allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+  );
 
   return NextResponse.json(prompt);
 }

@@ -89,7 +89,7 @@ export const generateChapter = task({
       (p) => p.isAssembly,
     );
 
-    const fragmentContents: { content: string }[] = [];
+    const fragmentContents: { title: string; content: string }[] = [];
 
     try {
       // Generate each content fragment
@@ -122,6 +122,7 @@ export const generateChapter = task({
           });
 
         fragmentContents.push({
+          title: prompt.title,
           content: result.text,
         });
       }

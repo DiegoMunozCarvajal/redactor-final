@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Save, History, Play, Trash2 } from "lucide-react"
+import { Loader2, Save, History, Play, Trash2 } from "lucide-react"
 import { VersionHistory } from "@/components/prompts/version-history"
 
 interface ModelOption {
@@ -26,15 +26,26 @@ interface AssemblyPrompt {
   id: string
   title: string
   content: string
+  userPrompt?: string | null
   isAssembly: boolean
   position: number
 }
 
+interface AssemblyLibraryOption {
+  id: string
+  name: string
+  description: string | null
+}
+
 interface Props {
   prompt: AssemblyPrompt | null | undefined
-  onSave: (data: { title: string; content: string }) => Promise<void>
+  onSave: (data: { title: string; content: string; userPrompt?: string | null }) => Promise<void>
   versionsApiUrl: string
   readOnly?: boolean
+  // Assembly library picker (when no embedded prompt)
+  assemblyLibrary?: AssemblyLibraryOption[]
+  onSelectFromLibrary?: (id: string) => void
+  selectingFromLibrary?: boolean
   // Generation controls
   models?: ModelOption[]
   assemblyModel?: string
@@ -50,6 +61,7 @@ interface Props {
 
 export function AssemblyPromptSection({
   prompt, onSave, versionsApiUrl, readOnly,
+  assemblyLibrary, onSelectFromLibrary, selectingFromLibrary,
   models, assemblyModel, onAssemblyModelChange,
   assemblyEffort, onAssemblyEffortChange,
   assemblyTemperature, onAssemblyTemperatureChange,
@@ -58,6 +70,7 @@ export function AssemblyPromptSection({
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(prompt?.title ?? "")
   const [content, setContent] = useState(prompt?.content ?? "")
+  const [userPrompt, setUserPrompt] = useState(prompt?.userPrompt ?? "")
   const [saving, setSaving] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
 
@@ -67,12 +80,36 @@ export function AssemblyPromptSection({
         <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">No assembly prompt configured yet.</p>
-            {!readOnly && (
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => setEditing(true)}>
+            <p className="text-sm text-muted-foreground mb-3">
+              No assembly prompt configured yet.
+            </p>
+            {!readOnly && assemblyLibrary && assemblyLibrary.length > 0 && onSelectFromLibrary ? (
+              <div className="flex items-center justify-center gap-2">
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm max-w-[280px]"
+                  onChange={(e) => {
+                    if (e.target.value) onSelectFromLibrary(e.target.value)
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Select an assembly prompt…
+                  </option>
+                  {assemblyLibrary.map((ap) => (
+                    <option key={ap.id} value={ap.id}>
+                      {ap.name}
+                    </option>
+                  ))}
+                </select>
+                {selectingFromLibrary && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+            ) : !readOnly ? (
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                 Create Assembly Prompt
               </Button>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -88,6 +125,7 @@ export function AssemblyPromptSection({
           if (!editing && !readOnly) {
             setTitle(prompt.title);
             setContent(prompt.content);
+            setUserPrompt(prompt.userPrompt ?? "");
             setEditing(true);
           }
         }}
@@ -187,12 +225,21 @@ export function AssemblyPromptSection({
         {editing && (
           <CardContent className="border-t pt-3" onClick={(e) => e.stopPropagation()}>
             <div className="space-y-1.5">
-              <Label className="text-[10px] text-muted-foreground">Content</Label>
+              <Label className="text-[10px] text-muted-foreground">Content (System Prompt)</Label>
               <Textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="text-xs min-h-[100px]"
-                placeholder="Assembly prompt content..."
+                placeholder="System prompt for assembly..."
+              />
+            </div>
+            <div className="space-y-1.5 mt-3">
+              <Label className="text-[10px] text-muted-foreground">User Prompt</Label>
+              <Textarea
+                value={userPrompt}
+                onChange={(e) => setUserPrompt(e.target.value)}
+                className="text-xs min-h-[100px]"
+                placeholder="User message. Use {name} for placeholders. Use [PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO] marker. Leave empty to use Content as user message with default system prompt."
               />
             </div>
             <div className="flex justify-end gap-2 mt-3">
@@ -215,7 +262,7 @@ export function AssemblyPromptSection({
                   e.stopPropagation();
                   setSaving(true);
                   try {
-                    await onSave({ title, content });
+                    await onSave({ title, content, userPrompt: userPrompt || null });
                   } finally {
                     setSaving(false);
                   }
