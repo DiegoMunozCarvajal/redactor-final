@@ -133,9 +133,10 @@ export async function POST(
   try {
     embeddings = await generateEmbeddings(chunks);
   } catch (err) {
-    console.error("[sources] Embedding generation failed:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[sources] Embedding generation failed:", message);
     return NextResponse.json(
-      { error: "Failed to generate embeddings" },
+      { error: `Failed to generate embeddings: ${message}` },
       { status: 500 },
     );
   }
