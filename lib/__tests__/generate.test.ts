@@ -58,45 +58,43 @@ describe("applyPlaceholders", () => {
 });
 
 describe("resolvePlaceholdersDirect", () => {
-  const brief = "Este capítulo desglosa los seis principios de sticky ideas con ejemplos del mundo publicitario. Está escrito para profesionales de comunicación que ya dominan conceptos básicos de marketing. Al terminar, el lector podrá auditar cualquier pieza de comunicación usando la checklist SUCCESs.";
-
   it("resolves TEMA-like placeholders from projectTopic", () => {
-    const result = resolvePlaceholdersDirect(["TEMA_DEL_LIBRO"], "historia de la ciencia", brief);
+    const result = resolvePlaceholdersDirect(["TEMA_DEL_LIBRO"], "historia de la ciencia");
     expect(result.resolved).toEqual({ TEMA_DEL_LIBRO: "historia de la ciencia" });
     expect(result.unresolved).toEqual([]);
   });
 
   it("resolves TEMA (lowercase) from projectTopic", () => {
-    const result = resolvePlaceholdersDirect(["tema_principal"], "filosofía antigua", "");
+    const result = resolvePlaceholdersDirect(["tema_principal"], "filosofía antigua");
     expect(result.resolved).toEqual({ tema_principal: "filosofía antigua" });
     expect(result.unresolved).toEqual([]);
   });
 
   it("resolves TOPIC-like placeholders from projectTopic", () => {
-    const result = resolvePlaceholdersDirect(["BOOK_TOPIC"], "machine learning", "");
+    const result = resolvePlaceholdersDirect(["BOOK_TOPIC"], "machine learning");
     expect(result.resolved).toEqual({ BOOK_TOPIC: "machine learning" });
   });
 
-  it("resolves LECTOR_OBJETIVO from chapter brief", () => {
-    const result = resolvePlaceholdersDirect(["LECTOR_OBJETIVO"], null, brief);
-    expect(result.resolved["LECTOR_OBJETIVO"]).toContain("profesionales de comunicación");
-    expect(result.unresolved).toEqual([]);
+  it("leaves LECTOR_OBJETIVO unresolved (no chapter brief)", () => {
+    const result = resolvePlaceholdersDirect(["LECTOR_OBJETIVO"], null);
+    expect(result.resolved).toEqual({});
+    expect(result.unresolved).toEqual(["LECTOR_OBJETIVO"]);
   });
 
-  it("resolves AUDIENCIA from chapter brief", () => {
-    const result = resolvePlaceholdersDirect(["AUDIENCIA"], null, brief);
-    expect(result.resolved["AUDIENCIA"]).toContain("profesionales");
-    expect(result.unresolved).toEqual([]);
+  it("leaves AUDIENCIA unresolved (no chapter brief)", () => {
+    const result = resolvePlaceholdersDirect(["AUDIENCIA"], null);
+    expect(result.resolved).toEqual({});
+    expect(result.unresolved).toEqual(["AUDIENCIA"]);
   });
 
   it("leaves factual placeholder unresolved (no LLM, just passes through)", () => {
-    const result = resolvePlaceholdersDirect(["FUENTE_PRINCIPAL"], null, brief);
+    const result = resolvePlaceholdersDirect(["FUENTE_PRINCIPAL"], null);
     expect(result.resolved).toEqual({});
     expect(result.unresolved).toEqual(["FUENTE_PRINCIPAL"]);
   });
 
   it("leaves TEMA unresolved when topic is null", () => {
-    const result = resolvePlaceholdersDirect(["TEMA_DEL_LIBRO"], null, "");
+    const result = resolvePlaceholdersDirect(["TEMA_DEL_LIBRO"], null);
     expect(result.resolved).toEqual({});
     expect(result.unresolved).toEqual(["TEMA_DEL_LIBRO"]);
   });
@@ -105,10 +103,8 @@ describe("resolvePlaceholdersDirect", () => {
     const result = resolvePlaceholdersDirect(
       ["TEMA", "FUENTE", "LECTOR_OBJETIVO", "EJEMPLO_HISTORICO"],
       "historia del arte",
-      brief,
     );
     expect(result.resolved["TEMA"]).toBe("historia del arte");
-    expect(result.resolved["LECTOR_OBJETIVO"]).toContain("profesionales");
-    expect(result.unresolved).toEqual(["FUENTE", "EJEMPLO_HISTORICO"]);
+    expect(result.unresolved.sort()).toEqual(["EJEMPLO_HISTORICO", "FUENTE", "LECTOR_OBJETIVO"]);
   });
 });

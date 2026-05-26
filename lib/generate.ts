@@ -27,10 +27,10 @@ Cómo trabajas:
 - Eliminas redundancias. Fragmentos que dicen lo mismo se consolidan en uno solo.
 - Tejes transiciones explícitas entre fragmentos. El lector nunca siente que pasó de un tema a otro sin aviso.
 - Si hay contradicción entre fragmentos, resuelves a favor del más preciso o matizas la diferencia.
-- Organizas el contenido en la secuencia lógica que mejor sirva al brief del capítulo: de lo general a lo específico, de lo simple a lo complejo, o la estructura que los propios fragmentos sugieran.
+- Organizas el contenido en la secuencia lógica que los propios fragmentos sugieran: de lo general a lo específico, de lo simple a lo complejo.
 
 Voz y estilo:
-- Unificas el tono hacia lo que pide el brief del capítulo.
+- Unificas el tono y la terminología en todo el capítulo.
 - Consistencia terminológica: mismo término para el mismo concepto en todo el capítulo.
 - Sin adjetivos vacíos, sin clichés, sin muletillas, voz activa.
 
@@ -61,8 +61,6 @@ export interface GeneratePromptParams {
   effort?: ReasoningEffort;
   /** Override the default system prompt. Defaults to Spanish-only output instruction. */
   systemPrompt?: string;
-  /** Chapter brief content. Injected into the user prompt as context when provided. */
-  chapterBrief?: string;
   /** Project topic. Used as fallback when {tema} placeholder has no definition. */
   projectTopic?: string | null;
 }
@@ -115,15 +113,9 @@ export async function generatePromptContent(
     maxTokens,
     effort,
     systemPrompt = DEFAULT_SYSTEM_PROMPT,
-    chapterBrief,
     projectTopic,
   } = params;
-  let content = applyPlaceholders(prompt.content, placeholders, projectTopic);
-
-  // Prepend chapter brief as context when available
-  if (chapterBrief) {
-    content = `## Contexto del capítulo\nBrief: ${chapterBrief}\n\n## Instrucción específica\n${content}`;
-  }
+  const content = applyPlaceholders(prompt.content, placeholders, projectTopic);
 
   const result = await generateCompletion({
     model,
@@ -153,7 +145,6 @@ export async function generateChapterAssembly(
   temperature?: number,
   effort?: ReasoningEffort,
   maxTokens?: number,
-  chapterBrief?: string,
 ): Promise<GenerateResult> {
   const fragmentsText = fragments
     .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
@@ -164,11 +155,6 @@ export async function generateChapterAssembly(
     /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
     fragmentsText,
   );
-
-  // Prepend chapter brief context when available
-  if (chapterBrief) {
-    content = `## Brief del capítulo\n${chapterBrief}\n\n${content}`;
-  }
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length);
 

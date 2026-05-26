@@ -37,11 +37,11 @@ function extractJson(text: string): unknown {
 }
 
 const RESEARCH_DECISION_PROMPT = `Eres un planificador de investigación. Dado:
-1. Un brief de capítulo
+1. El tema del proyecto
 2. Una lista de nombres de placeholder (todos factuales — los estilísticos ya fueron resueltos)
 
 Para cada placeholder, decide si necesita búsqueda web o puede inferirse del contexto.
-Devuelve un array JSON con los nombres que NECESITAN búsqueda web. Solo incluye aquellos donde la verificación factual externa agregue valor (ej. estudios específicos, papers, eventos históricos, estadísticas, expertos nombrados). Omite los que pueden definirse con confianza desde el brief del capítulo (ej. elegir un caso de estudio relevante, un ejemplo conocido).
+Devuelve un array JSON con los nombres que NECESITAN búsqueda web. Solo incluye aquellos donde la verificación factual externa agregue valor (ej. estudios específicos, papers, eventos históricos, estadísticas, expertos nombrados). Omite los que pueden definirse con confianza desde el tema del proyecto (ej. elegir un caso de estudio relevante, un ejemplo conocido).
 
 Ejemplo:
 Placeholders: ["FUENTE_PRINCIPAL", "EJEMPLO_HISTORICO", "ESTUDIO_CLAVE"]
@@ -51,8 +51,9 @@ Resultado: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
 const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu tarea es definir los valores de placeholders factuales para el capítulo de un libro.
 
 ## Entrada
-- Brief del capítulo: qué cubre este capítulo específico
+- Tema del proyecto: qué cubre el libro
 - Nombres de placeholders: los {placeholders} que necesitan definición (todos factuales)
+- Content Prompts: los prompts del capítulo para contexto
 - Resultados de búsqueda: hallazgos de búsqueda web (si los hay)
 - Source Material: fragmentos de tus documentos subidos que coinciden con este placeholder (si los hay)
 
@@ -60,7 +61,7 @@ const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu
 
 ### Calidad de fuentes
 Antes de definir cada placeholder, evalúa los resultados de búsqueda y el material de fuentes:
-- ¿El resultado trata directamente el tema del placeholder y del brief del capítulo? Si no, descártalo.
+- ¿El resultado trata directamente el tema del placeholder y del proyecto? Si no, descártalo.
 - ¿El contenido es específico (nombres, fechas, datos) o es genérico (reformulaciones vagas)? Solo usa contenido específico.
 - ¿La fuente es confiable (paper académico, institución reconocida, publicación verificable)? Prioriza estas.
 - Si tienes Source Material de tus documentos, PREFIÉRELO sobre los resultados de búsqueda web. Son tus fuentes curadas.
@@ -69,9 +70,9 @@ Si ningún resultado pasa estos criterios, NO uses los resultados. Responde con 
 
 ### Definiciones
 1. Para placeholders CON fuentes de calidad: extrae y cita nombres, fechas, instituciones o datos de las fuentes
-2. Para placeholders SIN fuentes de calidad: elige el ejemplo, caso o referencia más pertinente y específico que se ajuste al brief. No inventes citas
+2. Para placeholders SIN fuentes de calidad: elige el ejemplo, caso o referencia más pertinente y específico que se ajuste al tema. No inventes citas
 3. Cada definición: 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
-4. Alinea cada definición con el alcance del brief del capítulo
+4. Alinea cada definición con el tema del proyecto y los content prompts
 5. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
 
 ## Ejemplo
@@ -98,13 +99,12 @@ function shouldUseRag(
 
 export async function researchPlaceholders(
   placeholderNames: string[],
-  chapterBrief: string,
   projectTopic: string | null,
 ): Promise<Record<string, SearchResult[]>> {
   if (placeholderNames.length === 0) return {};
 
   // Phase 1a: Decide which placeholders need research
-  const decisionPrompt = `${RESEARCH_DECISION_PROMPT}\n\nChapter brief: ${chapterBrief || "(none)"}\nPlaceholders: ${JSON.stringify(placeholderNames)}`;
+  const decisionPrompt = `${RESEARCH_DECISION_PROMPT}\n\nProject topic: ${projectTopic || "(none)"}\nPlaceholders: ${JSON.stringify(placeholderNames)}`;
 
   let needsResearch: string[] = [];
   try {
@@ -129,7 +129,7 @@ export async function researchPlaceholders(
   const queryToName = new Map<string, string>();
   const searchQueries = needsResearch.map((name) => {
     const readable = name.replace(/_/g, " ").toLowerCase();
-    const query = `${readable} ${projectTopic || ""} ${chapterBrief || ""}`.trim();
+    const query = `${readable} ${projectTopic || ""}`.trim();
     queryToName.set(query, name);
     return query;
   });
@@ -154,7 +154,6 @@ export async function researchPlaceholders(
  */
 export async function researchPlaceholdersWithRag(
   placeholderNames: string[],
-  chapterBrief: string,
   projectTopic: string | null,
   projectId: string,
   placeholderFunctions: Record<string, { function?: string | null; notes?: string | null }>,
@@ -179,7 +178,7 @@ export async function researchPlaceholdersWithRag(
   const ragContexts: Record<string, string> = {};
   for (const name of ragNames) {
     try {
-      const query = `${name.replace(/_/g, " ")} ${chapterBrief} ${projectTopic ?? ""}`;
+      const query = `${name.replace(/_/g, " ")} ${projectTopic ?? ""}`;
       const { contextText } = await retrieveContext(query, projectId, {
         topK: 5,
         tokenBudget: 3000,
@@ -194,7 +193,7 @@ export async function researchPlaceholdersWithRag(
 
   // Web search: use existing logic for remaining
   const searchResults = webNames.length > 0
-    ? await researchPlaceholders(webNames, chapterBrief, projectTopic)
+    ? await researchPlaceholders(webNames, projectTopic)
     : {};
 
   return { searchResults, ragContexts };
@@ -202,7 +201,6 @@ export async function researchPlaceholdersWithRag(
 
 export async function* fillPlaceholders(
   placeholderNames: string[],
-  chapterBrief: string,
   promptContents: string[],
   searchResults: Record<string, SearchResult[]>,
   model: string = DEFAULT_MODEL,
@@ -235,10 +233,7 @@ export async function* fillPlaceholders(
     }
   }
 
-  const userPrompt = `## Chapter Brief
-${chapterBrief || "(none)"}
-
-## Content Prompts (for context)
+  const userPrompt = `## Content Prompts (for context)
 ${promptContents
     .map(
       (c, i) =>
@@ -304,7 +299,6 @@ Define each placeholder. Return JSON: {"placeholders": {"NAME": "definition", ..
 
 export async function fillSinglePlaceholder(
   name: string,
-  chapterBrief: string,
   projectTopic: string | null,
   promptContents: string[],
   existingDefinitions: Record<string, string>,
@@ -314,7 +308,7 @@ export async function fillSinglePlaceholder(
   temperature?: number,
 ): Promise<{ definition: string; sources: SearchResult[] }> {
   // Research this specific placeholder
-  const query = `${name.replace(/_/g, " ")} ${projectTopic || ""} ${chapterBrief || ""}`.trim();
+  const query = `${name.replace(/_/g, " ")} ${projectTopic || ""}`.trim();
   const searchResults = await webSearchBatch([query]);
   const sources = searchResults[query] ?? [];
 
@@ -331,25 +325,22 @@ export async function fillSinglePlaceholder(
     `Eres un investigador experto en libros. Define este placeholder con un valor conciso y específico que encaje en el capítulo.
 
 Calidad de fuentes:
-- Evalúa los resultados de búsqueda: ¿tratan directamente el tema del placeholder y del brief? ¿Son específicos o genéricos? ¿La fuente es confiable?
+- Evalúa los resultados de búsqueda: ¿tratan directamente el tema del placeholder? ¿Son específicos o genéricos? ¿La fuente es confiable?
 - Si los resultados son relevantes y específicos, extrae datos, nombres, fechas e instituciones de ellos
 - Si ningún resultado es útil, descártalos y responde con tu mejor conocimiento sin inventar fuentes ni cifras
 
 Reglas:
 - La definición debe ser de 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
-- Alinea la definición con el alcance del brief del capítulo
+- Alinea la definición con el tema del proyecto y los content prompts del capítulo
 - Responde ÚNICAMENTE: {"definition": "..."}
 
 Ejemplo:
 Placeholder: {CASO_ESTUDIO}
-Brief del capítulo: "La aplicación de los seis principios de persuasión de Cialdini en campañas de salud pública, cubriendo reciprocidad, escasez y prueba social con casos documentados de cambios de comportamiento a escala poblacional"
+Tema: "La aplicación de los seis principios de persuasión de Cialdini en campañas de salud pública, cubriendo reciprocidad, escasez y prueba social con casos documentados de cambios de comportamiento a escala poblacional"
 Resultados de búsqueda: [resultados sobre campañas reales de salud pública]
 Respuesta: {"definition": "La campaña 'Truth' antitabaco en Estados Unidos (2000-2014), que aplicó el principio de prueba social al mostrar adolescentes rechazando la manipulación de las tabacaleras, redujo el tabaquismo juvenil del 23% al 7% según un estudio del CDC publicado en 2015 en American Journal of Public Health"}`;
 
-  const userPrompt = `## Chapter Brief
-${chapterBrief || "(none)"}
-
-## Existing Placeholder Definitions (for context)
+  const userPrompt = `## Existing Placeholder Definitions (for context)
 ${Object.entries(existingDefinitions)
   .map(([k, v]) => `- {${k}}: ${v}`)
   .join("\n")}

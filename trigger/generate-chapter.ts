@@ -6,7 +6,6 @@ import {
   fragments,
   projects,
   chapters,
-  chapterBriefs,
 } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssembly } from "@/lib/generate";
@@ -96,18 +95,10 @@ export const generateChapter = task({
       // Generate each content fragment
       const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
-      // Load chapter brief for context
-      const [brief] = await db
-        .select({ content: chapterBriefs.content })
-        .from(chapterBriefs)
-        .where(eq(chapterBriefs.chapterId, gen.chapterId))
-        .limit(1);
-
       for (const prompt of contentPrompts) {
         const result = await generatePromptContent({
           prompt,
           placeholders,
-          chapterBrief: brief?.content ?? undefined,
           projectTopic: project.topic,
           ...(model ? { model } : {}),
           ...(temperature !== undefined ? { temperature } : {}),
@@ -151,7 +142,6 @@ export const generateChapter = task({
           temperature,
           effort,
           undefined,
-          brief?.content ?? undefined,
         );
 
         await db

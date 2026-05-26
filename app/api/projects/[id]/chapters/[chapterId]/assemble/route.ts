@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, projectPrompts, chapterBriefs, assemblyPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, projectPrompts, assemblyPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -140,12 +140,6 @@ export async function POST(
 
       const placeholders = await getChapterPlaceholders(chapterId, project.topic);
 
-      const [brief] = await db
-        .select({ content: chapterBriefs.content })
-        .from(chapterBriefs)
-        .where(eq(chapterBriefs.chapterId, chapterId))
-        .limit(1);
-
       const assembled = await generateChapterAssembly(
         assemblyPrompt,
         fragmentContents,
@@ -154,7 +148,6 @@ export async function POST(
         temperature,
         effort,
         undefined,
-        brief?.content ?? undefined,
       );
 
       await db

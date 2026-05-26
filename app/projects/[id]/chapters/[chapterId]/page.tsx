@@ -53,7 +53,6 @@ import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { EFFORT_OPTIONS } from "@/lib/ai/providers";
 import { VersionHistory } from "@/components/prompts/version-history";
-import { ChapterBriefSection } from "@/components/projects/chapter-brief-section";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
@@ -166,7 +165,6 @@ export default function ChapterPage() {
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
   const [placeholderForm, setPlaceholderForm] = useState<Record<string, string>>({});
-  const [chapterBrief, setChapterBrief] = useState<string | null>(null);
   const [savingPlaceholders, setSavingPlaceholders] = useState(false);
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
@@ -253,22 +251,11 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
 
-  const fetchBrief = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch(`/api/projects/${params.id}/chapters/${params.chapterId}/brief`, { signal });
-      if (signal?.aborted) return;
-      if (res.ok) {
-        const data = await res.json();
-        setChapterBrief(data.content ?? null);
-      }
-    } catch { /* supplementary */ }
-  }, [params.id, params.chapterId]);
-
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([fetchChapter(controller.signal), fetchPrompts(controller.signal), fetchPlaceholders(controller.signal), fetchBrief(controller.signal)]);
+    Promise.all([fetchChapter(controller.signal), fetchPrompts(controller.signal), fetchPlaceholders(controller.signal)]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchBrief]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -638,13 +625,6 @@ export default function ChapterPage() {
           </Card>
         );
       })()}
-
-      <ChapterBriefSection
-        projectId={params.id as string}
-        chapterId={params.chapterId as string}
-        initialContent={chapterBrief}
-        onSaved={(content) => setChapterBrief(content)}
-      />
 
       <PlaceholderFillSection
         projectId={params.id as string}

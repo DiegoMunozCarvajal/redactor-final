@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   projects,
-  chapterBriefs,
   projectPrompts,
   chapterPlaceholders,
   chapters,
@@ -57,10 +56,6 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
-  const [brief] = await db
-    .select()
-    .from(chapterBriefs)
-    .where(eq(chapterBriefs.chapterId, chapterId));
   const promptRows = await db
     .select({ content: projectPrompts.content })
     .from(projectPrompts)
@@ -83,7 +78,6 @@ export async function POST(
   const { resolved } = resolvePlaceholdersDirect(
     [name],
     project.topic ?? null,
-    brief?.content ?? "",
   );
 
   if (resolved[name]) {
@@ -103,7 +97,6 @@ export async function POST(
   try {
     const { definition, sources } = await fillSinglePlaceholder(
       name,
-      brief?.content ?? "",
       project.topic ?? null,
       promptRows.map((p) => p.content),
       existingDefinitions,

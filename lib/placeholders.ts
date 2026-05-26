@@ -72,7 +72,6 @@ export async function getChapterPlaceholders(chapterId: string, projectTopic?: s
 export function resolvePlaceholdersDirect(
   placeholderNames: string[],
   projectTopic: string | null,
-  chapterBrief: string,
 ): { resolved: Record<string, string>; unresolved: string[] } {
   const resolved: Record<string, string> = {};
   const unresolved: string[] = [];
@@ -88,63 +87,18 @@ export function resolvePlaceholdersDirect(
     }
 
     // {LECTOR_OBJETIVO}, {AUDIENCIA}, {LECTOR}, {AUDIENCE}, etc.
+    // These require LLM filling — no longer resolved from chapter brief.
     if (
       segments.includes("lector") ||
       segments.includes("audiencia") ||
       segments.includes("audience")
     ) {
-      const extracted = extractLectorFromBrief(chapterBrief);
-      if (extracted) {
-        resolved[name] = extracted;
-        continue;
-      }
+      unresolved.push(name);
+      continue;
     }
 
     unresolved.push(name);
   }
 
   return { resolved, unresolved };
-}
-
-/**
- * Extract the reader/audience description from a chapter brief.
- * The brief follows the format: "ALCANCE. LECTOR. RESULTADO."
- * Tries to find the sentence most relevant to the reader.
- */
-function extractLectorFromBrief(brief: string): string | null {
-  if (!brief) return null;
-
-  // Split into sentences (Spanish sentence boundaries)
-  const sentences = brief
-    .split(/(?<=[.!?])\s+/)
-    .filter((s) => s.trim().length > 0);
-
-  // Look for sentence with reader/audience keywords
-  for (const sentence of sentences) {
-    const lower = sentence.toLowerCase();
-    if (
-      lower.includes("lector") ||
-      lower.includes("audiencia") ||
-      lower.includes("dirigido") ||
-      lower.includes("público") ||
-      lower.includes("para quién") ||
-      lower.includes("está escrito")
-    ) {
-      return sentence.trim();
-    }
-  }
-
-  // Fallback: second sentence often describes the reader in 3-part brief format
-  if (sentences.length >= 2) {
-    const second = sentences[1].trim();
-    // Only use if it doesn't look like scope/outcome
-    if (
-      !second.toLowerCase().includes("alcance") &&
-      !second.toLowerCase().includes("resultado")
-    ) {
-      return second;
-    }
-  }
-
-  return null;
 }
