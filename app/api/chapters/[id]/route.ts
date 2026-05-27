@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { chapters } from "@/lib/db/schema";
+import { chapters, projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -30,7 +30,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = await req.json();
+
+  // Ownership check: project-scoped chapters must belong to the user
+  const [existing] = await db
+    .select({ projectId: chapters.projectId })
+    .from(chapters)
+    .where(eq(chapters.id, id))
+    .limit(1);
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (existing.projectId) {
+    const [project] = await db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, existing.projectId))
+      .limit(1);
+    if (!project || project.userId !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+  }
+
+  const body = await req.json().catch(() => ({}));
   const { title, position } = body;
 
   const [chapter] = await db
@@ -61,6 +80,25 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Ownership check: project-scoped chapters must belong to the user
+  const [existing] = await db
+    .select({ projectId: chapters.projectId })
+    .from(chapters)
+    .where(eq(chapters.id, id))
+    .limit(1);
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (existing.projectId) {
+    const [project] = await db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, existing.projectId))
+      .limit(1);
+    if (!project || project.userId !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+  }
+
   await db.delete(chapters).where(eq(chapters.id, id));
 
   logAudit({

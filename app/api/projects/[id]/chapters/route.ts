@@ -34,17 +34,8 @@ export async function POST(
   const title = body.title || "New chapter";
   const templateChapterId = body.templateChapterId as string | undefined;
 
-  // Get next position
-  const [last] = await db
-    .select({ maxPos: sql<number>`coalesce(max(${chapters.position}), -1)::int` })
-    .from(chapters)
-    .where(eq(chapters.projectId, projectId));
-
-  const position = (last?.maxPos ?? -1) + 1;
-
+  // Resolve bookTemplateId before the transaction (read-only, no lock needed)
   let bookTemplateId: string | null = null;
-
-  // If a template chapter is selected, get its book_template_id
   if (templateChapterId) {
     const [templateCh] = await db
       .select()
@@ -56,15 +47,36 @@ export async function POST(
     }
   }
 
-  const [chapter] = await db
-    .insert(chapters)
-    .values({
-      bookTemplateId,
-      projectId,
-      position,
-      title,
-    })
-    .returning();
+  // Get next position inside a transaction with FOR UPDATE to prevent races.
+  // Lock the project row first so we always have a contention point (handles
+  // the empty-table case where FOR UPDATE on chapters would lock nothing).
+  const chapter = await db.transaction(async (tx) => {
+    await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .for("update");
+
+    const [last] = await tx
+      .select({ maxPos: sql<number>`coalesce(max(${chapters.position}), -1)::int` })
+      .from(chapters)
+      .where(eq(chapters.projectId, projectId))
+      .for("update");
+
+    const position = (last?.maxPos ?? -1) + 1;
+
+    const [ch] = await tx
+      .insert(chapters)
+      .values({
+        bookTemplateId,
+        projectId,
+        position,
+        title,
+      })
+      .returning();
+
+    return ch;
+  });
 
   // Copy prompts from template chapter if selected
   if (templateChapterId) {

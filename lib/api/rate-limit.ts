@@ -63,7 +63,7 @@ export async function checkProjectRateLimit(
       and(
         eq(chapterGenerations.projectId, projectId),
         gte(chapterGenerations.createdAt, windowStart),
-        inArray(chapterGenerations.status, ["generating"])
+        inArray(chapterGenerations.status, ["pending", "generating", "assembling"])
       )
     );
 

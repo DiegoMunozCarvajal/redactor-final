@@ -4,6 +4,7 @@ import { projects, sources, sourceChunks } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc } from "drizzle-orm";
 import { generateEmbeddings } from "@/lib/ai/embeddings";
+import { csrfCheck } from "@/lib/api/csrf";
 
 function chunkText(text: string, chunkWords = 500, overlapWords = 100): string[] {
   const words = text.split(/\s+/);
@@ -63,6 +64,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user)

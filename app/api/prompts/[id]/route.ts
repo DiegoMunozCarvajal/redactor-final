@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { prompts, promptVersions } from "@/lib/db/schema";
+import { prompts, promptVersions, chapters, projects } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { createClient } from "@/lib/supabase/server";
@@ -18,7 +18,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = await req.json();
+
+  // Ownership check: if the prompt's chapter belongs to a project, verify ownership
+  const [existing] = await db
+    .select({ chapterProjectId: chapters.projectId })
+    .from(prompts)
+    .innerJoin(chapters, eq(chapters.id, prompts.chapterId))
+    .where(eq(prompts.id, id))
+    .limit(1);
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (existing.chapterProjectId) {
+    const [project] = await db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, existing.chapterProjectId))
+      .limit(1);
+    if (!project || project.userId !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+  }
+
+  const body = await req.json().catch(() => ({}));
   const { title, content, userPrompt, position, isAssembly } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
@@ -80,6 +100,25 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Ownership check: if the prompt's chapter belongs to a project, verify ownership
+  const [ownership] = await db
+    .select({ chapterProjectId: chapters.projectId })
+    .from(prompts)
+    .innerJoin(chapters, eq(chapters.id, prompts.chapterId))
+    .where(eq(prompts.id, id))
+    .limit(1);
+  if (!ownership) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (ownership.chapterProjectId) {
+    const [project] = await db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, ownership.chapterProjectId))
+      .limit(1);
+    if (!project || project.userId !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+  }
 
   // Capture chapter before deleting
   const [existing] = await db

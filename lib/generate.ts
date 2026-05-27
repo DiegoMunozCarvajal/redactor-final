@@ -92,15 +92,16 @@ export function applyPlaceholders(content: string, placeholders: Record<string, 
     const token = `{${name}}`;
     if (!content.includes(token)) continue;
     const sanitized = sanitizeValue(value);
+    // Escape $ to prevent special pattern interpretation in replaceAll ($&, $1, etc.)
     content = content.replaceAll(
       token,
-      `<<${name.toUpperCase()}>>${sanitized}<</${name.toUpperCase()}>>`,
+      `<<${name.toUpperCase()}>>${sanitized.replace(/\$/g, "$$$$")}<</${name.toUpperCase()}>>`,
     );
   }
   // Fallback: if {tema} wasn't in the placeholder map but project has a topic, use it
   if (projectTopic && content.includes("{tema}") && !placeholders["tema"]) {
     const sanitized = sanitizeValue(projectTopic);
-    content = content.replaceAll("{tema}", `<<TEMA>>${sanitized}<</TEMA>>`);
+    content = content.replaceAll("{tema}", `<<TEMA>>${sanitized.replace(/\$/g, "$$$$")}<</TEMA>>`);
   }
   return content;
 }
@@ -176,15 +177,16 @@ export async function generateChapterAssembly(
   let content = applyPlaceholders(userContent, placeholders, undefined);
 
   // {{SECCIONES_GENERADAS}} → XML format with prompt titles
+  // Escape $ in replacement to prevent special pattern interpretation ($&, $1, etc.)
   content = content.replace(
     /\{\{SECCIONES_GENERADAS\}\}/g,
-    fragmentsXml,
+    fragmentsXml.replace(/\$/g, "$$$$"),
   );
 
   // Legacy markers → old format (backward compat)
   content = content.replace(
     /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
-    fragmentsText,
+    fragmentsText.replace(/\$/g, "$$$$"),
   );
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length);
