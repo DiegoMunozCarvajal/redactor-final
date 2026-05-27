@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, topic, title, bookTemplateId } = body;
+  const { name, topic, title, bookTemplateId, assemblyPromptId } = body;
 
   // Server-side validation
   if (typeof name !== "string" || name.length < 1 || name.length > 200) {
@@ -60,13 +60,16 @@ export async function POST(req: NextRequest) {
   if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
     return NextResponse.json({ error: "topic must be a string of 500 characters or less" }, { status: 400 });
   }
+  if (assemblyPromptId !== undefined && typeof assemblyPromptId !== "string") {
+    return NextResponse.json({ error: "assemblyPromptId must be a string" }, { status: 400 });
+  }
 
   let project: typeof projects.$inferSelect;
   try {
     project = await db.transaction(async (tx) => {
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
+        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null, assemblyPromptId: assemblyPromptId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters

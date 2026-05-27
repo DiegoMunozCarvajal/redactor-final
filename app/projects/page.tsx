@@ -38,6 +38,7 @@ interface Template {
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [assemblyPrompts, setAssemblyPrompts] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchProjects = useCallback(async (signal?: AbortSignal) => {
@@ -63,12 +64,24 @@ export default function ProjectsPage() {
     }
   }, []);
 
+  const fetchAssemblyPrompts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/assembly-prompts", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) setAssemblyPrompts(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      throw err;
+    }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     fetchProjects(controller.signal);
     fetchTemplates(controller.signal);
+    fetchAssemblyPrompts(controller.signal);
     return () => controller.abort();
-  }, [fetchProjects, fetchTemplates]);
+  }, [fetchProjects, fetchTemplates, fetchAssemblyPrompts]);
 
   async function deleteProject(id: string, name: string) {
     if (!confirm(`Delete project "${name}" and all its generations?`)) return;
@@ -117,7 +130,7 @@ export default function ProjectsPage() {
             AI-powered non-fiction books in Spanish. Pick a template, set a
             topic, and generate a complete book chapter by chapter.
           </p>
-          <CreateProjectDialog templates={templates} />
+          <CreateProjectDialog templates={templates} assemblyPrompts={assemblyPrompts} />
           <div className="flex items-center gap-6 mt-8 text-xs text-muted-foreground/60">
             <span>1. Pick template</span>
             <span className="text-border">&#8594;</span>
@@ -165,7 +178,7 @@ export default function ProjectsPage() {
             onDelete={deleteProject}
           />
         </div>
-        <QuickStartCard templates={templates} />
+        <QuickStartCard templates={templates} assemblyPrompts={assemblyPrompts} />
         <StatsCard
           totalProjects={projects.length}
           totalChapters={totalChapters}

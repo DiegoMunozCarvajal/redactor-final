@@ -6,10 +6,11 @@ import {
   fragments,
   projects,
   chapters,
+  assemblyPrompts,
 } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
-import { generatePromptContent, generateChapterAssembly } from "@/lib/generate";
-import { getChapterPlaceholders } from "@/lib/placeholders";
+import { generatePromptContent, generateChapterAssembly, type PromptLike } from "@/lib/generate";
+import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 
 export const generateChapter = task({
@@ -85,15 +86,50 @@ export const generateChapter = task({
     const contentPrompts = promptList.filter(
       (p) => !p.isAssembly,
     );
-    const assemblyPrompt = promptList.find(
+    let assemblyPrompt: PromptLike | undefined = promptList.find(
       (p) => p.isAssembly,
     );
+
+    // If project has a global assembly prompt, load it and use it instead
+    if (project.assemblyPromptId) {
+      const [globalAp] = await db
+        .select()
+        .from(assemblyPrompts)
+        .where(eq(assemblyPrompts.id, project.assemblyPromptId))
+        .limit(1);
+      if (globalAp) {
+        assemblyPrompt = {
+          content: globalAp.content,
+          userPrompt: globalAp.userPrompt,
+        };
+      }
+    }
 
     const fragmentContents: { title: string; content: string }[] = [];
 
     try {
-      // Generate each content fragment
+      // Load placeholders
       const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
+
+      // Mandatory placeholder validation: all {name} tokens in content prompts
+      // must have definitions before generating fragments
+      const allPromptContents = contentPrompts.flatMap((p) =>
+        [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
+      );
+      const requiredTokens = extractPlaceholders(allPromptContents);
+      const missingPlaceholders = requiredTokens.filter(
+        (name) => !(name in placeholders),
+      );
+
+      if (missingPlaceholders.length > 0) {
+        const missing = missingPlaceholders.join(", ");
+        const msg = `Cannot generate: the following placeholders have no definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first via the placeholder filling UI before generating fragments.`;
+        await db
+          .update(chapterGenerations)
+          .set({ status: "failed", error: msg })
+          .where(eq(chapterGenerations.id, generationId));
+        throw new Error(msg);
+      }
 
       for (const prompt of contentPrompts) {
         const result = await generatePromptContent({

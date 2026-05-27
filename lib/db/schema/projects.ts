@@ -1,5 +1,6 @@
 import { index, pgSchema, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { bookTemplates } from "./book-templates";
+import { assemblyPrompts } from "./assembly-prompts";
 
 const authSchema = pgSchema("auth");
 const authUsers = authSchema.table("users", {
@@ -20,6 +21,9 @@ export const projects = pgTable(
     }),
     title: text("title"),
     subtitle: text("subtitle"),
+    assemblyPromptId: uuid("assembly_prompt_id").references(() => assemblyPrompts.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_projects_user").on(table.userId)],
