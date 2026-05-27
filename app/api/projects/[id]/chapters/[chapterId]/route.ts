@@ -189,9 +189,12 @@ export async function DELETE(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // Delete associated records first (FK restrict)
-  await db.delete(chapterGenerations).where(eq(chapterGenerations.chapterId, chapterId));
-  await db.delete(projectPrompts).where(eq(projectPrompts.chapterId, chapterId));
-  await db.delete(chapters).where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)));
+  // Delete associated records in a transaction so partial failure doesn't
+  // leave orphaned generations or prompts without a chapter.
+  await db.transaction(async (tx) => {
+    await tx.delete(chapterGenerations).where(eq(chapterGenerations.chapterId, chapterId));
+    await tx.delete(projectPrompts).where(eq(projectPrompts.chapterId, chapterId));
+    await tx.delete(chapters).where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)));
+  });
   return NextResponse.json({ ok: true });
 }

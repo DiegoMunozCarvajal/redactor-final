@@ -65,6 +65,8 @@ const MODEL_FIXED_TEMP = new Map(
   ]),
 );
 
+// Separate from MODEL_OPTIONS because this list includes a `short` label
+// for compact UI display. Kept in sync with AVAILABLE_MODELS manually.
 const MODELS = [
   { id: "gpt-5.4", label: "GPT 5.4", short: "GPT 5.4" },
   { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "GPT4 Mini" },
