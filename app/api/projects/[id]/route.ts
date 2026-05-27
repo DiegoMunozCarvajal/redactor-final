@@ -34,29 +34,27 @@ export async function GET(
     .where(eq(chapters.projectId, project.id))
     .orderBy(asc(chapters.position));
 
-  // Load latest generation per chapter (scoped to this project)
-  const chaptersWithGenerations = await Promise.all(
-    chapterList.map(async (ch) => {
-      const [latestGen] = await db
-        .select()
-        .from(chapterGenerations)
-        .where(
-          and(
-            eq(chapterGenerations.projectId, project.id),
-            eq(chapterGenerations.chapterId, ch.id),
-          ),
-        )
-        .orderBy(desc(chapterGenerations.createdAt))
-        .limit(1);
+  // Load latest generation per chapter in a single query (was N+1)
+  const allGenerations = await db
+    .select()
+    .from(chapterGenerations)
+    .where(eq(chapterGenerations.projectId, project.id))
+    .orderBy(desc(chapterGenerations.createdAt));
 
-      return {
-        id: ch.id,
-        position: ch.position,
-        title: ch.title,
-        latestGeneration: latestGen ?? null,
-      };
-    }),
-  );
+  // Group by chapterId — since ordered by createdAt DESC, first match is latest
+  const latestByChapterId = new Map<string, typeof allGenerations[number]>();
+  for (const gen of allGenerations) {
+    if (!latestByChapterId.has(gen.chapterId)) {
+      latestByChapterId.set(gen.chapterId, gen);
+    }
+  }
+
+  const chaptersWithGenerations = chapterList.map((ch) => ({
+    id: ch.id,
+    position: ch.position,
+    title: ch.title,
+    latestGeneration: latestByChapterId.get(ch.id) ?? null,
+  }));
 
   return NextResponse.json({
     ...project,
@@ -120,17 +118,19 @@ export async function PATCH(
       .from(chapters)
       .where(eq(chapters.projectId, id));
 
-    for (const ch of projectChapterIds) {
-      await db
-        .update(chapterPlaceholders)
-        .set({ definition: topic })
-        .where(
-          and(
-            eq(chapterPlaceholders.chapterId, ch.id),
-            eq(chapterPlaceholders.name, "tema"),
-          ),
-        );
-    }
+    await db.transaction(async (tx) => {
+      for (const ch of projectChapterIds) {
+        await tx
+          .update(chapterPlaceholders)
+          .set({ definition: topic })
+          .where(
+            and(
+              eq(chapterPlaceholders.chapterId, ch.id),
+              eq(chapterPlaceholders.name, "tema"),
+            ),
+          );
+      }
+    });
   }
 
   logAudit({

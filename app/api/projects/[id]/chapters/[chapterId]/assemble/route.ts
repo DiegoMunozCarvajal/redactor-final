@@ -59,6 +59,14 @@ export async function POST(
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
   }
 
+  const MAX_FRAGMENTS = 100;
+  if (fragmentIds.length > MAX_FRAGMENTS) {
+    return NextResponse.json(
+      { error: `too many fragments, max ${MAX_FRAGMENTS}` },
+      { status: 400 },
+    );
+  }
+
   // Load selected fragments with prompt titles
   const selectedFragments = await db
     .select({

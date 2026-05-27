@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -60,31 +60,50 @@ export async function GET(
     )
     .orderBy(desc(chapterGenerations.createdAt));
 
-  // Load fragments for each generation
-  const generationsWithFragments = await Promise.all(
-    genList.map(async (gen) => {
-      const fragList = await db
-        .select({
-          id: fragments.id,
-          projectPromptId: fragments.projectPromptId,
-          position: fragments.position,
-          content: fragments.content,
-          modelUsed: fragments.modelUsed,
-          tokensUsed: fragments.tokensUsed,
-          isAssembly: projectPrompts.isAssembly,
-          createdAt: fragments.createdAt,
-        })
-        .from(fragments)
-        .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
-        .where(eq(fragments.chapterGenerationId, gen.id))
-        .orderBy(asc(fragments.position));
+  // Load fragments for all generations in a single query (was N+1)
+  const genIds = genList.map((g) => g.id);
+  let allFragments: Array<{
+    id: string;
+    chapterGenerationId: string;
+    projectPromptId: string | null;
+    position: number;
+    content: string | null;
+    modelUsed: string | null;
+    tokensUsed: number | null;
+    isAssembly: boolean | null;
+    createdAt: Date;
+  }> = [];
+  if (genIds.length > 0) {
+    allFragments = await db
+      .select({
+        id: fragments.id,
+        chapterGenerationId: fragments.chapterGenerationId,
+        projectPromptId: fragments.projectPromptId,
+        position: fragments.position,
+        content: fragments.content,
+        modelUsed: fragments.modelUsed,
+        tokensUsed: fragments.tokensUsed,
+        isAssembly: projectPrompts.isAssembly,
+        createdAt: fragments.createdAt,
+      })
+      .from(fragments)
+      .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
+      .where(inArray(fragments.chapterGenerationId, genIds))
+      .orderBy(asc(fragments.position));
+  }
 
-      return {
-        ...gen,
-        fragments: fragList,
-      };
-    }),
-  );
+  // Group by generationId
+  const fragsByGenId = new Map<string, typeof allFragments>();
+  for (const f of allFragments) {
+    const list = fragsByGenId.get(f.chapterGenerationId) ?? [];
+    list.push(f);
+    fragsByGenId.set(f.chapterGenerationId, list);
+  }
+
+  const generationsWithFragments = genList.map((gen) => ({
+    ...gen,
+    fragments: fragsByGenId.get(gen.id) ?? [],
+  }));
 
   return NextResponse.json({
     projectName: project.title ?? project.name,

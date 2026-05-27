@@ -9,6 +9,8 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
 
@@ -54,6 +56,29 @@ export async function POST(
     return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
   }
   const temperature = temperatureRaw as number | undefined;
+
+  // Rate limit: serialize fill operations per project to prevent credit exhaustion
+  const lockResult = await withProjectLock(projectId, async () => {
+    const rateCheck = await checkProjectRateLimit(projectId);
+    if (!rateCheck.allowed) {
+      return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
+    }
+    return { rateLimited: false as const };
+  });
+
+  if (!lockResult.locked) {
+    return NextResponse.json(
+      { error: "project is locked" },
+      { status: 409 },
+    );
+  }
+
+  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfter: lockResult.result.retryAfter },
+      { status: 429 },
+    );
+  }
 
   // Load placeholders with metadata
   const placeholderRows = await db
@@ -113,7 +138,7 @@ export async function POST(
           }
         }
       } catch (err) {
-        const errorEvent = { type: "error", error: (err as Error).message };
+        const errorEvent = { type: "error", error: sanitizeError(err) };
         controller.enqueue(
           encoder.encode(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`),
         );

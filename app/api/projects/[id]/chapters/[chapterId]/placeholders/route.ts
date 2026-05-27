@@ -60,17 +60,19 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}));
   const definitions: Record<string, string | null> = body.placeholders ?? {};
 
-  for (const [name, definition] of Object.entries(definitions)) {
-    await db
-      .update(chapterPlaceholders)
-      .set({ definition })
-      .where(
-        and(
-          eq(chapterPlaceholders.chapterId, chapterId),
-          eq(chapterPlaceholders.name, name),
-        ),
-      );
-  }
+  await db.transaction(async (tx) => {
+    for (const [name, definition] of Object.entries(definitions)) {
+      await tx
+        .update(chapterPlaceholders)
+        .set({ definition })
+        .where(
+          and(
+            eq(chapterPlaceholders.chapterId, chapterId),
+            eq(chapterPlaceholders.name, name),
+          ),
+        );
+    }
+  });
 
   // Return updated list
   const rows = await db

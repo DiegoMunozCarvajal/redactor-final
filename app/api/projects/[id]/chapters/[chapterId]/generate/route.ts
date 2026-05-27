@@ -64,14 +64,17 @@ export async function POST(
 
     try {
       ensureTriggerConfigured();
-      await generateChapter.trigger({
-        generationId: gen.id,
-        projectId,
-        ...(model ? { model } : {}),
-        ...(temperature !== undefined ? { temperature } : {}),
-        ...(effort !== undefined ? { effort } : {}),
-        skipAssembly,
-      });
+      await generateChapter.trigger(
+        {
+          generationId: gen.id,
+          projectId,
+          ...(model ? { model } : {}),
+          ...(temperature !== undefined ? { temperature } : {}),
+          ...(effort !== undefined ? { effort } : {}),
+          skipAssembly,
+        },
+        { idempotencyKey: gen.id },
+      );
       return gen;
     } catch (err) {
       const message = sanitizeError(err);

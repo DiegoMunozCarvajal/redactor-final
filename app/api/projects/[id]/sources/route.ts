@@ -100,6 +100,15 @@ export async function POST(
     );
   }
 
+  // Size check before reading to avoid memory exhaustion
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: `file too large, max ${MAX_FILE_SIZE / 1024 / 1024} MB` },
+      { status: 400 },
+    );
+  }
+
   const text = await file.text();
   if (!text.trim()) {
     return NextResponse.json({ error: "file is empty" }, { status: 400 });
