@@ -12,8 +12,7 @@ import {
 import { Loader2, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
-import { AVAILABLE_MODELS } from "@/lib/ai/providers";
-const MODELS = AVAILABLE_MODELS.map((m) => ({ id: m.id, label: m.label }));
+import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
 export function GenerateChapterButton({
   projectId,
@@ -27,7 +26,7 @@ export function GenerateChapterButton({
   onGenerationStarted: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState("deepseek-v4-flash");
+  const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
 
   async function handleGenerate() {
     setLoading(true);
@@ -60,7 +59,7 @@ export function GenerateChapterButton({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {MODELS.map((m) => (
+          {MODEL_OPTIONS.map((m) => (
             <SelectItem key={m.id} value={m.id} className="text-xs">
               {m.label}
             </SelectItem>

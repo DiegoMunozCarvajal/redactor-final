@@ -12,7 +12,8 @@ export interface RetrievedChunk {
   chunkIndex: number;
   content: string;
   tokenCount: number;
-  similarity: number;
+  /** Cosine distance from pgvector <=> (0 = identical, 2 = opposite). Not similarity! */
+  distance: number;
   rerankScore: number | null;
 }
 
@@ -41,7 +42,7 @@ export async function retrieveContext(
       sc.chunk_index,
       sc.content,
       sc.token_count,
-      sc.embedding <=> ${embeddingStr}::vector AS similarity,
+      sc.embedding <=> ${embeddingStr}::vector AS distance,
       s.file_name,
       s.source_kind,
       s.citation
@@ -57,7 +58,7 @@ export async function retrieveContext(
     chunk_index: number;
     content: string;
     token_count: number;
-    similarity: number;
+    distance: number;
     file_name: string;
     source_kind: string;
     citation: string | null;
@@ -88,7 +89,7 @@ export async function retrieveContext(
       chunkIndex: row.chunk_index,
       content: row.content,
       tokenCount: row.token_count,
-      similarity: row.similarity,
+      distance: row.distance,
       rerankScore: score,
     });
     totalTokens += row.token_count;

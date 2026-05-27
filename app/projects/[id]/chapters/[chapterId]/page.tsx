@@ -56,6 +56,8 @@ import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 
+const STALE_MS = 30 * 60 * 1000;
+
 const MODEL_FIXED_TEMP = new Map(
   AVAILABLE_MODELS.filter((m) => m.fixedTemperature !== undefined).map((m) => [
     m.id,
@@ -483,7 +485,6 @@ export default function ChapterPage() {
   // Poll if any generation is in progress (skip stale generations > 30 min old)
   useEffect(() => {
     if (!data) return;
-    const STALE_MS = 30 * 60 * 1000;
     const hasGenerating = data.generations.some(
       (g) => g.status === "generating" && Date.now() - new Date(g.createdAt).getTime() < STALE_MS,
     );
@@ -517,7 +518,6 @@ export default function ChapterPage() {
   }
 
   const { chapter, generations, projectName } = data;
-  const STALE_MS = 30 * 60 * 1000;
   const activeGen = generations.find(
     (g) => g.status === "generating" && Date.now() - new Date(g.createdAt).getTime() < STALE_MS,
   );
