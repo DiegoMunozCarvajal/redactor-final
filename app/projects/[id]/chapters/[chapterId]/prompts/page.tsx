@@ -65,32 +65,47 @@ export default function PromptsPage() {
 
   async function savePrompt(promptId: string, field: string, value: string) {
     setSaving((s) => ({ ...s, [promptId]: true }));
-    await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: value }),
-    });
-    setSaving((s) => ({ ...s, [promptId]: false }));
+    try {
+      await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+    } catch {
+      setError("Failed to save");
+    } finally {
+      setSaving((s) => ({ ...s, [promptId]: false }));
+    }
   }
 
   async function addPrompt() {
-    const res = await fetch(`/api/projects/${params.id}/prompts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newPrompt, chapterId: params.chapterId }),
-    });
-    if (res.ok) {
-      setShowNew(false);
-      setNewPrompt({ isAssembly: false, title: "", content: "" });
-      fetchPrompts();
+    try {
+      const res = await fetch(`/api/projects/${params.id}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newPrompt, chapterId: params.chapterId }),
+      });
+      if (res.ok) {
+        setShowNew(false);
+        setNewPrompt({ isAssembly: false, title: "", content: "" });
+        fetchPrompts();
+      } else {
+        setError("Failed to add prompt");
+      }
+    } catch {
+      setError("Failed to add prompt");
     }
   }
 
   async function deletePrompt(promptId: string) {
-    await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
-      method: "DELETE",
-    });
-    fetchPrompts();
+    try {
+      await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+        method: "DELETE",
+      });
+      fetchPrompts();
+    } catch {
+      setError("Failed to delete prompt");
+    }
   }
 
   if (loading)

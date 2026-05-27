@@ -487,7 +487,9 @@ async function completeWithAnthropic<T extends z.ZodType>(
     const toolBlock = response.content.find((b) => b.type === "tool_use");
     if (!toolBlock || toolBlock.type !== "tool_use") {
       throw new ProviderCallError(
-        "Anthropic model did not return structured tool_use output.",
+        response.stop_reason === "max_tokens"
+          ? "Anthropic output was truncated before producing structured output. Increase max_tokens."
+          : "Anthropic model did not return structured tool_use output.",
         usage,
       );
     }
@@ -495,7 +497,14 @@ async function completeWithAnthropic<T extends z.ZodType>(
       const data = schema.parse(toolBlock.input);
       return { data, promptTokens, completionTokens, cacheCreationTokens, cacheReadTokens };
     } catch (parseError) {
-      throw new ProviderCallError(getErrorMessage(parseError), usage, { cause: parseError });
+      const hint = response.stop_reason === "max_tokens"
+        ? " (output was truncated by token limit — parsed value may be incomplete)"
+        : "";
+      throw new ProviderCallError(
+        getErrorMessage(parseError) + hint,
+        usage,
+        { cause: parseError },
+      );
     }
   } else {
     const response = await client.messages.create({
@@ -710,10 +719,20 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
 
     if (!rawText) {
       const finishReason = choice?.finish_reason;
+      if (finishReason === "length") {
+        throw new ProviderCallError(
+          "DeepSeek output was truncated before producing output. Increase max_completion_tokens.",
+          usage,
+        );
+      }
+      if (finishReason === "content_filter") {
+        throw new ProviderCallError(
+          "DeepSeek returned a content filter refusal. The prompt or generated text triggered the safety filter.",
+          usage,
+        );
+      }
       throw new ProviderCallError(
-        finishReason === "length"
-          ? "DeepSeek output was truncated before producing output. Increase max_completion_tokens."
-          : "DeepSeek returned empty output.",
+        "DeepSeek returned empty output.",
         usage,
       );
     }

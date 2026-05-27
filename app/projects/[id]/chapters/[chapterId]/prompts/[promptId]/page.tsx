@@ -15,6 +15,17 @@ import {
 } from "@/components/ui/card";
 import { Loader2, ArrowLeft, Trash2, Save } from "lucide-react";
 
+interface ChapterDetail {
+  projectName: string;
+  projectTopic: string;
+  chapter: {
+    id: string;
+    position: number;
+    title: string;
+    chapterNumber: number;
+  };
+}
+
 interface ProjectPrompt {
   id: string;
   chapterId: string;
@@ -49,7 +60,7 @@ export default function PromptEditPage() {
           { signal: controller.signal },
         );
         if (!chRes.ok) throw new Error(`Failed (${chRes.status})`);
-        const chData = await chRes.json();
+        const chData: ChapterDetail = await chRes.json();
         if (controller.signal.aborted) return;
         setProjectName(chData.projectName);
         setChapterTitle(chData.chapter.title);
@@ -84,24 +95,34 @@ export default function PromptEditPage() {
     if (!prompt || content === prompt.content) return;
     setSaving(true);
     setSaved(false);
-    await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    setPrompt((prev) => prev ? { ...prev, content } : prev);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      setPrompt((prev) => prev ? { ...prev, content } : prev);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError("Failed to save");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deletePrompt() {
     if (!prompt) return;
     setDeleting(true);
-    await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
-      method: "DELETE",
-    });
-    router.push(`/projects/${params.id}/chapters/${params.chapterId}`);
+    try {
+      await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
+        method: "DELETE",
+      });
+      router.push(`/projects/${params.id}/chapters/${params.chapterId}`);
+    } catch {
+      setError("Failed to delete prompt");
+      setDeleting(false);
+    }
   }
 
   if (loading)

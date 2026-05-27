@@ -532,7 +532,11 @@ export default function ChapterPage() {
     }
   }
 
-  // Build fragment versions across ALL generations grouped by prompt ID
+  // Build fragment versions across ALL generations grouped by prompt ID.
+  // Relies on generations being sorted newest-first (guaranteed by the API:
+  // ORDER BY created_at DESC) and fragments within each generation being
+  // sorted by position (ORDER BY position ASC). The first fragment encountered
+  // per promptId is from the newest generation that has it.
   const fragmentVersions = new Map<string, FragmentData[]>();
   const latestFragmentByPrompt = new Map<string, FragmentData>();
   for (const gen of generations) {
@@ -541,7 +545,6 @@ export default function ChapterPage() {
       const list = fragmentVersions.get(f.projectPromptId) ?? [];
       list.push(f);
       fragmentVersions.set(f.projectPromptId, list);
-      // Track latest fragment per prompt (fragments are iterated in gen order, newest first)
       if (!latestFragmentByPrompt.has(f.projectPromptId)) {
         latestFragmentByPrompt.set(f.projectPromptId, f);
       }
