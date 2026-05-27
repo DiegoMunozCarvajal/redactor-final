@@ -66,11 +66,12 @@ export default function PromptsPage() {
   async function savePrompt(promptId: string, field: string, value: string) {
     setSaving((s) => ({ ...s, [promptId]: true }));
     try {
-      await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+      const res = await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
     } catch {
       setError("Failed to save");
     } finally {
@@ -99,9 +100,10 @@ export default function PromptsPage() {
 
   async function deletePrompt(promptId: string) {
     try {
-      await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+      const res = await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
         method: "DELETE",
       });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
       fetchPrompts();
     } catch {
       setError("Failed to delete prompt");

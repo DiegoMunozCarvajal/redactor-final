@@ -17,7 +17,7 @@ import { Loader2, ArrowLeft, Trash2, Save } from "lucide-react";
 
 interface ChapterDetail {
   projectName: string;
-  projectTopic: string;
+  projectTopic: string | null;
   chapter: {
     id: string;
     position: number;
@@ -96,11 +96,12 @@ export default function PromptEditPage() {
     setSaving(true);
     setSaved(false);
     try {
-      await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
+      const res = await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
       setPrompt((prev) => prev ? { ...prev, content } : prev);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -115,9 +116,10 @@ export default function PromptEditPage() {
     if (!prompt) return;
     setDeleting(true);
     try {
-      await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
+      const res = await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
         method: "DELETE",
       });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
       router.push(`/projects/${params.id}/chapters/${params.chapterId}`);
     } catch {
       setError("Failed to delete prompt");
