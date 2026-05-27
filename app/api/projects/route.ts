@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts, chapterPlaceholders } from "@/lib/db/schema";
+import { projects, chapters, prompts, projectPrompts, chapterPlaceholders, assemblyPrompts } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
+import { extractPlaceholders } from "@/lib/placeholders";
 
 export async function GET() {
   const supabase = await createClient();
@@ -157,6 +158,30 @@ export async function POST(req: NextRequest) {
                 target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
                 set: { definition: p.topic },
               });
+          }
+        }
+
+        // Sync placeholders from global assembly prompt to all new project chapters
+        if (assemblyPromptId) {
+          const [globalAp] = await tx
+            .select({ content: assemblyPrompts.content, userPrompt: assemblyPrompts.userPrompt })
+            .from(assemblyPrompts)
+            .where(eq(assemblyPrompts.id, assemblyPromptId))
+            .limit(1);
+          if (globalAp) {
+            const apContents = [globalAp.content, globalAp.userPrompt].filter(
+              (s): s is string => typeof s === "string" && s.length > 0,
+            );
+            const detected = extractPlaceholders(apContents);
+            if (detected.length > 0) {
+              const projectChapterIds = [...chapterIdMap.values()];
+              for (const projectChapterId of projectChapterIds) {
+                await tx
+                  .insert(chapterPlaceholders)
+                  .values(detected.map((name) => ({ chapterId: projectChapterId, name })))
+                  .onConflictDoNothing();
+              }
+            }
           }
         }
       }

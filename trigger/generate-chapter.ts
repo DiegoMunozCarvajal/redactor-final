@@ -7,6 +7,7 @@ import {
   projects,
   chapters,
   assemblyPrompts,
+  chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssembly, type PromptLike } from "@/lib/generate";
@@ -102,6 +103,17 @@ export const generateChapter = task({
           content: globalAp.content,
           userPrompt: globalAp.userPrompt,
         };
+        // Sync placeholders from global assembly prompt to chapterPlaceholders
+        const apContents = [globalAp.content, globalAp.userPrompt].filter(
+          (s): s is string => typeof s === "string" && s.length > 0,
+        );
+        const apPlaceholders = extractPlaceholders(apContents);
+        if (apPlaceholders.length > 0) {
+          await db
+            .insert(chapterPlaceholders)
+            .values(apPlaceholders.map((name) => ({ chapterId: gen.chapterId, name })))
+            .onConflictDoNothing();
+        }
       }
     }
 
@@ -111,12 +123,20 @@ export const generateChapter = task({
       // Load placeholders
       const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
-      // Mandatory placeholder validation: all {name} tokens in content prompts
-      // must have definitions before generating fragments
-      const allPromptContents = contentPrompts.flatMap((p) =>
+      // Mandatory placeholder validation: all {name} tokens in content AND assembly
+      // prompts must have definitions before generating fragments
+      const contentPromptStrings = contentPrompts.flatMap((p) =>
         [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
       );
-      const requiredTokens = extractPlaceholders(allPromptContents);
+      const assemblyPromptStrings = assemblyPrompt
+        ? [assemblyPrompt.content, assemblyPrompt.userPrompt].filter(
+            (s): s is string => typeof s === "string" && s.length > 0,
+          )
+        : [];
+      const requiredTokens = extractPlaceholders([
+        ...contentPromptStrings,
+        ...assemblyPromptStrings,
+      ]);
       const missingPlaceholders = requiredTokens.filter(
         (name) => !(name in placeholders),
       );
