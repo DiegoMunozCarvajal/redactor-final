@@ -146,6 +146,7 @@ export default function ChapterPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [generatingPrompts, setGeneratingPrompts] = useState<Set<string>>(new Set());
+  const [generatingAll, setGeneratingAll] = useState(false);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [promptModels, setPromptModels] = useState<Record<string, string>>({});
   const [defaultTemperature, setDefaultTemperature] = useState(0.7);
@@ -315,11 +316,38 @@ export default function ChapterPage() {
   }
 
   async function runAllPrompts() {
-    const contentPrompts = prompts.filter((p) => !p.isAssembly);
-    for (const prompt of contentPrompts) {
-      await runPrompt(prompt.id);
-      // Small delay between triggers
-      await new Promise((r) => setTimeout(r, 500));
+    setGeneratingAll(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${params.id}/chapters/${params.chapterId}/generate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: defaultModel,
+            effort: defaultEffort,
+            skipAssembly: true,
+            ...(defaultEffort === "off" ? { temperature: defaultTemperature } : {}),
+          }),
+        },
+      );
+      if (res.ok) {
+        fetchChapter();
+        toast.success("Chapter generation started");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          toast.error(err.error ?? "Rate limited. Try again shortly.");
+        } else if (res.status === 409) {
+          toast.error("Another generation is already in progress for this project.");
+        } else {
+          toast.error(err.error ?? "Error starting generation");
+        }
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setGeneratingAll(false);
     }
   }
 
@@ -744,9 +772,11 @@ export default function ChapterPage() {
             <Button
               size="sm"
               onClick={runAllPrompts}
-              disabled={generatingPrompts.size > 0}
+              disabled={generatingAll || generatingPrompts.size > 0}
             >
-              {generatingPrompts.size > 0 ? (
+              {generatingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : generatingPrompts.size > 0 ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
                 <Play className="h-4 w-4 mr-1" />

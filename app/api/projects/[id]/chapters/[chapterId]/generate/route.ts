@@ -40,6 +40,7 @@ export async function POST(
   const model = body.model as string | undefined;
   const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
   const effort = body.effort as "off" | "max" | undefined;
+  const skipAssembly = body.skipAssembly === true;
 
   // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two
@@ -69,6 +70,7 @@ export async function POST(
         ...(model ? { model } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
         ...(effort !== undefined ? { effort } : {}),
+        skipAssembly,
       });
       return gen;
     } catch (err) {

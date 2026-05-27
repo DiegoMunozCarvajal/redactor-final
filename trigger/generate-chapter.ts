@@ -21,8 +21,8 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max" }) => {
-    const { generationId, projectId, model, temperature, effort } = payload;
+  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max"; skipAssembly?: boolean }) => {
+    const { generationId, projectId, model, temperature, effort, skipAssembly } = payload;
 
     // Load generation
     const [gen] = await db
@@ -169,8 +169,8 @@ export const generateChapter = task({
         .set({ status: "assembling" })
         .where(eq(chapterGenerations.id, generationId));
 
-      // Assemble chapter
-      if (assemblyPrompt && fragmentContents.length > 0) {
+      // Assemble chapter (unless skipped)
+      if (assemblyPrompt && fragmentContents.length > 0 && !skipAssembly) {
         const assembled = await generateChapterAssembly(
           assemblyPrompt,
           fragmentContents,
