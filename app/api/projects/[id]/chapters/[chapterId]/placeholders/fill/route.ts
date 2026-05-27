@@ -57,7 +57,11 @@ export async function POST(
   }
   const temperature = temperatureRaw as number | undefined;
 
-  // Rate limit: serialize fill operations per project to prevent credit exhaustion
+  // Rate limit: prevent fills from racing with in-flight generations.
+  // Note: the lock serializes the rate check but NOT the SSE fill work (which
+  // runs asynchronously after the response starts). Full serialization would
+  // require a different mechanism — the project ownership check is the primary
+  // guard against credit exhaustion by third parties.
   const lockResult = await withProjectLock(projectId, async () => {
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {

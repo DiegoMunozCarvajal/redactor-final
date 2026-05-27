@@ -100,25 +100,26 @@ export async function PATCH(
     return NextResponse.json({ error: "subtitle too long" }, { status: 400 });
   }
 
-  const [updated] = await db
-    .update(projects)
-    .set({
-      ...(title !== undefined && { title }),
-      ...(subtitle !== undefined && { subtitle }),
-      ...(topic !== undefined && { topic }),
-    })
-    .where(eq(projects.id, id))
-    .returning();
+  // Update project and sync {tema} placeholder in a single transaction
+  // so topic change and placeholder sync are atomic
+  const updated = await db.transaction(async (tx) => {
+    const [u] = await tx
+      .update(projects)
+      .set({
+        ...(title !== undefined && { title }),
+        ...(subtitle !== undefined && { subtitle }),
+        ...(topic !== undefined && { topic }),
+      })
+      .where(eq(projects.id, id))
+      .returning();
 
-  // Sync {tema} placeholder definition when topic changes
-  // Only update chapters that haven't been manually filled or match the old topic
-  if (topic !== undefined && topic !== project.topic) {
-    const projectChapterIds = await db
-      .select({ id: chapters.id })
-      .from(chapters)
-      .where(eq(chapters.projectId, id));
+    // Sync {tema} placeholder definition when topic changes
+    if (topic !== undefined && topic !== project.topic) {
+      const projectChapterIds = await tx
+        .select({ id: chapters.id })
+        .from(chapters)
+        .where(eq(chapters.projectId, id));
 
-    await db.transaction(async (tx) => {
       for (const ch of projectChapterIds) {
         await tx
           .update(chapterPlaceholders)
@@ -130,8 +131,10 @@ export async function PATCH(
             ),
           );
       }
-    });
-  }
+    }
+
+    return u;
+  });
 
   logAudit({
     userId: user.id,
