@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { ProjectCardSkeleton } from "@/components/patterns/project-card-skeleton";
+import { PageHeader } from "@/components/patterns/page-header";
 import { ContinueWritingCard } from "@/components/patterns/continue-writing-card";
 import { QuickStartCard } from "@/components/patterns/quick-start-card";
 import { StatsCard } from "@/components/patterns/stats-card";
@@ -98,14 +99,11 @@ export default function ProjectsPage() {
   if (loading) {
     return (
       <div className="py-6">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Create and manage your book generation projects
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Projects"
+          subtitle="Create and manage your book generation projects"
+          className="mb-8"
+        />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <ProjectCardSkeleton key={i} index={i} />
@@ -161,14 +159,11 @@ export default function ProjectsPage() {
 
   return (
     <div className="py-6">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create and manage your book generation projects
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Projects"
+        subtitle="Create and manage your book generation projects"
+        className="mb-8"
+      />
 
       {/* Bento Hero Row */}
       <div className="grid gap-4 md:grid-cols-3 mb-8">

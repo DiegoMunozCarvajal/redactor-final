@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { Loader2, Plus, Trash2, Wand2 } from "lucide-react";
+import { PageHeader } from "@/components/patterns/page-header";
+import { EmptyState } from "@/components/patterns/empty-state";
+import { ResourceCard } from "@/components/patterns/resource-card";
+import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
+import { Loader2, Plus, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface MetaPrompt {
@@ -80,19 +81,17 @@ export default function MetaPromptsPage() {
   if (loading) {
     return (
       <div className="py-6">
-        <div className="animate-pulse space-y-4">
-          {[1, 2, 3].map((i) => (<div key={i} className="h-24 bg-muted rounded-lg" />))}
-        </div>
+        <LoadingSkeleton count={3} />
       </div>
     );
   }
 
   return (
     <div className="py-6">
-      <Breadcrumbs items={[{ label: "Meta-Prompts" }]} />
-
-      <div className="flex items-center justify-between mb-6 mt-4">
-        <h1 className="text-2xl font-bold">Meta-Prompts</h1>
+      <PageHeader
+        breadcrumbs={[{ label: "Meta-Prompts" }]}
+        title="Meta-Prompts"
+      >
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4" /> New Meta-Prompt</Button>
@@ -129,42 +128,30 @@ export default function MetaPromptsPage() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+      </PageHeader>
 
       {metaPrompts.length === 0 ? (
-        <div className="text-center py-16 space-y-4">
-          <Wand2 className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="text-muted-foreground">No meta-prompts yet.</p>
-        </div>
+        <EmptyState
+          icon={Wand2}
+          title="No meta-prompts yet"
+          description="Create your first meta-prompt to generate content-creating prompts from source chapters."
+        />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {metaPrompts.map((mp) => (
-            <Card key={mp.id} className="group relative hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200">
-              <Link href={`/meta-prompts/${mp.id}`}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base group-hover:text-primary transition-colors">{mp.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {mp.description ? (
-                    <CardDescription className="line-clamp-2">{mp.description}</CardDescription>
-                  ) : (
-                    <CardDescription className="italic">No description</CardDescription>
-                  )}
-                  {mp.userPrompt ? (
-                    <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">User: {mp.userPrompt.slice(0, 120)}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">{mp.content.slice(0, 120)}</p>
-                  )}
-                </CardContent>
-              </Link>
-              <Button
-                variant="ghost" size="icon"
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => { e.preventDefault(); deleteMetaPrompt(mp.id); }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </Card>
+            <ResourceCard
+              key={mp.id}
+              href={`/meta-prompts/${mp.id}`}
+              title={mp.name}
+              description={mp.description}
+              onDelete={() => deleteMetaPrompt(mp.id)}
+            >
+              {mp.userPrompt ? (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">User: {mp.userPrompt.slice(0, 120)}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{mp.content.slice(0, 120)}</p>
+              )}
+            </ResourceCard>
           ))}
         </div>
       )}

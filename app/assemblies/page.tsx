@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { Loader2, Plus, Trash2, Puzzle } from "lucide-react";
+import { PageHeader } from "@/components/patterns/page-header";
+import { EmptyState } from "@/components/patterns/empty-state";
+import { ResourceCard } from "@/components/patterns/resource-card";
+import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
+import { Loader2, Plus, Puzzle } from "lucide-react";
 import { toast } from "sonner";
 
 interface AssemblyPrompt {
@@ -80,19 +81,17 @@ export default function AssembliesPage() {
   if (loading) {
     return (
       <div className="py-6">
-        <div className="animate-pulse space-y-4">
-          {[1, 2, 3].map((i) => (<div key={i} className="h-24 bg-muted rounded-lg" />))}
-        </div>
+        <LoadingSkeleton count={3} />
       </div>
     );
   }
 
   return (
     <div className="py-6">
-      <Breadcrumbs items={[{ label: "Assembly Prompts" }]} />
-
-      <div className="flex items-center justify-between mb-6 mt-4">
-        <h1 className="text-2xl font-bold">Assembly Prompts</h1>
+      <PageHeader
+        breadcrumbs={[{ label: "Assembly Prompts" }]}
+        title="Assembly Prompts"
+      >
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4" /> New Assembly Prompt</Button>
@@ -129,38 +128,26 @@ export default function AssembliesPage() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+      </PageHeader>
 
       {assemblies.length === 0 ? (
-        <div className="text-center py-16 space-y-4">
-          <Puzzle className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="text-muted-foreground">No assembly prompts yet.</p>
-        </div>
+        <EmptyState
+          icon={Puzzle}
+          title="No assembly prompts yet"
+          description="Create your first assembly prompt to merge content fragments into unified chapters."
+        />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {assemblies.map((ap) => (
-            <Card key={ap.id} className="group relative hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200">
-              <Link href={`/assemblies/${ap.id}`}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base group-hover:text-primary transition-colors">{ap.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {ap.description ? (
-                    <CardDescription className="line-clamp-2">{ap.description}</CardDescription>
-                  ) : (
-                    <CardDescription className="italic">No description</CardDescription>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2 font-mono line-clamp-2">{ap.content.slice(0, 120)}</p>
-                </CardContent>
-              </Link>
-              <Button
-                variant="ghost" size="icon"
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => { e.preventDefault(); deleteAssembly(ap.id); }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </Card>
+            <ResourceCard
+              key={ap.id}
+              href={`/assemblies/${ap.id}`}
+              title={ap.name}
+              description={ap.description}
+              onDelete={() => deleteAssembly(ap.id)}
+            >
+              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{ap.content.slice(0, 120)}</p>
+            </ResourceCard>
           ))}
         </div>
       )}

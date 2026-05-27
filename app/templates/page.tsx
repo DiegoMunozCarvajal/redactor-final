@@ -1,15 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +14,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { BookOpen, Loader2, Plus, Trash2, Wand2 } from "lucide-react";
+import { PageHeader } from "@/components/patterns/page-header";
+import { EmptyState } from "@/components/patterns/empty-state";
+import { ResourceCard } from "@/components/patterns/resource-card";
+import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
+import { Loader2, Plus, Wand2, BookOpen } from "lucide-react";
 
 interface Template {
   id: string;
@@ -83,24 +79,21 @@ export default function TemplatesPage() {
   if (loading) {
     return (
       <div className="py-6">
-        <div className="animate-pulse space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-muted rounded-lg" />
-          ))}
-        </div>
+        <LoadingSkeleton count={3} />
       </div>
     );
   }
 
   return (
     <div className="py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Book Templates</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push("/templates/create")}>
-            <Wand2 className="h-4 w-4" />
-            Generate from Meta-Prompt
-          </Button>
+      <PageHeader
+        breadcrumbs={[{ label: "Book Templates" }]}
+        title="Book Templates"
+      >
+        <Button variant="outline" onClick={() => router.push("/templates/create")}>
+          <Wand2 className="h-4 w-4" />
+          Generate from Meta-Prompt
+        </Button>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -143,52 +136,29 @@ export default function TemplatesPage() {
             </div>
           </DialogContent>
         </Dialog>
-        </div>
-      </div>
+      </PageHeader>
 
       {templates.length === 0 ? (
-        <div className="text-center py-16 space-y-4">
-          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="text-muted-foreground">
-            No templates yet. Create your first book template.
-          </p>
-        </div>
+        <EmptyState
+          icon={BookOpen}
+          title="No templates yet"
+          description="Create your first book template to start building book structures."
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <Card key={t.id} className="group relative hover:border-brand-200 dark:hover:border-brand-800 hover:shadow-sm transition-all duration-200">
-              <Link href={`/templates/${t.id}`}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base group-hover:text-primary transition-colors">{t.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {t.description ? (
-                    <CardDescription className="line-clamp-3">
-                      {t.description}
-                    </CardDescription>
-                  ) : (
-                    <CardDescription className="italic">
-                      No description
-                    </CardDescription>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {t.chapterCount}{" "}
-                    {t.chapterCount === 1 ? "chapter" : "chapters"}
-                  </p>
-                </CardContent>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => {
-                  e.preventDefault();
-                  deleteTemplate(t.id);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </Card>
+            <ResourceCard
+              key={t.id}
+              href={`/templates/${t.id}`}
+              title={t.name}
+              description={t.description}
+              onDelete={() => deleteTemplate(t.id)}
+            >
+              <p className="text-xs text-muted-foreground mt-2">
+                {t.chapterCount}{" "}
+                {t.chapterCount === 1 ? "chapter" : "chapters"}
+              </p>
+            </ResourceCard>
           ))}
         </div>
       )}
