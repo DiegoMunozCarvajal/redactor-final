@@ -152,11 +152,8 @@ export default function ChapterPage() {
   const [promptTemperatures, setPromptTemperatures] = useState<Record<string, number>>({});
   const [defaultEffort, setDefaultEffort] = useState<string>("max");
   const [promptEfforts, setPromptEfforts] = useState<Record<string, string>>({});
-  const [assemblyEffort, setAssemblyEffort] = useState<string>("max");
   const [assemblyModalOpen, setAssemblyModalOpen] = useState(false);
   const [selectedFragments, setSelectedFragments] = useState<Record<string, string>>({});
-  const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
-  const [assemblyTemperature, setAssemblyTemperature] = useState(0.7);
   const [assembling, setAssembling] = useState(false);
   const [selectingAssembly, setSelectingAssembly] = useState(false);
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
@@ -346,9 +343,7 @@ export default function ChapterPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fragmentIds,
-            model: assemblyModel,
-            effort: assemblyEffort,
-            ...(assemblyEffort === "off" ? { temperature: assemblyTemperature } : {}),
+            model: "deepseek-v4-pro",
             ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
@@ -1152,30 +1147,9 @@ export default function ChapterPage() {
 
       <AssemblyPromptSection
         prompt={assemblyPrompt}
-        onSave={async (data) => {
-          if (!assemblyPrompt) return
-          await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...data, isAssembly: true }),
-          })
-          fetchPrompts()
-        }}
-        versionsApiUrl={`/api/projects/${params.id}/prompts/${assemblyPrompt?.id}/versions`}
         assemblyLibrary={assemblyPromptList}
         onSelectFromLibrary={handleSelectAssemblyPrompt}
         selectingFromLibrary={selectingAssembly}
-        models={MODELS}
-        assemblyModel={assemblyModel}
-        onAssemblyModelChange={(v) => {
-          setAssemblyModel(v);
-          const fixed = fixedTempFor(v);
-          if (fixed !== undefined) setAssemblyTemperature(fixed);
-        }}
-        assemblyEffort={assemblyEffort}
-        onAssemblyEffortChange={setAssemblyEffort}
-        assemblyTemperature={assemblyTemperature}
-        onAssemblyTemperatureChange={setAssemblyTemperature}
         onAssemble={() => setAssemblyModalOpen(true)}
         assembling={assembling}
         onDelete={async () => {
@@ -1300,63 +1274,7 @@ export default function ChapterPage() {
 
           {/* Assembly controls */}
           <div className="flex items-center justify-between pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Model:</span>
-              <Select value={assemblyModel} onValueChange={(v) => {
-                setAssemblyModel(v);
-                const fixed = fixedTempFor(v);
-                if (fixed !== undefined) setAssemblyTemperature(fixed);
-              }}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODELS.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={assemblyEffort} onValueChange={setAssemblyEffort}>
-                <SelectTrigger className="w-[70px] h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="max" className="text-xs">Max</SelectItem>
-                  {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
-              {assemblyEffort === "off" && (
-                <>
-                  <span className="text-[10px] text-muted-foreground">T:</span>
-                  {(() => {
-                    const fixed = fixedTempFor(assemblyModel);
-                    return (
-                      <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={fixed ?? assemblyTemperature}
-                        disabled={fixed !== undefined}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v >= 0 && v <= 1)
-                            setAssemblyTemperature(v);
-                        }}
-                        className={`w-14 h-8 text-xs border rounded px-1.5 text-center ${
-                          fixed !== undefined
-                            ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                            : "bg-muted/50 border-border"
-                        }`}
-                        title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                      />
-                    );
-                  })()}
-                </>
-              )}
-            </div>
+            <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
             <Button
               size="sm"
               onClick={runAssembly}
