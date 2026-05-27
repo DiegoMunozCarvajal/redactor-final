@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { sourceChunks, sources } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 import { generateEmbedding } from "./embeddings";
+import { rerank } from "./rerank";
 
 export interface RetrievedChunk {
   sourceId: string;
@@ -12,6 +13,7 @@ export interface RetrievedChunk {
   content: string;
   tokenCount: number;
   similarity: number;
+  rerankScore: number | null;
 }
 
 export async function retrieveContext(
@@ -61,20 +63,23 @@ export async function retrieveContext(
     citation: string | null;
   }>;
 
-  // Deduplicate by source, keep highest similarity (already sorted by similarity)
-  const seen = new Set<string>();
-  const deduped: typeof rows = [];
-  for (const row of rows) {
-    if (seen.has(row.source_id)) continue;
-    seen.add(row.source_id);
-    deduped.push(row);
+  if (rows.length === 0) {
+    return { chunks: [], contextText: "" };
   }
 
-  // Accumulate within token budget
+  // Rerank with Cohere for semantic relevance
+  const documents = rows.map((r) => r.content);
+  const reranked = await rerank(query, documents, { topN: topK });
+
+  // Build reranked result set
   const chunks: RetrievedChunk[] = [];
   let totalTokens = 0;
-  for (const row of deduped) {
-    if (totalTokens + row.token_count > tokenBudget) break;
+
+  for (const { index, score } of reranked) {
+    if (totalTokens >= tokenBudget) break;
+    const row = rows[index];
+    if (!row) continue;
+
     chunks.push({
       sourceId: row.source_id,
       sourceFileName: row.file_name,
@@ -84,9 +89,9 @@ export async function retrieveContext(
       content: row.content,
       tokenCount: row.token_count,
       similarity: row.similarity,
+      rerankScore: score,
     });
     totalTokens += row.token_count;
-    if (chunks.length >= topK) break;
   }
 
   // Build context text
