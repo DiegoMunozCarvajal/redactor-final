@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { projects, chapters, prompts, projectPrompts, chapterPlaceholders } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, isNull, count, sql, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -18,8 +18,8 @@ export async function GET() {
   const rows = await db
     .select({
       project: projects,
-      chapterCount: count(chapters.id).as("chapterCount"),
-      completedCount: sql<number>`count(${chapterGenerations.id}) filter (where ${chapterGenerations.status} = 'completed')`.as("completedCount"),
+      chapterCount: sql<number>`count(distinct ${chapters.id})`.as("chapterCount"),
+      completedCount: sql<number>`count(distinct ${chapterGenerations.chapterId}) filter (where ${chapterGenerations.status} = 'completed')`.as("completedCount"),
     })
     .from(projects)
     .leftJoin(chapters, eq(chapters.projectId, projects.id))
