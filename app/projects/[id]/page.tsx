@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
@@ -49,7 +49,7 @@ interface ProjectData {
   const pollErrorCount = useRef(0);
   const [activeTab, setActiveTab] = useState<"chapters" | "sources">("chapters");
 
-  async function fetchProject(signal?: AbortSignal) {
+  const fetchProject = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch(`/api/projects/${params.id}`, { signal });
       if (signal?.aborted) return;
@@ -71,13 +71,13 @@ interface ProjectData {
         setLoading(false);
       }
     }
-  }
+  }, [params.id]);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchProject(controller.signal);
     return () => controller.abort();
-  }, [params.id]);
+  }, [fetchProject]);
 
   // Poll if any chapter is generating
   useEffect(() => {
@@ -93,7 +93,7 @@ interface ProjectData {
       fetchProject().finally(() => { fetchingRef.current = false; });
     }, 3000);
     return () => clearInterval(interval);
-  }, [project]);
+  }, [project, fetchProject]);
 
   async function saveTitle() {
     if (!project) return;
@@ -131,7 +131,7 @@ interface ProjectData {
     if (project) {
       setEditTopic(project.topic ?? "");
     }
-  }, [project?.id]);
+  }, [project]);
 
   async function deleteChapter(chapterId: string) {
     if (!project) return;

@@ -41,7 +41,6 @@ import {
   Play,
   Plus,
   RotateCcw,
-  Save,
   History,
   Copy,
   Puzzle,
@@ -498,7 +497,7 @@ export default function ChapterPage() {
       fetchChapter().finally(() => { fetchingRef.current = false; });
     }, 3000);
     return () => clearInterval(interval);
-  }, [data]);
+  }, [data, fetchChapter]);
 
   if (loading) {
     return (

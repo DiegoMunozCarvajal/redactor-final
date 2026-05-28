@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
@@ -38,7 +38,7 @@ export default function PromptsPage() {
     content: "",
   });
 
-  async function fetchPrompts(signal?: AbortSignal) {
+  const fetchPrompts = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch(
         `/api/projects/${params.id}/prompts?chapterId=${params.chapterId}`,
@@ -55,13 +55,13 @@ export default function PromptsPage() {
         setLoading(false);
       }
     }
-  }
+  }, [params.id, params.chapterId]);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchPrompts(controller.signal);
     return () => controller.abort();
-  }, [params.id, params.chapterId]);
+  }, [fetchPrompts]);
 
   async function savePrompt(promptId: string, field: string, value: string) {
     setSaving((s) => ({ ...s, [promptId]: true }));
