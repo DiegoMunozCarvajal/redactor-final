@@ -185,7 +185,7 @@ export function CreateProjectDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground">Overrides the template's built-in assembly prompt.</p>
+            <p className="text-[10px] text-muted-foreground">Overrides the template&apos;s built-in assembly prompt.</p>
           </div>
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>

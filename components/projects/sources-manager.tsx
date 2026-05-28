@@ -65,7 +65,7 @@ export function SourcesManager({ projectId }: SourcesManagerProps) {
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
       setSources(data);
-    } catch (err) {
+    } catch {
       toast.error("Error loading sources");
     } finally {
       setLoading(false);

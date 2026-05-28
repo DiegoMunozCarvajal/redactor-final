@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -150,6 +150,7 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [resolvedLabels, setResolvedLabels] = useState<Record<string, string>>({});
+  const resolvedKeysRef = useRef<Set<string>>(new Set());
   const { density, toggleDensity } = useDensity();
 
   useEffect(() => {
@@ -195,7 +196,7 @@ export function Sidebar() {
     for (const seg of segments) {
       if (!seg.id) continue;
       const key = `${seg.type}:${seg.id}`;
-      if (resolvedLabels[key]) continue;
+      if (resolvedKeysRef.current.has(key)) continue;
 
       if (seg.type === "projects") {
         toFetch.push({ key, url: `/api/projects/${seg.id}` });
@@ -239,7 +240,10 @@ export function Sidebar() {
       setResolvedLabels((prev) => {
         const next = { ...prev };
         for (const { key, label } of results) {
-          if (label) next[key] = label;
+          if (label) {
+            next[key] = label;
+            resolvedKeysRef.current.add(key);
+          }
         }
         return next;
       });
