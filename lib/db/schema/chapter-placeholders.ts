@@ -1,5 +1,6 @@
-import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { chapters } from "./chapters";
+import type { PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 
 export const chapterPlaceholders = pgTable(
   "chapter_placeholders",
@@ -12,6 +13,7 @@ export const chapterPlaceholders = pgTable(
     definition: text("definition"),
     function: text("function"),
     notes: text("notes"),
+    fillMetadata: jsonb("fill_metadata").$type<PlaceholderFillMetadata>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("idx_chapter_placeholders_unique").on(table.chapterId, table.name)],

@@ -13,6 +13,7 @@ import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
+import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 
 export async function POST(
   req: NextRequest,
@@ -132,7 +133,15 @@ export async function POST(
           if (event.type === "placeholder" && event.name && event.definition) {
             await db
               .update(chapterPlaceholders)
-              .set({ definition: event.definition })
+              .set({
+                definition: event.definition,
+                fillMetadata: buildPlaceholderFillMetadata({
+                  provider: event.provider,
+                  sources: event.sources,
+                  ragChunks: event.ragChunks,
+                  model,
+                }),
+              })
               .where(
                 and(
                   eq(chapterPlaceholders.chapterId, chapterId),

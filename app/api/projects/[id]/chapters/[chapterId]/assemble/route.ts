@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
-import { generateChapterAssembly } from "@/lib/generate";
-import { getChapterPlaceholders } from "@/lib/placeholders";
+import { generateChapterAssemblyHierarchical, generateChapterAssemblySequential, type AssemblyAlgorithm } from "@/lib/generate";
+import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 
@@ -50,6 +50,7 @@ export async function POST(
   const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
   const effort = body.effort as "off" | "max" | undefined;
   const assemblyPromptId = body.assemblyPromptId as string | undefined;
+  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential" ? "sequential" : "merge-sort";
 
   if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
     return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
@@ -90,7 +91,13 @@ export async function POST(
 
   // Load the assembly prompt — either from the global assembly_prompts table (if assemblyPromptId provided)
   // or from the chapter's embedded project prompt (backward compat).
-  let assemblyPrompt: { title: string; content: string; userPrompt?: string | null } | null = null;
+  let assemblyPrompt: {
+    id: string;
+    title: string;
+    content: string;
+    userPrompt?: string | null;
+    source: "library" | "chapter";
+  } | null = null;
 
   if (assemblyPromptId) {
     const [ap] = await db
@@ -105,7 +112,13 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = { title: ap.name, content: ap.content, userPrompt: ap.userPrompt };
+    assemblyPrompt = {
+      id: ap.id,
+      title: ap.name,
+      content: ap.content,
+      userPrompt: ap.userPrompt,
+      source: "library",
+    };
   } else {
     const [embedded] = await db
       .select()
@@ -124,7 +137,28 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = { title: embedded.title, content: embedded.content, userPrompt: embedded.userPrompt };
+    assemblyPrompt = {
+      id: embedded.id,
+      title: embedded.title,
+      content: embedded.content,
+      userPrompt: embedded.userPrompt,
+      source: "chapter",
+    };
+  }
+
+  const placeholders = await getChapterPlaceholders(chapterId, project.topic);
+  const missingPlaceholders = getMissingPlaceholderNames(
+    [assemblyPrompt.content, assemblyPrompt.userPrompt].filter(Boolean) as string[],
+    placeholders,
+  );
+  if (missingPlaceholders.length > 0) {
+    const missing = missingPlaceholders.join(", ");
+    return NextResponse.json(
+      {
+        error: `Cannot assemble "${chapter.title}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
+      },
+      { status: 400 },
+    );
   }
 
   let generationId: string | undefined;
@@ -139,7 +173,7 @@ export async function POST(
     // so the check doesn't count this request's own record.
     const [gen] = await db
       .insert(chapterGenerations)
-      .values({ projectId, chapterId, status: "pending" })
+      .values({ projectId, chapterId, status: "assembling" })
       .returning();
     generationId = gen.id;
 
@@ -148,10 +182,11 @@ export async function POST(
         title: f.promptTitle ?? undefined,
         content: f.content ?? "",
       }));
+      const assemble = assemblyAlgorithm === "sequential"
+        ? generateChapterAssemblySequential
+        : generateChapterAssemblyHierarchical;
 
-      const placeholders = await getChapterPlaceholders(chapterId, project.topic);
-
-      const assembled = await generateChapterAssembly(
+      const assembled = await assemble(
         assemblyPrompt,
         fragmentContents,
         placeholders,
@@ -166,6 +201,14 @@ export async function POST(
         .set({
           status: "completed",
           assembledContent: assembled.text,
+          assemblyMetadata: {
+            algorithm: assemblyAlgorithm,
+            promptId: assemblyPrompt.id,
+            promptTitle: assemblyPrompt.title,
+            promptSource: assemblyPrompt.source,
+            model: assembled.model,
+            fragmentCount: fragmentContents.length,
+          },
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, gen.id));

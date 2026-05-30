@@ -118,7 +118,12 @@ export function AssemblyPromptSection({
               )}
               {onAssemble && (
                 <Button size="sm" className="text-xs" onClick={onAssemble} disabled={assembling}>
-                  <Play className="h-3 w-3 mr-1" /> Assemble
+                  {assembling ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3 mr-1" />
+                  )}
+                  {assembling ? "Assembling" : "Assemble"}
                 </Button>
               )}
               {onDelete && (

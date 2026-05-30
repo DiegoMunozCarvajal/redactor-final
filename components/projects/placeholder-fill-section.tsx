@@ -26,6 +26,8 @@ import {
 import { toast } from "sonner";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 import { MODEL_OPTIONS } from "@/lib/ai/providers";
+import type { PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
+import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 
 const MODELS = MODEL_OPTIONS;
 
@@ -41,6 +43,7 @@ interface Props {
   chapterId: string;
   placeholders: ChapterPlaceholder[];
   onSaveDefinition: (name: string, definition: string) => Promise<void>;
+  onFillComplete?: () => void | Promise<void>;
 }
 
 type FillStatus = "pending" | "generating" | "filled" | "error";
@@ -58,6 +61,7 @@ export function PlaceholderFillSection({
   chapterId,
   placeholders,
   onSaveDefinition,
+  onFillComplete,
 }: Props) {
   const [model, setModel] = useState("deepseek-v4-pro");
   const [effort, setEffort] = useState<string>("max");
@@ -70,10 +74,18 @@ export function PlaceholderFillSection({
   const editRef = useRef<HTMLTextAreaElement>(null);
 
   function getState(name: string): PlaceholderState {
+    const placeholder = placeholders.find((p) => p.name === name);
+    const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
     return states[name] ?? {
-      definition: placeholders.find((p) => p.name === name)?.definition ?? "",
-      status: placeholders.find((p) => p.name === name)?.definition ? "filled" : "pending",
-      sources: [],
+      definition: placeholder?.definition ?? "",
+      status: placeholder?.definition ? "filled" : "pending",
+      sources: metadata?.sources ?? [],
+      ragChunks: metadata?.ragChunks,
+      provider: metadata?.provider ?? (
+        placeholder
+          ? inferPlaceholderProvider(placeholder.name, placeholder.function, placeholder.notes)
+          : undefined
+      ),
     };
   }
 
@@ -85,10 +97,13 @@ export function PlaceholderFillSection({
     // Reset all to pending
     const init: Record<string, PlaceholderState> = {};
     for (const ph of placeholders) {
+      const metadata = ph.fillMetadata as PlaceholderFillMetadata | null | undefined;
       init[ph.name] = {
         definition: ph.definition ?? "",
         status: "pending",
-        sources: [],
+        sources: metadata?.sources ?? [],
+        ragChunks: metadata?.ragChunks,
+        provider: metadata?.provider ?? inferPlaceholderProvider(ph.name, ph.function, ph.notes),
       };
     }
     setStates(init);
@@ -148,6 +163,7 @@ export function PlaceholderFillSection({
               toast.error(event.error ?? "Error filling placeholder");
             } else if (event.type === "done") {
               toast.success(`${event.total ?? total} placeholders filled`);
+              void onFillComplete?.();
             }
           } catch {
             // ignore malformed JSON
@@ -174,7 +190,7 @@ export function PlaceholderFillSection({
     } finally {
       setFilling(false);
     }
-  }, [projectId, chapterId, model, effort, temperature, placeholders, total]);
+  }, [projectId, chapterId, model, effort, temperature, placeholders, total, onFillComplete]);
 
   function startEdit(name: string) {
     const state = getState(name);
@@ -318,7 +334,7 @@ export function PlaceholderFillSection({
                       </span>
                     )}
                   </div>
-                  {state.provider && state.provider !== "none" && state.provider !== "direct" && (
+                  {state.provider && ["rag", "semantic-scholar", "web"].includes(state.provider) && (
                     <span className={`text-[9px] px-1 py-0.5 rounded flex-shrink-0 ${
                       state.provider === "rag"
                         ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"

@@ -8,6 +8,7 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateChapter } from "@/trigger/generate-chapter";
 import { sanitizeError } from "@/lib/sanitize-error";
+import type { AssemblyAlgorithm } from "@/lib/generate";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(
@@ -41,6 +42,7 @@ export async function POST(
   const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
   const effort = body.effort as "off" | "max" | undefined;
   const skipAssembly = body.skipAssembly === true;
+  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential" ? "sequential" : "merge-sort";
 
   // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two
@@ -72,6 +74,7 @@ export async function POST(
           ...(temperature !== undefined ? { temperature } : {}),
           ...(effort !== undefined ? { effort } : {}),
           skipAssembly,
+          assemblyAlgorithm,
         },
         { idempotencyKey: gen.id },
       );

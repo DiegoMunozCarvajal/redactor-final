@@ -2,6 +2,7 @@ import { generateCompletion, type ReasoningEffort } from "./completion";
 import { DEFAULT_GENERATION_MODEL } from "./providers";
 import { webSearch, searchSemanticScholar, type SearchResult } from "./web-search";
 import { retrieveContext } from "./rag";
+import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 
 export type { SearchResult };
 
@@ -40,58 +41,6 @@ function extractJson(text: string): unknown {
     } catch {}
   }
   throw new Error("Could not parse JSON from response");
-}
-
-// Keywords for RAG (uploaded documents) — examples, stories, cases only
-const RAG_KEYWORDS = [
-  "ejemplo", "historia", "histórico", "historico", "anécdota",
-  "anecdota", "caso", "narrativa", "experiencia", "ilustración",
-  "ilustracion", "relato", "testimonio", "vivencia",
-];
-
-// Keywords for Semantic Scholar — academic papers, bibliography, studies
-const SEMANTIC_SCHOLAR_KEYWORDS = [
-  "bibliografía", "bibliografia", "paper", "estudio", "investigación",
-  "investigacion", "académico", "academico", "artículo", "articulo",
-  "publicación", "publicacion", "autor", "evidence", "evidencia",
-  "fuente", "fuente principal", "referencia", "cita", "científico",
-  "cientifico", "journal", "revista", "paper", "metaanálisis",
-  "metanalisis", "revisión sistemática", "revision sistematica",
-  "ensayo clínico", "ensayo clinico", "doi",
-];
-
-function shouldUseRag(
-  placeholderName: string,
-  functionStr?: string | null,
-  notes?: string | null,
-): boolean {
-  const text = `${placeholderName} ${functionStr ?? ""} ${notes ?? ""}`.toLowerCase();
-  return RAG_KEYWORDS.some((kw) => text.includes(kw));
-}
-
-function shouldUseSemanticScholar(
-  placeholderName: string,
-  functionStr?: string | null,
-  notes?: string | null,
-): boolean {
-  const text = `${placeholderName} ${functionStr ?? ""} ${notes ?? ""}`.toLowerCase();
-  return SEMANTIC_SCHOLAR_KEYWORDS.some((kw) => text.includes(kw));
-}
-
-// Placeholder names that are stylistic/creative — skip external research
-const STYLISTIC_PATTERNS = [
-  "lector", "audiencia", "audience", "tono", "tone", "estilo", "style",
-  "enfoque", "approach", "perspectiva", "angulo", "ángulo", "nivel",
-  "formato", "extensión", "extension",
-];
-
-function isStylistic(name: string, functionStr?: string | null): boolean {
-  const lower = name.toLowerCase();
-  if (STYLISTIC_PATTERNS.some((p) => lower.includes(p))) return true;
-  // If function explicitly says it needs research, override
-  if (functionStr?.toLowerCase().includes("investigación")) return false;
-  if (functionStr?.toLowerCase().includes("búsqueda")) return false;
-  return false;
 }
 
 // Placeholder names that resolve directly from project data (no LLM)
@@ -235,16 +184,14 @@ export async function* fillPlaceholdersSequential(
     let ragChunks = 0;
     let researchProvider = ""; // "rag" | "semantic-scholar" | "web"
 
-    const useRag = shouldUseRag(ph.name, ph.function, ph.notes);
-    const useSS = shouldUseSemanticScholar(ph.name, ph.function, ph.notes);
-    const skipResearch = isStylistic(ph.name, ph.function);
+    researchProvider = inferPlaceholderProvider(ph.name, ph.function, ph.notes);
+    const skipResearch = researchProvider === "none" || researchProvider === "direct";
 
     if (!skipResearch) {
       const query = `${ph.name.replace(/_/g, " ")} ${projectTopic ?? ""}`.trim();
 
-      if (useRag) {
+      if (researchProvider === "rag") {
         // RAG — uploaded source documents for examples/stories/cases
-        researchProvider = "rag";
         try {
           const result = await retrieveContext(query, projectId, {
             topK: 5,
@@ -257,9 +204,8 @@ export async function* fillPlaceholdersSequential(
         } catch (err) {
           console.warn(`[placeholder-fill] RAG failed for {${ph.name}}:`, (err as Error).message);
         }
-      } else if (useSS) {
+      } else if (researchProvider === "semantic-scholar") {
         // Semantic Scholar — academic papers, bibliography, studies
-        researchProvider = "semantic-scholar";
         try {
           sources = await searchSemanticScholar(query);
         } catch (err) {
@@ -267,7 +213,6 @@ export async function* fillPlaceholdersSequential(
         }
       } else {
         // Web search — Exa → Tavily (+ Semantic Scholar as supplement)
-        researchProvider = "web";
         try {
           sources = await webSearch(query);
         } catch (err) {
@@ -498,7 +443,7 @@ export async function researchPlaceholdersWithRag(
 
   for (const name of placeholderNames) {
     const func = placeholderFunctions[name];
-    if (shouldUseRag(name, func?.function, func?.notes)) {
+    if (inferPlaceholderProvider(name, func?.function, func?.notes) === "rag") {
       ragNames.push(name);
     } else {
       webNames.push(name);

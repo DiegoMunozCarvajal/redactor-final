@@ -12,6 +12,7 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillSinglePlaceholder } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
+import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 
 export async function POST(
   req: NextRequest,
@@ -83,7 +84,13 @@ export async function POST(
   if (resolved[name]) {
     await db
       .update(chapterPlaceholders)
-      .set({ definition: resolved[name] })
+      .set({
+        definition: resolved[name],
+        fillMetadata: buildPlaceholderFillMetadata({
+          provider: "direct",
+          model,
+        }),
+      })
       .where(
         and(
           eq(chapterPlaceholders.chapterId, chapterId),
@@ -109,7 +116,14 @@ export async function POST(
     // Persist definition to DB
     await db
       .update(chapterPlaceholders)
-      .set({ definition })
+      .set({
+        definition,
+        fillMetadata: buildPlaceholderFillMetadata({
+          provider: sources.length > 0 ? "web" : "none",
+          sources,
+          model,
+        }),
+      })
       .where(
         and(
           eq(chapterPlaceholders.chapterId, chapterId),

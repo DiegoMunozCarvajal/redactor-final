@@ -1,19 +1,14 @@
 // lib/placeholders.ts
 import { db } from "@/lib/db";
 import { chapterPlaceholders } from "@/lib/db/schema";
-import { eq, notInArray, and } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
+import {
+  extractPlaceholders,
+  getMissingPlaceholderNames,
+  getPlaceholderNamesToDelete,
+} from "@/lib/placeholder-utils";
 
-const PLACEHOLDER_RE = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
-
-export function extractPlaceholders(contents: string[]): string[] {
-  const names = new Set<string>();
-  for (const content of contents) {
-    for (const match of content.matchAll(PLACEHOLDER_RE)) {
-      names.add(match[1]);
-    }
-  }
-  return [...names];
-}
+export { extractPlaceholders, getMissingPlaceholderNames, getPlaceholderNamesToDelete };
 
 export async function syncChapterPlaceholders(
   chapterId: string,
@@ -22,28 +17,37 @@ export async function syncChapterPlaceholders(
   const detected = extractPlaceholders(promptContents);
 
   await db.transaction(async (tx) => {
-    // Delete rows no longer referenced
-    if (detected.length > 0) {
+    const existingRows = await tx
+      .select({
+        name: chapterPlaceholders.name,
+        definition: chapterPlaceholders.definition,
+        function: chapterPlaceholders.function,
+        notes: chapterPlaceholders.notes,
+      })
+      .from(chapterPlaceholders)
+      .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+    // Delete only unfilled rows no longer referenced. Filled rows carry user
+    // work and must survive prompt syncs/refreshes.
+    const namesToDelete = getPlaceholderNamesToDelete(existingRows, detected);
+    if (namesToDelete.length > 0) {
       await tx
         .delete(chapterPlaceholders)
         .where(
           and(
             eq(chapterPlaceholders.chapterId, chapterId),
-            notInArray(chapterPlaceholders.name, detected),
+            inArray(chapterPlaceholders.name, namesToDelete),
           ),
         );
-    } else {
-      await tx
-        .delete(chapterPlaceholders)
-        .where(eq(chapterPlaceholders.chapterId, chapterId));
-      return;
     }
 
     // Batch upsert detected names (keep existing definitions)
-    await tx
-      .insert(chapterPlaceholders)
-      .values(detected.map((name) => ({ chapterId, name })))
-      .onConflictDoNothing();
+    if (detected.length > 0) {
+      await tx
+        .insert(chapterPlaceholders)
+        .values(detected.map((name) => ({ chapterId, name })))
+        .onConflictDoNothing();
+    }
   });
 }
 
