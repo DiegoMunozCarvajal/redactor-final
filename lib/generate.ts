@@ -145,6 +145,168 @@ export async function generatePromptContent(
   };
 }
 
+async function mergeTwoFragments(
+  a: { title?: string; content: string },
+  b: { title?: string; content: string },
+  assemblyPrompt: PromptLike,
+  placeholders: Record<string, string>,
+  model: string,
+  temperature?: number,
+  effort?: ReasoningEffort,
+  maxTokens?: number,
+): Promise<GenerateResult> {
+  const systemPrompt = assemblyPrompt.userPrompt ? assemblyPrompt.content : "";
+  let userContent = assemblyPrompt.userPrompt ?? assemblyPrompt.content;
+
+  userContent = applyPlaceholders(userContent, placeholders, undefined);
+
+  // {{SECCIONES_GENERADAS}} → XML format
+  const fragmentsXml = `<secciones>\n<seccion id="1" nombre="${a.title || "Bloque 1"}">\n${a.content}\n</seccion>\n<seccion id="2" nombre="${b.title || "Bloque 2"}">\n${b.content}\n</seccion>\n</secciones>`;
+  userContent = userContent.replace(
+    /\{\{SECCIONES_GENERADAS\}\}/g,
+    fragmentsXml.replace(/\$/g, "$$$$"),
+  );
+
+  // Legacy markers
+  const fragmentsText = `### Fragment 1\n\n${a.content}\n\n---\n\n### Fragment 2\n\n${b.content}`;
+  userContent = userContent.replace(
+    /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
+    fragmentsText.replace(/\$/g, "$$$$"),
+  );
+
+  const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2);
+
+  const result = await generateCompletion({
+    model,
+    systemPrompt,
+    userPrompt: userContent,
+    maxTokens: effectiveMaxTokens,
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(effort !== undefined ? { effort } : {}),
+  });
+
+  return {
+    text: result.data as string,
+    model,
+    provider: getProviderForModel(model),
+    usage: {
+      inputTokens: result.usage.promptTokens,
+      outputTokens: result.usage.completionTokens,
+    },
+  };
+}
+
+export async function generateChapterAssemblyHierarchical(
+  assemblyPrompt: PromptLike,
+  fragments: { title?: string; content: string }[],
+  placeholders: Record<string, string>,
+  model = DEFAULT_GENERATION_MODEL,
+  temperature?: number,
+  effort?: ReasoningEffort,
+  maxTokens?: number,
+): Promise<GenerateResult> {
+  if (fragments.length === 0) {
+    throw new Error("No fragments to assemble");
+  }
+
+  if (fragments.length === 1) {
+    return {
+      text: fragments[0].content,
+      model,
+      provider: getProviderForModel(model),
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
+  // Build merge tree bottom-up
+  let currentLevel: Array<{ title?: string; content: string }> = fragments.map((f) => ({ title: f.title, content: f.content }));
+  const totalUsage = { inputTokens: 0, outputTokens: 0 };
+
+  while (currentLevel.length > 1) {
+    const nextLevel: Array<{ title?: string; content: string }> = [];
+
+    for (let i = 0; i < currentLevel.length; i += 2) {
+      if (i + 1 < currentLevel.length) {
+        const result = await mergeTwoFragments(
+          currentLevel[i],
+          currentLevel[i + 1],
+          assemblyPrompt,
+          placeholders,
+          model,
+          temperature,
+          effort,
+          maxTokens,
+        );
+        nextLevel.push({ content: result.text });
+        totalUsage.inputTokens += result.usage.inputTokens;
+        totalUsage.outputTokens += result.usage.outputTokens;
+      } else {
+        nextLevel.push(currentLevel[i]);
+      }
+    }
+
+    currentLevel = nextLevel;
+  }
+
+  return {
+    text: currentLevel[0].content,
+    model,
+    provider: getProviderForModel(model),
+    usage: totalUsage,
+  };
+}
+
+export type AssemblyAlgorithm = "merge-sort" | "sequential";
+
+export async function generateChapterAssemblySequential(
+  assemblyPrompt: PromptLike,
+  fragments: { title?: string; content: string }[],
+  placeholders: Record<string, string>,
+  model = DEFAULT_GENERATION_MODEL,
+  temperature?: number,
+  effort?: ReasoningEffort,
+  maxTokens?: number,
+): Promise<GenerateResult> {
+  if (fragments.length === 0) {
+    throw new Error("No fragments to assemble");
+  }
+
+  if (fragments.length === 1) {
+    return {
+      text: fragments[0].content,
+      model,
+      provider: getProviderForModel(model),
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
+  let accumulator = { content: fragments[0].content };
+  const totalUsage = { inputTokens: 0, outputTokens: 0 };
+
+  for (let i = 1; i < fragments.length; i++) {
+    const result = await mergeTwoFragments(
+      accumulator,
+      { title: fragments[i].title, content: fragments[i].content },
+      assemblyPrompt,
+      placeholders,
+      model,
+      temperature,
+      effort,
+      maxTokens,
+    );
+    accumulator = { content: result.text };
+    totalUsage.inputTokens += result.usage.inputTokens;
+    totalUsage.outputTokens += result.usage.outputTokens;
+  }
+
+  return {
+    text: accumulator.content,
+    model,
+    provider: getProviderForModel(model),
+    usage: totalUsage,
+  };
+}
+
 export async function generateChapterAssembly(
   assemblyPrompt: PromptLike,
   fragments: { title?: string; content: string }[],
@@ -195,6 +357,75 @@ export async function generateChapterAssembly(
     model,
     systemPrompt: effectiveSystemPrompt,
     userPrompt: content,
+    maxTokens: effectiveMaxTokens,
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(effort !== undefined ? { effort } : {}),
+  });
+
+  return {
+    text: result.data as string,
+    model,
+    provider: getProviderForModel(model),
+    usage: {
+      inputTokens: result.usage.promptTokens,
+      outputTokens: result.usage.completionTokens,
+    },
+  };
+}
+
+export interface GenerateCritiqueParams {
+  critiquePrompt: PromptLike;
+  content: string;
+  placeholders: Record<string, string>;
+  model?: string;
+  temperature?: number;
+  effort?: ReasoningEffort;
+  maxTokens?: number;
+  projectTopic?: string | null;
+}
+
+/** Critique output scales with content length. Each ~1024 chars contributes ~1024 tokens. */
+function critiqueMaxTokens(contentLength: number): number {
+  return Math.max(8192, Math.ceil(contentLength / 4) + 4096);
+}
+
+export async function generateChapterCritique(
+  params: GenerateCritiqueParams,
+): Promise<GenerateResult> {
+  const {
+    critiquePrompt,
+    content: chapterContent,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = params;
+
+  const effectiveSystemPrompt = critiquePrompt.userPrompt
+    ? critiquePrompt.content
+    : "";
+  const userContent = critiquePrompt.userPrompt ?? critiquePrompt.content;
+
+  let processedUserContent = applyPlaceholders(userContent, placeholders, projectTopic);
+
+  // Replace content placeholder with the actual chapter content
+  processedUserContent = processedUserContent.replace(
+    /\{\{CONTENIDO_CAPITULO\}\}/g,
+    chapterContent.replace(/\$/g, "$$$$"),
+  );
+  processedUserContent = processedUserContent.replace(
+    /\[PEGAR AQUÍ EL CAPÍTULO A CRITICAR\]|\[PEGAR AQUÍ EL CAPÍTULO COMPLETO\]/g,
+    chapterContent.replace(/\$/g, "$$$$"),
+  );
+
+  const effectiveMaxTokens = maxTokens ?? critiqueMaxTokens(chapterContent.length);
+
+  const result = await generateCompletion({
+    model,
+    systemPrompt: effectiveSystemPrompt,
+    userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),

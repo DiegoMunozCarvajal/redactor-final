@@ -10,7 +10,7 @@ import {
   chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
-import { generatePromptContent, generateChapterAssembly, type PromptLike } from "@/lib/generate";
+import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 
@@ -22,8 +22,8 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max"; skipAssembly?: boolean }) => {
-    const { generationId, projectId, model, temperature, effort, skipAssembly } = payload;
+  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max"; skipAssembly?: boolean; assemblyAlgorithm?: AssemblyAlgorithm }) => {
+    const { generationId, projectId, model, temperature, effort, skipAssembly, assemblyAlgorithm } = payload;
 
     // Load generation
     const [gen] = await db
@@ -116,11 +116,26 @@ export const generateChapter = task({
       .orderBy(asc(projectPrompts.position));
 
     const contentPrompts = promptList.filter(
-      (p) => !p.isAssembly,
+      (p) => !p.isAssembly && !p.isCritique,
     );
     let assemblyPrompt: PromptLike | undefined = promptList.find(
       (p) => p.isAssembly,
     );
+    let assemblyMetadata:
+      | {
+          promptId?: string;
+          promptTitle?: string;
+          promptSource?: string;
+        }
+      | undefined;
+    const chapterAssemblyPrompt = promptList.find((p) => p.isAssembly);
+    if (chapterAssemblyPrompt) {
+      assemblyMetadata = {
+        promptId: chapterAssemblyPrompt.id,
+        promptTitle: chapterAssemblyPrompt.title,
+        promptSource: "chapter",
+      };
+    }
 
     // If project has a global assembly prompt, load it and use it instead
     if (project.assemblyPromptId) {
@@ -133,6 +148,11 @@ export const generateChapter = task({
         assemblyPrompt = {
           content: globalAp.content,
           userPrompt: globalAp.userPrompt,
+        };
+        assemblyMetadata = {
+          promptId: globalAp.id,
+          promptTitle: globalAp.name,
+          promptSource: "library",
         };
         // Sync placeholders from global assembly prompt to chapterPlaceholders
         const apContents = [globalAp.content, globalAp.userPrompt].filter(
@@ -222,7 +242,11 @@ export const generateChapter = task({
 
       // Assemble chapter (unless skipped)
       if (assemblyPrompt && fragmentContents.length > 0 && !skipAssembly) {
-        const assembled = await generateChapterAssembly(
+        const assemble = assemblyAlgorithm === "sequential"
+          ? generateChapterAssemblySequential
+          : generateChapterAssemblyHierarchical;
+
+        const assembled = await assemble(
           assemblyPrompt,
           fragmentContents,
           placeholders,
@@ -237,6 +261,12 @@ export const generateChapter = task({
           .set({
             status: "completed",
             assembledContent: assembled.text,
+            assemblyMetadata: {
+              algorithm: assemblyAlgorithm ?? "merge-sort",
+              ...assemblyMetadata,
+              model: assembled.model,
+              fragmentCount: fragmentContents.length,
+            },
             completedAt: new Date(),
           })
           .where(eq(chapterGenerations.id, generationId));

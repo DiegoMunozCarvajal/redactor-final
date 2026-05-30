@@ -44,16 +44,29 @@ import {
   History,
   Copy,
   Puzzle,
+  MessageSquareQuote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
+import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
 import { EFFORT_OPTIONS } from "@/lib/ai/providers";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
+import { getLatestGenerationError } from "@/lib/generation-errors";
+import {
+  getActiveGeneration,
+  getActivePromptGenerationByPromptId,
+} from "@/lib/generation-status";
+import {
+  getAssemblyVersions,
+  getSelectedAssemblyVersion,
+  type AssemblyMetadata,
+} from "@/lib/assembly-versions";
+import { runSettledWithConcurrency } from "@/lib/promise-pool";
 
 const STALE_MS = 30 * 60 * 1000;
 
@@ -82,6 +95,7 @@ const MODELS = [
 ];
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
+const FRAGMENT_GENERATION_CONCURRENCY = 3;
 
 interface FragmentData {
   id: string;
@@ -97,7 +111,16 @@ interface FragmentData {
 interface GenerationData {
   id: string;
   status: string;
+  generationMetadata: {
+    type?: string;
+    promptId?: string;
+    promptTitle?: string;
+    model?: string;
+    provider?: string;
+    effort?: string;
+  } | null;
   assembledContent: string | null;
+  assemblyMetadata: AssemblyMetadata | null;
   error: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -120,6 +143,7 @@ interface PromptData {
   chapterId: string;
   position: number;
   isAssembly: boolean;
+  isCritique: boolean;
   title: string;
   content: string;
 }
@@ -130,6 +154,8 @@ function statusBadge(status: string) {
       return <Badge className="bg-success/10 text-success border-success/20">Completed</Badge>;
     case "generating":
       return <Badge className="bg-info/10 text-info border-info/20">Generating</Badge>;
+    case "assembling":
+      return <Badge className="bg-info/10 text-info border-info/20">Assembling</Badge>;
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
     case "awaiting_assembly":
@@ -162,7 +188,15 @@ export default function ChapterPage() {
   const [selectingAssembly, setSelectingAssembly] = useState(false);
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
   const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
+  const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential">("merge-sort");
+  const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
+  const [critiquePromptId, setCritiquePromptId] = useState<string>("");
+  const [critiquePromptList, setCritiquePromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
+  const [selectingCritique, setSelectingCritique] = useState(false);
+  const [critiquing, setCritiquing] = useState(false);
+  const [critiqueModalOpen, setCritiqueModalOpen] = useState(false);
+  const [selectedCritiqueGenerationId, setSelectedCritiqueGenerationId] = useState<string | undefined>();
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
@@ -256,6 +290,17 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, []);
 
+  const fetchCritiqueLibrary = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/critique-prompts", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setCritiquePromptList(data);
+      }
+    } catch { /* supplementary */ }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
@@ -263,9 +308,10 @@ export default function ChapterPage() {
       fetchPrompts(controller.signal),
       fetchPlaceholders(controller.signal),
       fetchAssemblyLibrary(controller.signal),
+      fetchCritiqueLibrary(controller.signal),
     ]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary, fetchCritiqueLibrary]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -302,6 +348,7 @@ export default function ChapterPage() {
       );
       if (res.ok) {
         fetchChapter();
+        fetchPlaceholders();
         toast.success("Fragment generated");
       } else {
         const err = await res.json().catch(() => ({}));
@@ -319,33 +366,59 @@ export default function ChapterPage() {
   }
 
   async function runAllPrompts() {
+    if (contentPrompts.length === 0) return;
+
     setGeneratingAll(true);
+    setGeneratingPrompts((prev) => {
+      const next = new Set(prev);
+      for (const prompt of contentPrompts) next.add(prompt.id);
+      return next;
+    });
+
     try {
-      const res = await fetch(
-        `/api/projects/${params.id}/chapters/${params.chapterId}/generate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: defaultModel,
-            effort: defaultEffort,
-            skipAssembly: true,
-            ...(defaultEffort === "off" ? { temperature: defaultTemperature } : {}),
-          }),
+      const results = await runSettledWithConcurrency(
+        contentPrompts,
+        FRAGMENT_GENERATION_CONCURRENCY,
+        async (prompt) => {
+          try {
+            const res = await fetch(
+              `/api/projects/${params.id}/prompts/${prompt.id}/generate`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: defaultModel,
+                  effort: defaultEffort,
+                  ...(defaultEffort === "off" ? { temperature: defaultTemperature } : {}),
+                }),
+              },
+            );
+
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error ?? `Error generating "${prompt.title}"`);
+            }
+
+            return res.json();
+          } finally {
+            setGeneratingPrompts((prev) => {
+              const next = new Set(prev);
+              next.delete(prompt.id);
+              return next;
+            });
+            fetchChapter();
+            fetchPlaceholders();
+          }
         },
       );
-      if (res.ok) {
-        fetchChapter();
-        toast.success("Chapter generation started");
+
+      const failed = results.filter((result) => result.status === "rejected");
+      fetchChapter();
+      fetchPlaceholders();
+      if (failed.length === 0) {
+        toast.success(`${contentPrompts.length} fragments generated`);
       } else {
-        const err = await res.json().catch(() => ({}));
-        if (res.status === 429) {
-          toast.error(err.error ?? "Rate limited. Try again shortly.");
-        } else if (res.status === 409) {
-          toast.error("Another generation is already in progress for this project.");
-        } else {
-          toast.error(err.error ?? "Error starting generation");
-        }
+        toast.error(`${failed.length} fragment${failed.length === 1 ? "" : "s"} failed`);
       }
     } catch {
       toast.error("Network error");
@@ -375,6 +448,7 @@ export default function ChapterPage() {
           body: JSON.stringify({
             fragmentIds,
             model: "deepseek-v4-pro",
+            assemblyAlgorithm,
             ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
@@ -382,6 +456,7 @@ export default function ChapterPage() {
       if (res.ok) {
         setAssemblyModalOpen(false);
         fetchChapter();
+        fetchPlaceholders();
         toast.success("Assembly completed");
       } else {
         const err = await res.json().catch(() => ({}));
@@ -401,7 +476,11 @@ export default function ChapterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
-      if (!res.ok) toast.error(`Error saving ${field}`);
+      if (res.ok) {
+        fetchPlaceholders();
+      } else {
+        toast.error(`Error saving ${field}`);
+      }
     } catch {
       toast.error("Network error");
     }
@@ -414,6 +493,7 @@ export default function ChapterPage() {
     });
     if (res.ok) {
       fetchPrompts();
+      fetchPlaceholders();
       setEditingPromptId(null);
       toast.success("Prompt deleted");
     } else {
@@ -459,6 +539,7 @@ export default function ChapterPage() {
     });
     if (res.ok) {
       fetchPrompts();
+      fetchPlaceholders();
       setAddingPrompt(false);
       setNewPrompt({ title: "", content: "" });
       toast.success("Prompt added");
@@ -486,10 +567,10 @@ export default function ChapterPage() {
   // Poll if any generation is in progress (skip stale generations > 30 min old)
   useEffect(() => {
     if (!data) return;
-    const hasGenerating = data.generations.some(
-      (g) => g.status === "generating" && Date.now() - new Date(g.createdAt).getTime() < STALE_MS,
+    const hasInFlightGeneration = Boolean(
+      getActiveGeneration(data.generations, Date.now(), STALE_MS),
     );
-    if (!hasGenerating) return;
+    if (!hasInFlightGeneration && !assembling) return;
 
     const interval = setInterval(() => {
       if (fetchingRef.current) return;
@@ -497,7 +578,7 @@ export default function ChapterPage() {
       fetchChapter().finally(() => { fetchingRef.current = false; });
     }, 3000);
     return () => clearInterval(interval);
-  }, [data, fetchChapter]);
+  }, [assembling, data, fetchChapter]);
 
   if (loading) {
     return (
@@ -519,13 +600,19 @@ export default function ChapterPage() {
   }
 
   const { chapter, generations, projectName } = data;
-  const activeGen = generations.find(
-    (g) => g.status === "generating" && Date.now() - new Date(g.createdAt).getTime() < STALE_MS,
+  const activeGen = getActiveGeneration(generations, Date.now(), STALE_MS);
+  const isGeneratingFragments = activeGen?.status === "generating" && activeGen?.generationMetadata?.type !== "critique";
+  const isCritiquing = critiquing || (activeGen?.status === "generating" && activeGen?.generationMetadata?.type === "critique");
+  const isAssemblingChapter = assembling || activeGen?.status === "assembling";
+  const activePromptGenerationByPromptId = getActivePromptGenerationByPromptId(
+    generations,
+    Date.now(),
+    STALE_MS,
   );
 
   // Build a map of prompt ID → fragment for the active generation
   const promptFragmentMap = new Map<string, FragmentData>();
-  if (activeGen) {
+  if (isGeneratingFragments && activeGen) {
     for (const f of activeGen.fragments) {
       if (f.projectPromptId) {
         promptFragmentMap.set(f.projectPromptId, f);
@@ -577,6 +664,7 @@ export default function ChapterPage() {
       if (createRes.ok) {
         toast.success(`Assembly prompt "${ap.name}" added`);
         fetchPrompts();
+        fetchPlaceholders();
       } else {
         const err = await createRes.json().catch(() => ({}));
         toast.error(err.error ?? "Failed to add assembly prompt");
@@ -585,6 +673,41 @@ export default function ChapterPage() {
       toast.error("Network error");
     } finally {
       setSelectingAssembly(false);
+    }
+  }
+
+  async function handleSelectCritiquePrompt(libraryId: string) {
+    setSelectingCritique(true);
+    try {
+      const res = await fetch(`/api/critique-prompts/${libraryId}`);
+      if (!res.ok) {
+        toast.error("Failed to load critique prompt");
+        return;
+      }
+      const cp = await res.json();
+      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapterId: params.chapterId,
+          title: cp.name,
+          content: cp.content,
+          userPrompt: cp.userPrompt ?? null,
+          isCritique: true,
+        }),
+      });
+      if (createRes.ok) {
+        toast.success(`Critique prompt "${cp.name}" added`);
+        fetchPrompts();
+        fetchPlaceholders();
+      } else {
+        const err = await createRes.json().catch(() => ({}));
+        toast.error(err.error ?? "Failed to add critique prompt");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSelectingCritique(false);
     }
   }
 
@@ -612,8 +735,56 @@ export default function ChapterPage() {
     setAssemblyModalOpen(true);
   }
 
-  const contentPrompts = prompts.filter((p) => !p.isAssembly);
+  function openCritiqueModal() {
+    // Fetch critique prompts for the picker if not loaded
+    if (critiquePromptList.length === 0) {
+      fetch("/api/critique-prompts")
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data)) setCritiquePromptList(data);
+        })
+        .catch(() => {});
+    }
+    setCritiqueModalOpen(true);
+  }
+
+  async function runCritique() {
+    if (!critiquePromptId) {
+      toast.error("Select a critique prompt");
+      return;
+    }
+    setCritiquing(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${params.id}/chapters/${params.chapterId}/critique`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            critiquePromptId,
+            model: "deepseek-v4-pro",
+          }),
+        },
+      );
+      if (res.ok) {
+        setCritiqueModalOpen(false);
+        fetchChapter();
+        fetchPlaceholders();
+        toast.success("Critique completed");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error ?? "Critique error");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setCritiquing(false);
+    }
+  }
+
+  const contentPrompts = prompts.filter((p) => !p.isAssembly && !p.isCritique);
   const assemblyPrompt = prompts.find((p) => p.isAssembly);
+  const critiquePrompt = prompts.find((p) => p.isCritique);
   const totalContentDone = contentPrompts.filter(
     (p) => promptFragmentMap.has(p.id),
   ).length;
@@ -621,6 +792,32 @@ export default function ChapterPage() {
   const totalTokens = generations.reduce((sum, g) => {
     return sum + g.fragments.reduce((s, f) => s + (f.tokensUsed ?? 0), 0);
   }, 0);
+  // Exclude critique generations from assembly versions.
+  // Generations with null generationMetadata (pre-metadata records) pass through
+  // safely: getAssemblyVersions filters on assembledContent, so they're excluded anyway.
+  const assemblyGenerations = generations.filter(
+    (g) => g.generationMetadata?.type !== "critique",
+  );
+  const assemblyVersions = getAssemblyVersions(assemblyGenerations);
+  const hasAssembly = assemblyVersions.length > 0;
+  const selectedAssemblyVersion = getSelectedAssemblyVersion(
+    assemblyGenerations,
+    selectedAssemblyGenerationId,
+  );
+  const selectedAssemblyIndex = selectedAssemblyVersion
+    ? assemblyVersions.findIndex((gen) => gen.id === selectedAssemblyVersion.id)
+    : -1;
+  const selectedAssemblyVersionNumber = selectedAssemblyIndex >= 0
+    ? assemblyVersions.length - selectedAssemblyIndex
+    : 0;
+
+  // Critique generations: generations with generationMetadata.type === "critique"
+  const critiqueGenerations = generations.filter(
+    (g) => g.generationMetadata?.type === "critique" && g.status === "completed" && g.assembledContent,
+  );
+  const selectedCritique = selectedCritiqueGenerationId
+    ? critiqueGenerations.find((g) => g.id === selectedCritiqueGenerationId) ?? critiqueGenerations[0]
+    : critiqueGenerations[0] ?? null;
 
   return (
     <div className="py-6">
@@ -670,24 +867,58 @@ export default function ChapterPage() {
           {totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "No generations"}
           {activeGen && (
             <>
-              {" "}· {statusBadge("generating")}{" "}
-              <span className="text-xs">
-                ({totalContentDone}/{contentPrompts.length} prompts)
-              </span>
+              {" "}· {statusBadge(activeGen.status)}{" "}
+              {isGeneratingFragments ? (
+                <span className="text-xs">
+                  ({totalContentDone}/{contentPrompts.length} prompts)
+                </span>
+              ) : null}
             </>
           )}
         </div>
       </div>
 
-      {/* Generation error — show from any failed generation */}
+      {isAssemblingChapter && (
+        <Card className="mb-6 border-info/30 bg-info/5">
+          <CardContent className="pt-4">
+            <div className="flex items-start gap-3" role="status" aria-live="polite">
+              <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-info">Assembling chapter</p>
+                <p className="text-xs text-muted-foreground">
+                  Assembly is running in the background. Results will appear below when complete.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isCritiquing && (
+        <Card className="mb-6 border-info/30 bg-info/5">
+          <CardContent className="pt-4">
+            <div className="flex items-start gap-3" role="status" aria-live="polite">
+              <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-info">Running critique</p>
+                <p className="text-xs text-muted-foreground">
+                  Critique is running in the background. Results will appear below when complete.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Generation error — only show latest generation failure */}
       {(() => {
-        const failedGen = generations.find((g) => g.status === "failed" && g.error);
-        if (!failedGen?.error) return null;
+        const generationError = getLatestGenerationError(generations);
+        if (!generationError) return null;
         return (
           <Card className="mb-6 border-destructive/30">
             <CardContent className="pt-4">
               <p className="text-sm text-destructive bg-destructive/5 rounded-md p-3">
-                {failedGen.error}
+                {generationError}
               </p>
             </CardContent>
           </Card>
@@ -699,6 +930,7 @@ export default function ChapterPage() {
         chapterId={params.chapterId as string}
         placeholders={placeholders}
         onSaveDefinition={saveDefinition}
+        onFillComplete={fetchPlaceholders}
       />
 
       {/* No prompts */}
@@ -805,13 +1037,20 @@ export default function ChapterPage() {
             const fragment = selectedVersionId
               ? versions.find((v) => v.id === selectedVersionId) ?? (activeFragment ?? latestFragment)
               : (activeFragment ?? latestFragment);
-            const isGenerating = generatingPrompts.has(prompt.id);
+            const activePromptGeneration = activePromptGenerationByPromptId.get(prompt.id);
+            const isGenerating = generatingPrompts.has(prompt.id) || Boolean(activePromptGeneration);
             const isDone = !!fragment;
 
             return (
               <Card
                 key={prompt.id}
-                className={`${isDone ? "border-success/20" : ""} cursor-pointer hover:border-primary/30 transition-colors`}
+                className={`${
+                  isGenerating
+                    ? "border-info/30 bg-info/5"
+                    : isDone
+                      ? "border-success/20"
+                      : ""
+                } cursor-pointer hover:border-primary/30 transition-colors`}
                 onClick={() => router.push(`/projects/${params.id}/chapters/${params.chapterId}/prompts/${prompt.id}`)}
               >
                 <CardHeader>
@@ -826,6 +1065,11 @@ export default function ChapterPage() {
                       {isDone && (
                         <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
                           Ready
+                        </Badge>
+                      )}
+                      {isGenerating && (
+                        <Badge className="bg-info/10 text-info border-info/20 text-[10px]">
+                          Generating
                         </Badge>
                       )}
                       {isGenerating && (
@@ -916,7 +1160,7 @@ export default function ChapterPage() {
                         ) : (
                           <Play className="h-3 w-3 mr-1" />
                         )}
-                        {isDone ? "Regenerate" : "Generate"}
+                        {isGenerating ? "Generating" : isDone ? "Regenerate" : "Generate"}
                       </Button>
                       <Button
                         size="icon"
@@ -996,6 +1240,22 @@ export default function ChapterPage() {
                       versionsApiUrl={`/api/projects/${params.id}/prompts/${prompt.id}/versions`}
                       promptId={prompt.id}
                     />
+                  </CardContent>
+                )}
+
+                {isGenerating && (
+                  <CardContent className="border-t pt-3">
+                    <div className="flex items-start gap-2 rounded-md bg-info/5 p-3" role="status" aria-live="polite">
+                      <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-info">Generating fragment</p>
+                        <p className="text-xs text-muted-foreground">
+                          {activePromptGeneration?.generationMetadata?.model
+                            ? `Model: ${activePromptGeneration.generationMetadata.model}`
+                            : "Request is running in the background."}
+                        </p>
+                      </div>
+                    </div>
                   </CardContent>
                 )}
 
@@ -1112,47 +1372,190 @@ export default function ChapterPage() {
       ) : null}
 
       {/* Assembly Results */}
-      {generations.filter((g) => g.status === "completed" && g.assembledContent).length > 0 && (
+      {assemblyVersions.length > 0 && selectedAssemblyVersion && (
         <div className="space-y-3 mb-8">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Assembly Results
-          </h2>
-          {generations
-            .filter((g) => g.status === "completed" && g.assembledContent)
-            .map((gen) => (
-              <Card key={gen.id} className="border-success/20">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 mb-3 text-[10px] text-muted-foreground">
-                    {statusBadge(gen.status)}
-                    {gen.completedAt && (
-                      <span>
-                        {formatDistanceToNow(new Date(gen.completedAt), {
-                          addSuffix: true,
-                          locale: enUS,
-                        })}
-                      </span>
-                    )}
-                    <div className="flex-1" />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        navigator.clipboard.writeText(gen.assembledContent ?? "");
-                        toast.success("Assembly copied");
-                      }}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Assembly Results
+            </h2>
+            {assemblyVersions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <History className="h-3.5 w-3.5 text-muted-foreground" />
+                {assemblyVersions.map((gen, index) => {
+                  const versionNumber = assemblyVersions.length - index;
+                  const selected = gen.id === selectedAssemblyVersion.id;
+                  return (
+                    <button
+                      key={gen.id}
+                      type="button"
+                      onClick={() => setSelectedAssemblyGenerationId(gen.id)}
+                      className={`h-7 rounded-md px-2 text-[10px] transition-colors ${
+                        selected
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/70"
+                      }`}
                     >
-                      <Copy className="h-3 w-3 mr-1" /> Copy
-                    </Button>
-                  </div>
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-                    <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
-                      {gen.assembledContent!}
-                    </ReactMarkdown>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      v{versionNumber}{index === 0 ? " Latest" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <Card className="border-success/20">
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap items-center gap-2 mb-3 text-[10px] text-muted-foreground">
+                {statusBadge(selectedAssemblyVersion.status)}
+                {selectedAssemblyVersionNumber > 0 && (
+                  <Badge variant="secondary">v{selectedAssemblyVersionNumber}</Badge>
+                )}
+                {selectedAssemblyVersion.completedAt && (
+                  <span>
+                    {new Date(selectedAssemblyVersion.completedAt).toLocaleString()}
+                  </span>
+                )}
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedAssemblyVersion.assembledContent ?? "");
+                    toast.success("Assembly copied");
+                  }}
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copy
+                </Button>
+              </div>
+
+              <dl className="grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4 mb-4">
+                <div>
+                  <dt className="text-muted-foreground">Algorithm</dt>
+                  <dd className="font-medium">
+                    {selectedAssemblyVersion.assemblyMetadata?.algorithm ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Assembly Prompt</dt>
+                  <dd className="font-medium">
+                    {selectedAssemblyVersion.assemblyMetadata?.promptTitle ?? "Unknown"}
+                    {selectedAssemblyVersion.assemblyMetadata?.promptSource ? (
+                      <span className="ml-1 text-muted-foreground">
+                        ({selectedAssemblyVersion.assemblyMetadata.promptSource})
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Model</dt>
+                  <dd className="font-medium">
+                    {selectedAssemblyVersion.assemblyMetadata?.model ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Fragments</dt>
+                  <dd className="font-medium">
+                    {selectedAssemblyVersion.assemblyMetadata?.fragmentCount ?? "Unknown"}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
+                  {selectedAssemblyVersion.assembledContent!}
+                </ReactMarkdown>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Critique Results */}
+      {selectedCritique && (
+        <div className="space-y-3 mb-8">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Critique Results
+            </h2>
+            {critiqueGenerations.length > 1 && (
+              <div className="flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5 text-muted-foreground" />
+                {critiqueGenerations.map((gen, index) => {
+                  const versionNumber = critiqueGenerations.length - index;
+                  return (
+                    <button
+                      key={gen.id}
+                      type="button"
+                      onClick={() => setSelectedCritiqueGenerationId(gen.id)}
+                      className={`h-7 rounded-md px-2 text-[10px] transition-colors ${
+                        gen.id === selectedCritique.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/70"
+                      }`}
+                    >
+                      v{versionNumber}{index === 0 ? " Latest" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <Card className="border-info/20">
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap items-center gap-2 mb-3 text-[10px] text-muted-foreground">
+                {statusBadge(selectedCritique.status)}
+                {selectedCritique.generationMetadata?.promptTitle && (
+                  <span className="bg-muted px-1.5 py-0.5 rounded">
+                    {selectedCritique.generationMetadata.promptTitle}
+                  </span>
+                )}
+                {selectedCritique.completedAt && (
+                  <span>
+                    {new Date(selectedCritique.completedAt).toLocaleString()}
+                  </span>
+                )}
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedCritique.assembledContent ?? "");
+                    toast.success("Critique copied");
+                  }}
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copy
+                </Button>
+              </div>
+
+              <dl className="grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-3 mb-4">
+                <div>
+                  <dt className="text-muted-foreground">Critique Prompt</dt>
+                  <dd className="font-medium">
+                    {selectedCritique.generationMetadata?.promptTitle ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Model</dt>
+                  <dd className="font-medium">
+                    {selectedCritique.generationMetadata?.model ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Type</dt>
+                  <dd className="font-medium">Critique</dd>
+                </div>
+              </dl>
+
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
+                  {selectedCritique.assembledContent!}
+                </ReactMarkdown>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1171,8 +1574,14 @@ export default function ChapterPage() {
                 variant="default"
                 size="sm"
                 onClick={openAssemblyModal}
+                disabled={isAssemblingChapter}
               >
-                <Play className="h-3 w-3 mr-1" /> Assemble Chapter
+                {isAssemblingChapter ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Play className="h-3 w-3 mr-1" />
+                )}
+                {isAssemblingChapter ? "Assembling" : "Assemble Chapter"}
               </Button>
             </CardContent>
           </Card>
@@ -1185,13 +1594,31 @@ export default function ChapterPage() {
         onSelectFromLibrary={handleSelectAssemblyPrompt}
         selectingFromLibrary={selectingAssembly}
         onAssemble={() => setAssemblyModalOpen(true)}
-        assembling={assembling}
+        assembling={isAssemblingChapter}
         onDelete={async () => {
           if (!assemblyPrompt) return;
           await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
             method: "DELETE",
           });
           fetchPrompts();
+          fetchPlaceholders();
+        }}
+      />
+
+      <CritiquePromptSection
+        prompt={critiquePrompt}
+        critiqueLibrary={critiquePromptList}
+        onSelectFromLibrary={handleSelectCritiquePrompt}
+        selectingFromLibrary={selectingCritique}
+        onCritique={() => setCritiqueModalOpen(true)}
+        critiquing={critiquing}
+        onDelete={async () => {
+          if (!critiquePrompt) return;
+          await fetch(`/api/projects/${params.id}/prompts/${critiquePrompt.id}`, {
+            method: "DELETE",
+          });
+          fetchPrompts();
+          fetchPlaceholders();
         }}
       />
 
@@ -1201,11 +1628,27 @@ export default function ChapterPage() {
           <DialogHeader>
             <DialogTitle>Assemble Chapter</DialogTitle>
             <DialogDescription>
-              Select a version of each fragment for assembly.
+              {isAssemblingChapter
+                ? "Assembly is running in the background."
+                : "Select a version of each fragment for assembly."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-6">
+            {isAssemblingChapter && (
+              <div className="rounded-md border border-info/30 bg-info/5 p-3" role="status" aria-live="polite">
+                <div className="flex items-start gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-info">Assembling chapter</p>
+                    <p className="text-xs text-muted-foreground">
+                      Keep this open or close it; polling will refresh results automatically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Assembly prompt picker — shown when no embedded assembly prompt */}
             {!assemblyPrompt && (
               <div className="space-y-2">
@@ -1308,21 +1751,111 @@ export default function ChapterPage() {
 
           {/* Assembly controls */}
           <div className="flex items-center justify-between pt-4 border-t">
-            <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
+              <Select value={assemblyAlgorithm} onValueChange={(v) => setAssemblyAlgorithm(v as "merge-sort" | "sequential")}>
+                <SelectTrigger className="w-[120px] h-7 text-[10px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="merge-sort" className="text-[10px]">Merge-Sort</SelectItem>
+                  <SelectItem value="sequential" className="text-[10px]">Sequential</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               size="sm"
               onClick={runAssembly}
               disabled={
-                assembling ||
+                isAssemblingChapter ||
                 Object.values(selectedFragments).filter(Boolean).length === 0
               }
             >
-              {assembling ? (
+              {isAssemblingChapter ? (
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
               ) : (
                 <Play className="h-3 w-3 mr-1" />
               )}
-              Assemble
+              {isAssemblingChapter ? "Assembling" : "Assemble"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Critique Modal */}
+      <Dialog open={critiqueModalOpen} onOpenChange={setCritiqueModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Critique Chapter</DialogTitle>
+            <DialogDescription>
+              {critiquing
+                ? "Critique is running in the background."
+                : "Select a critique prompt to analyze the assembled chapter."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {critiquing && (
+              <div className="rounded-md border border-info/30 bg-info/5 p-3" role="status" aria-live="polite">
+                <div className="flex items-start gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-info">Running critique</p>
+                    <p className="text-xs text-muted-foreground">
+                      Keep this open or close it; polling will refresh results automatically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!hasAssembly && (
+              <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
+                <p className="text-xs text-warning">
+                  No assembled content found. Assemble the chapter first before running a critique.
+                </p>
+              </div>
+            )}
+
+            {/* Critique prompt picker */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium flex items-center gap-1.5">
+                <MessageSquareQuote className="h-3.5 w-3.5 text-muted-foreground" />
+                Critique Prompt
+              </h4>
+              {critiquePromptList.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No critique prompts available. Create one in the Critique Prompts section.</p>
+              ) : (
+                <select
+                  value={critiquePromptId}
+                  onChange={(e) => setCritiquePromptId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Select a critique prompt…</option>
+                  {critiquePromptList.map((cp) => (
+                    <option key={cp.id} value={cp.id}>{cp.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
+            </div>
+            <Button
+              size="sm"
+              onClick={runCritique}
+              disabled={critiquing || !critiquePromptId || !hasAssembly}
+              title={!hasAssembly ? "Assemble the chapter first before running a critique" : undefined}
+            >
+              {critiquing ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              ) : (
+                <MessageSquareQuote className="h-3 w-3 mr-1" />
+              )}
+              {critiquing ? "Critiquing" : "Run Critique"}
             </Button>
           </div>
         </DialogContent>

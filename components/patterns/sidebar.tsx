@@ -14,6 +14,7 @@ import {
   FileText,
   Wand2,
   Puzzle,
+  MessageSquareQuote,
 } from "lucide-react";
 import { useDensity } from "@/lib/hooks/use-density";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const STATIC_ITEMS: NavItem[] = [
   { href: "/templates", label: "Templates", icon: Layers },
   { href: "/meta-prompts", label: "Meta-Prompts", icon: Wand2 },
   { href: "/assemblies", label: "Assembly", icon: Puzzle },
+  { href: "/critiques", label: "Critique", icon: MessageSquareQuote },
 ];
 
 function getStoredCollapsed(): boolean {
@@ -66,7 +68,7 @@ function parsePathname(pathname: string): PathSegment[] {
         break;
       case "templates":
         segments.push({ type: "templates" });
-        if (parts[i + 1] && !["chapters", "metaprompts", "assemblies", "create"].includes(parts[i + 1])) {
+        if (parts[i + 1] && !["chapters", "metaprompts", "assemblies", "critiques", "create"].includes(parts[i + 1])) {
           segments.push({ type: "templates", id: parts[i + 1] });
           i++;
         }
@@ -329,7 +331,7 @@ function buildNavItems(pathname: string, resolvedLabels: Record<string, string>)
     return { ...item, active: isParentActive };
   });
 
-  const SKIP_ENTITY = new Set(["metaprompts", "assemblies", "create", "chapters"]);
+  const SKIP_ENTITY = new Set(["metaprompts", "assemblies", "critiques", "create", "chapters"]);
 
   if (parts.length < 2) return items;
 

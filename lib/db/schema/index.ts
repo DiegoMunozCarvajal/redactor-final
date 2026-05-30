@@ -10,4 +10,5 @@ export * from "./fragments";
 export * from "./prompt-versions";
 export * from "./meta-prompts";
 export * from "./assembly-prompts";
+export * from "./critique-prompts";
 export * from "./sources";

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const body = await req.json();
-  const { title, content, userPrompt, position, isAssembly } = body;
+  const { title, content, userPrompt, position, isAssembly, isCritique } = body;
 
   if (!title || !content) {
     return NextResponse.json({ error: "title and content are required" }, { status: 400 });
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       userPrompt,
       position: pos,
       isAssembly: isAssembly ?? false,
+      isCritique: isCritique ?? false,
     })
     .returning();
 
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     action: "prompt.create",
     resourceType: "prompt",
     resourceId: prompt.id,
-    metadata: { title: prompt.title, isAssembly: prompt.isAssembly, chapterId: id },
+    metadata: { title: prompt.title, isAssembly: prompt.isAssembly, isCritique: prompt.isCritique, chapterId: id },
   });
 
   // Sync placeholders for this chapter

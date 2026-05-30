@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { projects } from "./projects";
 import { chapters } from "./chapters";
 
@@ -22,7 +22,23 @@ export const chapterGenerations = pgTable(
       .notNull()
       .references(() => chapters.id, { onDelete: "cascade" }),
     status: generationStatusEnum("status").notNull().default("pending"),
+    generationMetadata: jsonb("generation_metadata").$type<{
+      type?: string;
+      promptId?: string;
+      promptTitle?: string;
+      model?: string;
+      provider?: string;
+      effort?: string;
+    }>(),
     assembledContent: text("assembled_content"),
+    assemblyMetadata: jsonb("assembly_metadata").$type<{
+      algorithm?: "merge-sort" | "sequential" | "critique";
+      promptId?: string;
+      promptTitle?: string;
+      promptSource?: string;
+      model?: string;
+      fragmentCount?: number;
+    }>(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),

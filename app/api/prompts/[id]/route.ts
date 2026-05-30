@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, content, userPrompt, position, isAssembly } = body;
+  const { title, content, userPrompt, position, isAssembly, isCritique } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
@@ -62,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [prompt] = await db
     .update(prompts)
-    .set({ title, content, userPrompt, position, isAssembly })
+    .set({ title, content, userPrompt, position, isAssembly, isCritique })
     .where(eq(prompts.id, id))
     .returning();
 
@@ -73,7 +73,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     action: "prompt.update",
     resourceType: "prompt",
     resourceId: prompt.id,
-    metadata: { title: prompt.title, isAssembly: prompt.isAssembly },
+    metadata: { title: prompt.title, isAssembly: prompt.isAssembly, isCritique: prompt.isCritique },
   });
 
   // Sync placeholders for the prompt's chapter
