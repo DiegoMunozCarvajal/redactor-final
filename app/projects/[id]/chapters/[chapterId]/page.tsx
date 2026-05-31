@@ -768,8 +768,8 @@ export default function ChapterPage() {
       );
       if (res.ok) {
         setCritiqueModalOpen(false);
-        fetchChapter();
-        fetchPlaceholders();
+        await fetchChapter();
+        await fetchPlaceholders();
         toast.success("Critique completed");
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1549,10 +1549,10 @@ export default function ChapterPage() {
                 </div>
               </dl>
 
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
+              <div className="text-sm">
+                <pre className="whitespace-pre-wrap break-words font-mono bg-muted/30 p-3 rounded-md max-h-[600px] overflow-y-auto">
                   {selectedCritique.assembledContent!}
-                </ReactMarkdown>
+                </pre>
               </div>
             </CardContent>
           </Card>
