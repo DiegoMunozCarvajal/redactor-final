@@ -49,11 +49,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
-  const temperature = typeof body.temperature === "number" && body.temperature >= 0 && body.temperature <= 1 ? body.temperature : undefined;
-
-  if (body.temperature !== undefined && (typeof body.temperature !== "number" || body.temperature < 0 || body.temperature > 1)) {
-    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
-  }
 
   const placeholders = await getChapterPlaceholders(prompt.chapterId, project.topic);
   const missingPlaceholders = getMissingPlaceholderNames(
@@ -95,7 +90,6 @@ export async function POST(
       placeholders,
       projectTopic: project.topic,
       ...(model ? { model } : {}),
-      ...(temperature !== undefined ? { temperature } : {}),
       ...(effort !== undefined ? { effort } : {}),
     });
 

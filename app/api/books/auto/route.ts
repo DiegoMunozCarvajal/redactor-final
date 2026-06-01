@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, description, metaPromptId, chapters: chapterList } = body;
+  const { name, description, metaPromptId, chapters: chapterList, model, effort } = body;
 
   if (!name || typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
       templateId: template.template.id,
       metaPromptId,
       chapters: chapterPayloads,
+      ...(model ? { model } : {}),
+      ...(effort ? { effort } : {}),
     });
 
     logAudit({

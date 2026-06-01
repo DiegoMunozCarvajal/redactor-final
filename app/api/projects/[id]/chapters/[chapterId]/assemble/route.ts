@@ -46,8 +46,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const fragmentIds: string[] = body.fragmentIds ?? [];
   const model = body.model as string | undefined;
-  const temperatureRaw = body.temperature;
-  const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
   const effort = body.effort as "off" | "max" | undefined;
   const assemblyPromptId = body.assemblyPromptId as string | undefined;
   const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
@@ -55,10 +53,6 @@ export async function POST(
     : body.assemblyAlgorithm === "halves"
       ? "halves"
       : "merge-sort";
-
-  if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
-    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
-  }
 
   if (!Array.isArray(fragmentIds) || fragmentIds.length === 0) {
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
@@ -197,7 +191,7 @@ export async function POST(
         fragmentContents,
         placeholders,
         model,
-        temperature,
+        undefined,
         effort,
         undefined,
       );

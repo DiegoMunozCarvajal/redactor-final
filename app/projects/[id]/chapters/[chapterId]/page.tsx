@@ -49,10 +49,9 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AVAILABLE_MODELS, MODELS_BY_STAGE } from "@/lib/ai/providers";
+import { MODELS_BY_STAGE } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
-import { EFFORT_OPTIONS } from "@/lib/ai/providers";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
@@ -70,33 +69,15 @@ import { runSettledWithConcurrency } from "@/lib/promise-pool";
 
 const STALE_MS = 30 * 60 * 1000;
 
-const MODEL_FIXED_TEMP = new Map(
-  AVAILABLE_MODELS.filter((m) => m.fixedTemperature !== undefined).map((m) => [
-    m.id,
-    m.fixedTemperature as number,
-  ]),
-);
-
 // Separate from MODEL_OPTIONS because this list includes a `short` label
 // for compact UI display. Kept in sync with AVAILABLE_MODELS manually.
 const MODELS = [
-  { id: "gpt-5.4", label: "GPT 5.4", short: "GPT 5.4" },
-  { id: "gpt-5.4-mini", label: "GPT 5.4 Mini", short: "GPT4 Mini" },
   { id: "gpt-5.5", label: "GPT 5.5", short: "GPT 5.5" },
-  { id: "gpt-5.5-mini", label: "GPT 5.5 Mini", short: "GPT5 Mini" },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", short: "Haiku" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", short: "Sonnet" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6", short: "Opus 4.6" },
   { id: "claude-opus-4-8", label: "Claude Opus 4.8", short: "Opus 4.8" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus 4.7" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", short: "Gem Pro" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "Gem Flash" },
   { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DS Pro" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", short: "DS Flash" },
 ];
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
-const DEFAULT_ASSEMBLY_MODEL = "claude-opus-4-8";
 const FRAGMENT_GENERATION_CONCURRENCY = 3;
 
 // Models filtered for the assembly stage dropdown
@@ -186,10 +167,6 @@ export default function ChapterPage() {
   const [generatingAll, setGeneratingAll] = useState(false);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
   const [promptModels, setPromptModels] = useState<Record<string, string>>({});
-  const [defaultTemperature, setDefaultTemperature] = useState(0.7);
-  const [promptTemperatures, setPromptTemperatures] = useState<Record<string, number>>({});
-  const [defaultEffort, setDefaultEffort] = useState<string>("max");
-  const [promptEfforts, setPromptEfforts] = useState<Record<string, string>>({});
   const [assemblyModalOpen, setAssemblyModalOpen] = useState(false);
   const [selectedFragments, setSelectedFragments] = useState<Record<string, string>>({});
   const [assembling, setAssembling] = useState(false);
@@ -197,14 +174,14 @@ export default function ChapterPage() {
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
   const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential" | "halves">("merge-sort");
-  const [assemblyModel, setAssemblyModel] = useState(DEFAULT_ASSEMBLY_MODEL);
-  const [assemblyEffort, setAssemblyEffort] = useState("max");
+  const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
   const [critiquePromptId, setCritiquePromptId] = useState<string>("");
   const [critiquePromptList, setCritiquePromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [selectingCritique, setSelectingCritique] = useState(false);
   const [critiquing, setCritiquing] = useState(false);
+  const [critiqueModel, setCritiqueModel] = useState(DEFAULT_MODEL);
   const [critiqueModalOpen, setCritiqueModalOpen] = useState(false);
   const [selectedCritiqueGenerationId, setSelectedCritiqueGenerationId] = useState<string | undefined>();
   const fetchingRef = useRef(false);
@@ -223,18 +200,6 @@ export default function ChapterPage() {
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
-  }
-
-  function getTemperature(promptId: string) {
-    return promptTemperatures[promptId] ?? defaultTemperature;
-  }
-
-  function getEffort(promptId: string) {
-    return promptEfforts[promptId] ?? defaultEffort;
-  }
-
-  function fixedTempFor(modelId: string): number | undefined {
-    return MODEL_FIXED_TEMP.get(modelId);
   }
 
   const fetchChapter = useCallback(async (signal?: AbortSignal) => {
@@ -351,8 +316,7 @@ export default function ChapterPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: getModel(promptId),
-            effort: getEffort(promptId),
-            ...(getEffort(promptId) === "off" ? { temperature: getTemperature(promptId) } : {}),
+            effort: "max",
           }),
         },
       );
@@ -398,8 +362,7 @@ export default function ChapterPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   model: defaultModel,
-                  effort: defaultEffort,
-                  ...(defaultEffort === "off" ? { temperature: defaultTemperature } : {}),
+                  effort: "max",
                 }),
               },
             );
@@ -448,6 +411,7 @@ export default function ChapterPage() {
       toast.error("Select an assembly prompt");
       return;
     }
+    setAssemblyModalOpen(false);
     setAssembling(true);
     try {
       const res = await fetch(
@@ -458,15 +422,13 @@ export default function ChapterPage() {
           body: JSON.stringify({
             fragmentIds,
             model: assemblyModel,
-            effort: assemblyEffort,
+            effort: "max",
             assemblyAlgorithm,
-            ...(assemblyEffort === "off" ? { temperature: defaultTemperature } : {}),
             ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
       );
       if (res.ok) {
-        setAssemblyModalOpen(false);
         fetchChapter();
         fetchPlaceholders();
         toast.success("Assembly completed");
@@ -774,7 +736,7 @@ export default function ChapterPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             critiquePromptId,
-            model: "deepseek-v4-pro",
+            model: critiqueModel,
           }),
         },
       );
@@ -965,8 +927,6 @@ export default function ChapterPage() {
           <span className="text-[10px] text-muted-foreground">Default:</span>
           <Select value={defaultModel} onValueChange={(v) => {
             setDefaultModel(v);
-            const fixed = fixedTempFor(v);
-            if (fixed !== undefined) setDefaultTemperature(fixed);
           }}>
             <SelectTrigger className="w-[170px] h-8 text-xs">
               <SelectValue />
@@ -979,43 +939,6 @@ export default function ChapterPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={defaultEffort} onValueChange={setDefaultEffort}>
-            <SelectTrigger className="w-[70px] h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="max" className="text-xs">Max</SelectItem>
-              {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>))}
-            </SelectContent>
-          </Select>
-          {defaultEffort === "off" && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground">T:</span>
-              {(() => {
-                const fixed = fixedTempFor(defaultModel);
-                return (
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={fixed ?? defaultTemperature}
-                    disabled={fixed !== undefined}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v >= 0 && v <= 1) setDefaultTemperature(v);
-                    }}
-                    className={`w-14 h-7 text-xs border rounded px-1.5 text-center ${
-                      fixed !== undefined
-                        ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                        : "bg-muted/50 border-border"
-                    }`}
-                    title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                  />
-                );
-              })()}
-            </div>
-          )}
           {contentPrompts.length > 0 && (
             <Button
               size="sm"
@@ -1093,13 +1016,6 @@ export default function ChapterPage() {
                         value={getModel(prompt.id)}
                         onValueChange={(v) => {
                           setPromptModels((prev) => ({ ...prev, [prompt.id]: v }));
-                          const fixed = fixedTempFor(v);
-                          if (fixed !== undefined) {
-                            setPromptTemperatures((prev) => ({
-                              ...prev,
-                              [prompt.id]: fixed,
-                            }));
-                          }
                         }}
                       >
                         <SelectTrigger className="w-[100px] h-7 text-[10px]">
@@ -1113,48 +1029,6 @@ export default function ChapterPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select value={getEffort(prompt.id)} onValueChange={(v) => {
-                        setPromptEfforts((prev) => ({ ...prev, [prompt.id]: v }));
-                      }}>
-                        <SelectTrigger className="w-[60px] h-7 text-[10px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-                          {EFFORT_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value} className="text-[10px]">{o.label}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                      {getEffort(prompt.id) === "off" && (
-                        (() => {
-                          const fixed = fixedTempFor(getModel(prompt.id));
-                          return (
-                            <input
-                              type="number"
-                              min="0"
-                              max="1"
-                              step="0.1"
-                              value={fixed ?? getTemperature(prompt.id)}
-                              disabled={fixed !== undefined}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                const v = parseFloat(e.target.value);
-                                if (!isNaN(v) && v >= 0 && v <= 1) {
-                                  setPromptTemperatures((prev) => ({
-                                    ...prev,
-                                    [prompt.id]: v,
-                                  }));
-                                }
-                              }}
-                              className={`w-12 h-7 text-[10px] border rounded px-1 text-center ${
-                                fixed !== undefined
-                                  ? "bg-muted/30 text-muted-foreground cursor-not-allowed border-muted"
-                                  : "bg-muted/50 border-border"
-                              }`}
-                              title={fixed !== undefined ? `Temperature fixed at ${fixed} for this model` : undefined}
-                            />
-                          );
-                        })()
-                      )}
                       <Button
                         size="sm"
                         variant={isDone ? "outline" : "default"}
@@ -1776,15 +1650,6 @@ export default function ChapterPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={assemblyEffort} onValueChange={setAssemblyEffort}>
-                <SelectTrigger className="w-[60px] h-7 text-[10px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="max" className="text-[10px]">Max</SelectItem>
-                  <SelectItem value="off" className="text-[10px]">Off</SelectItem>
-                </SelectContent>
-              </Select>
               <Select value={assemblyAlgorithm} onValueChange={(v) => setAssemblyAlgorithm(v as "merge-sort" | "sequential" | "halves")}>
                 <SelectTrigger className="w-[110px] h-7 text-[10px]">
                   <SelectValue />
@@ -1874,9 +1739,18 @@ export default function ChapterPage() {
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
-            </div>
+            <Select value={critiqueModel} onValueChange={setCritiqueModel}>
+              <SelectTrigger className="w-[170px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODELS.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="text-xs">
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               onClick={runCritique}

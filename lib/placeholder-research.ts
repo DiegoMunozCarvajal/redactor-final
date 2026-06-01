@@ -20,14 +20,21 @@ const STYLISTIC_PATTERNS = [
   "lector", "audiencia", "audience", "tono", "tone", "estilo", "style",
   "enfoque", "approach", "perspectiva", "angulo", "ángulo", "nivel",
   "formato", "extensión", "extension",
+  // Spanish conceptual placeholders — short phrases, no research needed
+  "concepto", "creencia", "principio", "resultado", "pregunta",
+  "objecion", "objeción", "cierre", "idea", "sintesis", "síntesis",
 ];
 
 function placeholderText(
   name: string,
   functionStr?: string | null,
-  notes?: string | null,
+  _notes?: string | null,
 ): string {
-  return `${name} ${functionStr ?? ""} ${notes ?? ""}`.toLowerCase();
+  // Notes are template-level instructions for the LLM (e.g. "Ejemplo: '...'").
+  // They often contain the word "ejemplo" as a meta-prefix, which would
+  // incorrectly trigger RAG classification. Only name + function carry the
+  // semantic signal about what kind of research this placeholder needs.
+  return `${name} ${functionStr ?? ""}`.toLowerCase();
 }
 
 export function inferPlaceholderProvider(

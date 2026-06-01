@@ -3,8 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { metaPrompts, prompts, chapterPlaceholders } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { generateCompletion } from "@/lib/ai/completion";
-import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
+import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import { sanitizeError } from "@/lib/sanitize-error";
 
 const placeholderSchema = z.object({
@@ -44,8 +44,10 @@ export const generateTemplate = task({
     templateId: string; // reserved for future use (logging, audit)
     metaPromptId: string;
     chapters: ChapterPayload[];
+    model?: string;
+    effort?: ReasoningEffort;
   }) => {
-    const { metaPromptId, chapters } = payload;
+    const { metaPromptId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
 
     // Load meta-prompt
     const [metaPrompt] = await db
@@ -55,7 +57,9 @@ export const generateTemplate = task({
       .limit(1);
     if (!metaPrompt) throw new Error(`MetaPrompt ${metaPromptId} not found`);
 
-    const model = DEFAULT_GENERATION_MODEL;
+    // Anthropic ephemeral cache: the meta-prompt content (system prompt) is
+    // static across all chapters — cache it to avoid re-sending per chapter.
+    const isAnthropic = getProviderForModel(model) === "anthropic";
 
     for (const chapter of chapters) {
       try {
@@ -64,10 +68,12 @@ export const generateTemplate = task({
           .replace(/{{CAPITULO_FUENTE}}/g, capituloFuente);
 
         const result = await generateCompletion({
-          systemPrompt: metaPrompt.content,
+          systemPrompt: isAnthropic ? "" : metaPrompt.content,
           userPrompt,
           schema: metaPromptOutputSchema,
           model,
+          ...(effort ? { effort } : {}),
+          ...(isAnthropic ? { cachedSystemPrompt: metaPrompt.content, cacheSystemPrompt: true } : {}),
         });
 
         const blocks = result.data.templates;

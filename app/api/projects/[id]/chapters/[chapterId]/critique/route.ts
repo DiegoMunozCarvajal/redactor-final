@@ -6,6 +6,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generateChapterCritique } from "@/lib/generate";
+import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
@@ -46,8 +47,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const critiquePromptId = body.critiquePromptId as string | undefined;
   const model = body.model as string | undefined;
-  const temperatureRaw = body.temperature;
-  const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
   if (!critiquePromptId) {
@@ -114,7 +113,7 @@ export async function POST(
     );
   }
 
-  const resolvedModel = model ?? "deepseek-v4-pro";
+  const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
 
   let generationId: string | undefined;
 
@@ -149,7 +148,6 @@ export async function POST(
         content: contentToCritique,
         placeholders,
         model: resolvedModel,
-        temperature,
         effort,
         projectTopic: project.topic,
       });

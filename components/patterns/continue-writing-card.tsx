@@ -32,7 +32,7 @@ export function ContinueWritingCard({ project, onDelete }: ContinueWritingCardPr
             Latest Project
           </div>
           <h3 className="text-lg font-semibold mb-1 line-clamp-1">
-            {project.title ?? project.name}
+            {project.name}
           </h3>
           <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
             {project.topic}

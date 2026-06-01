@@ -37,16 +37,13 @@ type FormData = z.infer<typeof schema>
 
 export function CreateProjectDialog({
   templates,
-  assemblyPrompts,
   trigger,
 }: {
   templates: { id: string; name: string }[]
-  assemblyPrompts: { id: string; name: string }[]
   trigger?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [bookTemplateId, setBookTemplateId] = useState<string | null>(null)
-  const [assemblyPromptId, setAssemblyPromptId] = useState<string | null>(null)
   const router = useRouter()
 
   const {
@@ -59,7 +56,7 @@ export function CreateProjectDialog({
 
   async function onSubmit(data: FormData) {
     try {
-      const body: { name: string; title?: string; topic?: string; bookTemplateId?: string; assemblyPromptId?: string } = { name: data.name }
+      const body: { name: string; title?: string; topic?: string; bookTemplateId?: string } = { name: data.name }
       if (data.title?.trim()) {
         body.title = data.title.trim()
       }
@@ -68,9 +65,6 @@ export function CreateProjectDialog({
       }
       if (bookTemplateId) {
         body.bookTemplateId = bookTemplateId
-      }
-      if (assemblyPromptId) {
-        body.assemblyPromptId = assemblyPromptId
       }
       const res = await fetch("/api/projects", {
         method: "POST",
@@ -82,7 +76,6 @@ export function CreateProjectDialog({
         router.push(`/projects/${json.id}`)
         setOpen(false)
         setBookTemplateId(null)
-        setAssemblyPromptId(null)
       } else {
         toast.error(json.error ?? "Error creating project")
       }
@@ -163,29 +156,6 @@ export function CreateProjectDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="assemblyPromptId">Assembly Prompt (optional)</Label>
-            <Select
-              value={assemblyPromptId ?? "__none__"}
-              onValueChange={(v) =>
-                setAssemblyPromptId(v === "__none__" ? null : v)
-              }
-            >
-              <SelectTrigger id="assemblyPromptId">
-                <SelectValue placeholder="Use template default" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Use template default</SelectItem>
-                {assemblyPrompts.map((ap) => (
-                  <SelectItem key={ap.id} value={ap.id}>
-                    {ap.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] text-muted-foreground">Overrides the template&apos;s built-in assembly prompt.</p>
           </div>
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>

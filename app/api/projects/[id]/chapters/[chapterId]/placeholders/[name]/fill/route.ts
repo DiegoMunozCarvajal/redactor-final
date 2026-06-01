@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { type ReasoningEffort } from "@/lib/ai/completion";
-import { fillSinglePlaceholder } from "@/lib/ai/placeholder-fill";
+import { fillOnePlaceholder } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 
@@ -51,11 +51,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
   const effort = body.effort as ReasoningEffort | undefined;
-  const temperatureRaw = body.temperature;
-  if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
-    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
-  }
-  const temperature = temperatureRaw as number | undefined;
 
   const promptRows = await db
     .select({ content: projectPrompts.content })
@@ -101,26 +96,34 @@ export async function POST(
     return NextResponse.json({ name, definition: resolved[name], sources: [] });
   }
 
+  // Find this placeholder's function and notes from DB for classification
+  const [placeholderRow] = existingRows.filter((r) => r.name === name);
+  const phDef = {
+    name,
+    function: placeholderRow?.function ?? null,
+    notes: placeholderRow?.notes ?? null,
+  };
+
   try {
-    const { definition, sources } = await fillSinglePlaceholder(
-      name,
+    const result = await fillOnePlaceholder(
+      phDef,
       project.topic ?? null,
+      projectId,
       promptRows.map((p) => p.content),
       existingDefinitions,
       model,
-      undefined,
       effort,
-      temperature,
     );
 
     // Persist definition to DB
     await db
       .update(chapterPlaceholders)
       .set({
-        definition,
+        definition: result.definition,
         fillMetadata: buildPlaceholderFillMetadata({
-          provider: sources.length > 0 ? "web" : "none",
-          sources,
+          provider: result.provider,
+          sources: result.sources,
+          ragChunks: result.ragChunks,
           model,
         }),
       })
@@ -131,7 +134,13 @@ export async function POST(
         ),
       );
 
-    return NextResponse.json({ name, definition, sources });
+    return NextResponse.json({
+      name,
+      definition: result.definition,
+      sources: result.sources,
+      ragChunks: result.ragChunks,
+      provider: result.provider,
+    });
   } catch (err) {
     console.error("[fill/single] Failed:", err);
     return NextResponse.json({ error: "Generation failed" }, { status: 502 });

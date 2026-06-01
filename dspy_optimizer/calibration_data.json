@@ -1,0 +1,526 @@
+[
+  {
+    "topic": "Inversión en criptomonedas para principiantes",
+    "prompt_title": "Título y promesa conceptual",
+    "prompt_id": "f01d764a-1f6c-4787-a1f9-374318be03ac",
+    "prompt_content": "Escribe el título y la apertura conceptual mínima de un capítulo de no ficción práctica sobre {TEMA_DEL_LIBRO}. El título debe insinuar que {PRINCIPIO_CENTRAL_DEL_CAPITULO} tiene un poder mayor del que el lector suele imaginar, sin sonar exagerado ni publicitario.\n\nDespués del título, escribe 1 párrafo breve que plantee la promesa del capítulo: el lector descubrirá por qué los cambios visibles suelen depender de procesos pequeños, repetidos y poco espectaculares. No desarrolles todavía la teoría ni entregues consejos.\n\nTono: {TONO_DEL_LIBRO}. Dirígete a {LECTOR_OBJETIVO}. La salida debe tener máximo 1 título y 1 párrafo.",
+    "fragment": "**Lo que parece poco hace más de lo que crees**\n\nLos mayores errores de los principiantes en criptomonedas no ocurren por ignorancia técnica: ocurren por subestimar lo que logra la constancia y sobrestimar lo que logra el momento perfecto. Este capítulo muestra por qué las decisiones pequeñas, repetidas durante meses o años, producen resultados que las apuestas grandes y ocasionales rara vez alcanzan, y por qué ese patrón aparece una y otra vez en los datos reales de quienes han invertido en este mercado.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 6,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "Referencia vaga a 'datos reales' sin especificar fuente ni tipo de dato concreto",
+        "La afirmación sobre 'los mayores errores de los principiantes' se presenta como hecho sin respaldo atribuible"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 7,
+      "accuracy": 5,
+      "cohesion": 7,
+      "engagement": 7,
+      "completeness": 7,
+      "overall": 6,
+      "issues": [
+        "Afirmación vaga sin respaldo: 'ese patrón aparece una y otra vez en los datos reales' sin atribución",
+        "Segunda oración larga (~45 palabras) con varias subordinadas que diluyen el ritmo",
+        "Estructura algo formulaica de promesa de capítulo ('Este capítulo muestra por qué...')"
+      ]
+    }
+  },
+  {
+    "topic": "Inversión en criptomonedas para principiantes",
+    "prompt_title": "Historia de estancamiento",
+    "prompt_id": "ade8f026-308a-4808-9d20-10ca220f0cad",
+    "prompt_content": "Escribe la apertura narrativa del capítulo sobre {TEMA_DEL_LIBRO}. Comienza con {CASO_O_HISTORIA}: una persona, grupo, equipo, empresa o comunidad que llevaba tiempo enfrentando estancamiento, frustración, malos resultados o una brecha clara entre lo que quería y lo que obtenía.\n\nPrimero muestra el problema visible con detalles concretos: qué intentaban lograr, qué no funcionaba, qué consecuencias acumulaban y por qué la situación parecía difícil de cambiar. No conviertas la escena en melodrama; debe sentirse sobria, realista y útil para {LECTOR_OBJETIVO}.\n\nNo expliques todavía {PRINCIPIO_CENTRAL_DEL_CAPITULO}. El objetivo es que el lector sienta la tensión antes de recibir la idea. Extensión: 2 a 3 párrafos, máximo 4.",
+    "fragment": "Marcos tiene 35 años, trabaja como contador en Monterrey y lleva once años depositando cada mes en una cuenta de ahorro bancaria. Al cierre de 2023, acumuló 280,000 pesos. En papel, el número parece sólido. En la práctica, el Banco de México registró una inflación acumulada superior al 47% entre 2013 y 2023, lo que significa que esos 280,000 pesos compran hoy lo que 190,000 compraban cuando él empezó a ahorrar. Marcos no perdió dinero en ningún estado de cuenta. Lo perdió en silencio, mes a mes, mientras el saldo crecía y el poder adquisitivo se encogía.\n\nLas criptomonedas aparecieron en su radar varias veces: cuando Bitcoin superó los 60,000 dólares en 2021, cuando un compañero de oficina multiplicó por tres una inversión en Ethereum, cuando los titulares hablaban de fortunas construidas en semanas. Cada vez, Marcos decidió esperar. No por falta de dinero ni de interés, sino por una mezcla concreta de razones: no entendía cómo funciona la tecnología, no sabía en qué plataforma operar, y recordaba con claridad el colapso de FTX en noviembre de 2022, que borró más de 8,000 millones de dólares de clientes reales en cuestión de días. Esperar le parecía lo más responsable.\n\nEl problema es que esperar también tiene un costo. Mientras Marcos mantenía sus ahorros en una cuenta que pagaba entre 3% y 4% anual en el mejor de los casos, Bitcoin cerró 2023 con un rendimiento del 155% según datos de CoinGecko. No todos los años son así, y Marcos lo sabe. Pero la brecha entre lo que su dinero hacía y lo que podría haber hecho se volvió difícil de ignorar. La pregunta dejó de ser si debía considerar las criptomonedas. La pregunta pasó a ser si podía seguir sin entenderlas.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 9,
+      "issues": [
+        "El último párrafo roza la revelación del principio del capítulo ('si podía seguir sin entenderlas'), cuando la instrucción pedía mantener la tensión sin anticipar la idea",
+        "La cifra de rendimiento del 155% de Bitcoin en 2023 podría inducir comparación tendenciosa; falta matizar mejor el sesgo de selección temporal"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "El cálculo de poder adquisitivo (280,000 → 190,000) es aproximado y podría revisarse con la fórmula real de inflación acumulada",
+        "La cifra de '8,000 millones de dólares' de FTX es citada sin fuente específica"
+      ]
+    }
+  },
+  {
+    "topic": "Inversión en criptomonedas para principiantes",
+    "prompt_title": "Modelo de acumulación",
+    "prompt_id": "30fa9c4c-9ec2-4e80-82bc-e827c2bb9af9",
+    "prompt_content": "Explica {PRINCIPIO_CENTRAL_DEL_CAPITULO} mediante un modelo de acumulación. Presenta la idea de que una mejora pequeña, repetida durante suficiente tiempo, puede producir una diferencia mucho mayor que su tamaño inicial; y que una pequeña desviación repetida también puede producir deterioro.\n\nUsa una analogía clara relacionada con crecimiento, interés compuesto, dirección, entrenamiento, aprendizaje o cualquier mecanismo que ayude a {LECTOR_OBJETIVO} a entender el efecto acumulativo. Evita fórmulas excesivas; la explicación debe ser intuitiva y memorable.\n\nIncluye 2 o 3 ejemplos breves aplicados a {TEMA_DEL_LIBRO}, mostrando cómo una conducta pequeña puede acercar o alejar al lector de {RESULTADO_DESEADO}. Extensión: 3 a 4 párrafos.",
+    "fragment": "Imagina que cada día inclinas un barco un solo grado respecto al norte. Al principio, la diferencia es imperceptible. Después de cien kilómetros, el barco ha llegado a un puerto completamente distinto al previsto. Las decisiones financieras funcionan igual: no es el gesto grande lo que determina el destino, sino la dirección pequeña repetida hasta que la distancia acumulada vuelve imposible ignorarla.\n\nEste mecanismo tiene nombre en finanzas: interés compuesto. Warren Buffett acumuló el 96% de su riqueza después de los 65 años, no porque empezara a invertir mejor a esa edad, sino porque llevaba décadas sumando rendimientos sobre rendimientos. El mismo principio opera en criptomonedas: alguien que destina 50 dólares mensuales a una cartera diversificada entre Bitcoin y Ethereum durante diez años no apuesta a que el precio suba mañana; apuesta a que el tiempo haga el trabajo que ningún golpe de suerte puede reemplazar. Un análisis de Fidelity Investments sobre ciclos de mercado entre 2003 y 2022 mostró que los inversores que permanecieron invertidos durante las caídas más severas obtuvieron rendimientos significativamente mayores que quienes intentaron entrar y salir en los momentos correctos.\n\nLa conducta pequeña también deteriora con la misma eficiencia. Revisar el precio de una criptomoneda veinte veces al día parece un hábito inofensivo, pero entrena al cerebro para reaccionar al ruido de corto plazo en lugar de a la señal de largo plazo. Un principiante que vende cada vez que Bitcoin cae un 15% convierte una herramienta de acumulación en una máquina de pérdidas: compra esperanza y vende miedo, exactamente al revés de lo que produce rendimiento. Por contraste, activar una compra automática semanal de cualquier monto, aunque sea mínimo, instala el hábito contrario: el precio bajo deja de ser una amenaza y se convierte en una oportunidad de comprar más unidades por el mismo dinero, práctica conocida como promediación del costo.\n\nTres conductas concretas ilustran cómo la dirección pequeña define el portafolio final. Primera: destinar el 80% de cualquier inversión en criptomonedas a activos establecidos, como Bitcoin y Ethereum, y reservar solo el 20% para proyectos con mayor riesgo; repetir esta proporción en cada aportación construye gradualmente un portafolio donde la volatilidad de los activos especulativos no puede destruir lo acumulado. Segunda: no reinvertir las ganancias, sino retirarlas completas al primer rendimiento, elimina el efecto compuesto y convierte la inversión en una operación de una sola vez. Tercera: ignorar un activo durante un ciclo completo de mercado, de 24 a 36 meses, en lugar de rotarlo constantemente, reduce los costos de transacción y los errores de timing que, según un estudio de Dalbar de 2022, le costaron al inversor promedio estadounidense 4,7 puntos porcentuales anuales respecto al rendimiento del mercado. La acumulación no requiere genialidad; requiere que la dirección correcta se repita suficientes veces.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 9,
+      "engagement": 9,
+      "completeness": 9,
+      "overall": 9,
+      "issues": [
+        "El último párrafo contiene oraciones largas que rompen el ritmo establecido (la enumeración de la 'Tercera' conducta supera las 50 palabras)",
+        "Algunos datos citados (Fidelity 2003-2022, Dalbar 2022) carecen de referencia más precisa que permita verificación directa"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "El dato de Fidelity 2003-2022 es vago ('rendimientos significativamente mayores') sin cifra concreta",
+        "El cuarto párrafo tiene oraciones largas y densas que rompen el ritmo de los anteriores",
+        "Frases ligeramente cliché como 'compra esperanza y vende miedo'"
+      ]
+    }
+  },
+  {
+    "topic": "Inversión en criptomonedas para principiantes",
+    "prompt_title": "Resumen operativo",
+    "prompt_id": "9082c724-6bb6-4358-ae29-f0a7bd0d2456",
+    "prompt_content": "Escribe un resumen final del capítulo sobre {TEMA_DEL_LIBRO}. Resume las ideas principales derivadas de {PRINCIPIO_CENTRAL_DEL_CAPITULO} en 5 a 7 viñetas breves, claras y prácticas.\n\nCada viñeta debe funcionar como una idea recordable para {LECTOR_OBJETIVO}. No agregues conceptos nuevos. No uses tono motivacional vacío. El resumen debe reforzar la transición hacia la aplicación práctica de {CONCEPTO_CENTRAL_DEL_LIBRO} .\nExtensión: máximo 7 viñetas. Cada viñeta debe tener máximo 2 líneas.",
+    "fragment": "• Invertir poco a poco, cada semana o mes, reduce el riesgo de comprar todo en el peor momento del mercado.\n\n• Ninguna criptomoneda es segura por sí sola. Distribuir entre varias reduce el daño si una colapsa.\n\n• Bitcoin y Ethereum tienen historial verificable de más de diez años. Los activos sin historial exigen más cautela, no más entusiasmo.\n\n• El inversor que mantiene su posición durante ciclos completos obtiene mejores resultados que quien vende en cada caída. Los datos de múltiples ciclos 2014-2024 lo confirman.\n\n• Las decisiones tomadas con prisa por noticias o redes sociales suelen costar más de lo que protegen. Tener un plan escrito antes de entrar elimina esa presión.\n\n• Solo inviertes lo que puedes perder sin afectar tu vida cotidiana. Esa regla no es prudencia excesiva, es la base del razonamiento correcto ante activos volátiles.\n\n• El siguiente paso no es buscar la criptomoneda perfecta, sino abrir una cuenta regulada, definir un monto fijo mensual y mantenerlo sin importar el precio del día.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 8,
+      "engagement": 9,
+      "completeness": 9,
+      "overall": 9,
+      "issues": [
+        "La afirmación 'Los datos de múltiples ciclos 2014-2024 lo confirman' carece de fuente específica verificable",
+        "Cambio de persona gramatical en 'Solo inviertes lo que puedes perder' rompe la consistencia con el resto del listado en tercera persona"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 7,
+      "completeness": 8,
+      "overall": 7,
+      "issues": [
+        "Afirmación 'Los datos de múltiples ciclos 2014-2024 lo confirman' sin fuente verificable concreta",
+        "Algunas viñetas exceden ligeramente las 2 líneas y rozan el tono prescriptivo cliché ('no es prudencia excesiva, es la base del razonamiento correcto')"
+      ]
+    }
+  },
+  {
+    "topic": "Nutrición basada en plantas para deportistas",
+    "prompt_title": "Título y promesa conceptual",
+    "prompt_id": "f01d764a-1f6c-4787-a1f9-374318be03ac",
+    "prompt_content": "Escribe el título y la apertura conceptual mínima de un capítulo de no ficción práctica sobre {TEMA_DEL_LIBRO}. El título debe insinuar que {PRINCIPIO_CENTRAL_DEL_CAPITULO} tiene un poder mayor del que el lector suele imaginar, sin sonar exagerado ni publicitario.\n\nDespués del título, escribe 1 párrafo breve que plantee la promesa del capítulo: el lector descubrirá por qué los cambios visibles suelen depender de procesos pequeños, repetidos y poco espectaculares. No desarrolles todavía la teoría ni entregues consejos.\n\nTono: {TONO_DEL_LIBRO}. Dirígete a {LECTOR_OBJETIVO}. La salida debe tener máximo 1 título y 1 párrafo.",
+    "fragment": "**Más verde, más rápido: lo que la ciencia dice sobre recuperar y rendir sin carne**\n\nLos atletas que mejoran de forma sostenida rara vez lo hacen por un cambio espectacular. Lo hacen porque ajustan, de manera sistemática, los procesos que ocurren en el músculo durante las horas siguientes al esfuerzo: la síntesis de proteínas, la reducción de la inflamación, la reposición de glucógeno. En este capítulo verás cómo la alimentación basada en plantas, bien estructurada, actúa sobre cada uno de esos mecanismos, y por qué sus efectos suelen sorprender a quienes asumían que renunciar a la carne significaba conformarse con menos.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 8,
+      "engagement": 7,
+      "completeness": 6,
+      "overall": 7,
+      "issues": [
+        "Meta-apertura explícita: 'En este capítulo verás cómo...' contradice la consigna de evitar aperturas autorreferenciales.",
+        "El párrafo se inclina hacia la teoría (menciona síntesis de proteínas, inflamación, glucógeno) cuando la instrucción pide no desarrollar todavía la teoría.",
+        "No enfatiza con claridad la promesa de 'procesos pequeños, repetidos y poco espectaculares'; lo insinúa pero no lo plantea como eje del capítulo."
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 7,
+      "accuracy": 6,
+      "cohesion": 7,
+      "engagement": 6,
+      "completeness": 7,
+      "overall": 6,
+      "issues": [
+        "Meta-apertura explícita ('En este capítulo verás...') que la instrucción busca evitar",
+        "Subtítulo con tono ligeramente publicitario ('Más verde, más rápido')",
+        "Afirmación general sin sustento concreto ('los atletas que mejoran de forma sostenida rara vez lo hacen...')"
+      ]
+    }
+  },
+  {
+    "topic": "Nutrición basada en plantas para deportistas",
+    "prompt_title": "Historia de estancamiento",
+    "prompt_id": "ade8f026-308a-4808-9d20-10ca220f0cad",
+    "prompt_content": "Escribe la apertura narrativa del capítulo sobre {TEMA_DEL_LIBRO}. Comienza con {CASO_O_HISTORIA}: una persona, grupo, equipo, empresa o comunidad que llevaba tiempo enfrentando estancamiento, frustración, malos resultados o una brecha clara entre lo que quería y lo que obtenía.\n\nPrimero muestra el problema visible con detalles concretos: qué intentaban lograr, qué no funcionaba, qué consecuencias acumulaban y por qué la situación parecía difícil de cambiar. No conviertas la escena en melodrama; debe sentirse sobria, realista y útil para {LECTOR_OBJETIVO}.\n\nNo expliques todavía {PRINCIPIO_CENTRAL_DEL_CAPITULO}. El objetivo es que el lector sienta la tensión antes de recibir la idea. Extensión: 2 a 3 párrafos, máximo 4.",
+    "fragment": "Marcus Delgado terminó el Maratón de Chicago de 2022 en 3 horas 41 minutos. Era exactamente el mismo tiempo que había registrado en 2020 y en 2021. Entrenaba entre 70 y 80 kilómetros semanales, dormía ocho horas, contrataba un entrenador certificado y llevaba un diario de cargas. Hacía todo lo que se supone que debe hacer un corredor serio que quiere bajar de 3 horas 30 minutos.\n\nEl problema no estaba en los kilómetros. Después de cada sesión larga, Marcus necesitaba entre 48 y 72 horas para sentir las piernas funcionales otra vez. Sus análisis de sangre mostraban niveles elevados de proteína C reactiva, un marcador de inflamación sistémica, de forma constante durante los meses de entrenamiento. Su fisioterapeuta lo atendía dos veces por semana para tratar tensiones musculares que no terminaban de resolverse. Cada ciclo de preparación seguía el mismo patrón: acumulaba fatiga antes de llegar al pico de forma, llegaba al maratón con el cuerpo apenas recuperado y cruzaba la meta con el mismo reloj de siempre.\n\nLo que Marcus no examinaba era su plato. Comía pollo, huevos, lácteos y carne roja varias veces por semana, una dieta que él y su entrenador consideraban adecuada porque cumplía los rangos de proteína recomendados. Nadie cuestionaba que la combinación de grasas saturadas, proteínas animales y un consumo bajo de vegetales de hoja verde podía estar alimentando exactamente la inflamación que le impedía recuperarse entre sesión y sesión. El estancamiento tenía una causa concreta. Solo que nadie estaba mirando en esa dirección.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 7,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 8,
+      "overall": 8,
+      "issues": [
+        "El último párrafo roza el spoiler del principio central al sugerir explícitamente que la dieta animal 'alimenta la inflamación', cuando la instrucción pide no explicar aún la idea",
+        "Afirmación causal sobre grasas saturadas e inflamación presentada sin matiz ni fuente, lo que debilita la precisión en un contexto de no-ficción"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 7,
+      "completeness": 8,
+      "overall": 7,
+      "issues": [
+        "El personaje Marcus Delgado y sus datos específicos (tiempos, PCR, frecuencia de fisioterapia) suenan fabricados sin atribución verificable",
+        "El tercer párrafo roza explicar el principio central ('podía estar alimentando exactamente la inflamación'), cuando la instrucción pedía no adelantarlo",
+        "Frase final ligeramente sentenciosa ('Solo que nadie estaba mirando en esa dirección') con tono levemente dramático"
+      ]
+    }
+  },
+  {
+    "topic": "Nutrición basada en plantas para deportistas",
+    "prompt_title": "Modelo de acumulación",
+    "prompt_id": "30fa9c4c-9ec2-4e80-82bc-e827c2bb9af9",
+    "prompt_content": "Explica {PRINCIPIO_CENTRAL_DEL_CAPITULO} mediante un modelo de acumulación. Presenta la idea de que una mejora pequeña, repetida durante suficiente tiempo, puede producir una diferencia mucho mayor que su tamaño inicial; y que una pequeña desviación repetida también puede producir deterioro.\n\nUsa una analogía clara relacionada con crecimiento, interés compuesto, dirección, entrenamiento, aprendizaje o cualquier mecanismo que ayude a {LECTOR_OBJETIVO} a entender el efecto acumulativo. Evita fórmulas excesivas; la explicación debe ser intuitiva y memorable.\n\nIncluye 2 o 3 ejemplos breves aplicados a {TEMA_DEL_LIBRO}, mostrando cómo una conducta pequeña puede acercar o alejar al lector de {RESULTADO_DESEADO}. Extensión: 3 a 4 párrafos.",
+    "fragment": "Cada elección nutricional que haces hoy no suma linealmente al resultado de mañana: se multiplica. Un deportista que agrega 30 gramos de proteína vegetal completa —mediante una combinación de legumbres y arroz integral— a su comida post-entreno no solo recupera ese día un poco mejor; sienta las condiciones para que el músculo responda más eficazmente al estímulo siguiente. La mejora en síntesis proteica de hoy acondiciona el tejido para la sesión de mañana, que a su vez acondiciona el tejido para la semana siguiente. Es el mismo principio del interés compuesto: no es el depósito inicial lo que construye el patrimonio, sino la tasa constante aplicada sobre una base que crece.\n\nLa dirección importa tanto como la magnitud. Sustituir una fuente de proteína animal por una combinación vegetal pobre —sin cubrir los aminoácidos esenciales— genera un déficit pequeño pero repetido. Ese déficit no se queda pequeño: se acumula como deuda. Un metaanálisis de 2021 publicado en *Nutrients*, con datos de 3,000 atletas de resistencia y fuerza, encontró que quienes cubrían leucina adecuada desde fuentes vegetales mostraban, en doce semanas, marcadores de recuperación equivalentes al grupo omnívoro. La clave no era el origen de la proteína, sino la consistencia del aporte. Una semana de déficit de leucina no destruye el rendimiento; seis semanas de ese déficit sí lo desplazan de forma medible.\n\nTres ejemplos concretos muestran cómo funciona esto en la práctica. Primero: añadir media taza de edamame al almuerzo aporta 9 gramos de proteína completa y 4 miligramos de hierro no hemínico; repetido cinco días por semana durante dos meses, esto puede elevar la ferritina sérica lo suficiente para mejorar el transporte de oxígeno en esfuerzos de alta intensidad —un efecto que no aparece en la primera semana, pero que un análisis a los 60 días hace visible. Segundo: omitir consistentemente la fuente de ácidos grasos omega-3 —semillas de lino, chía o algas— porque \"ese día no había tiempo\" reduce la capacidad antiinflamatoria basal semana tras semana; el resultado no es inflamación aguda sino una recuperación que se vuelve progresivamente más lenta sin que el atleta identifique la causa. Tercero: incluir una porción de carbohidratos de índice glucémico moderado —avena, boniato— dentro de los 45 minutos posteriores al entrenamiento recarga el glucógeno muscular de forma más eficiente que hacerlo dos horas después; repetido en cada sesión durante un mesociclo, la diferencia en energía disponible para los últimos kilómetros o las últimas repeticiones se vuelve perceptible.\n\nLa nutrición vegetal bien planificada no supera a la omnívora por ser \"más limpia\" ni por ninguna propiedad mágica: la supera cuando cada decisión coherente se acumula sobre la anterior. Un plan que alinea proteína completa, hierro biodisponible, omega-3 de origen vegetal y timing de carbohidratos no produce un salto inmediato en el rendimiento; produce una pendiente. Y las pendientes, mantenidas el tiempo suficiente, llevan a altitudes que ningún esfuerzo puntual puede alcanzar.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 7,
+      "cohesion": 9,
+      "engagement": 9,
+      "completeness": 10,
+      "overall": 9,
+      "issues": [
+        "La cita al metaanálisis de 2021 en *Nutrients* con 3,000 atletas parece fabricada o no verificable; atribuciones tan específicas requieren ser reales",
+        "Afirmaciones cuantitativas concretas ('elevar la ferritina sérica', '4 mg de hierro no hemínico', 'recarga más eficiente a los 45 min') se presentan como hechos sin matizar la variabilidad individual ni citar fuente",
+        "Algunos párrafos rozan las 5 oraciones largas (segundo y tercero), lo que tensiona la guía de ritmo corto"
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "Cita un metaanálisis de Nutrients 2021 con cifras específicas (3,000 atletas, 12 semanas) que parece fabricado o no verificable",
+        "Algunas afirmaciones cuantitativas (9g proteína en media taza edamame, 4mg hierro, mejora de ferritina en 60 días) se presentan con precisión que sugiere certeza no respaldada",
+        "El tercer párrafo es largo y denso; podría dividirse para respetar el límite de 5 oraciones por párrafo"
+      ]
+    }
+  },
+  {
+    "topic": "Nutrición basada en plantas para deportistas",
+    "prompt_title": "Resumen operativo",
+    "prompt_id": "9082c724-6bb6-4358-ae29-f0a7bd0d2456",
+    "prompt_content": "Escribe un resumen final del capítulo sobre {TEMA_DEL_LIBRO}. Resume las ideas principales derivadas de {PRINCIPIO_CENTRAL_DEL_CAPITULO} en 5 a 7 viñetas breves, claras y prácticas.\n\nCada viñeta debe funcionar como una idea recordable para {LECTOR_OBJETIVO}. No agregues conceptos nuevos. No uses tono motivacional vacío. El resumen debe reforzar la transición hacia la aplicación práctica de {CONCEPTO_CENTRAL_DEL_LIBRO} .\nExtensión: máximo 7 viñetas. Cada viñeta debe tener máximo 2 líneas.",
+    "fragment": "• La proteína vegetal completa es posible: combinar legumbres con cereales en el mismo día cubre todos los aminoácidos esenciales para la síntesis muscular.\n\n• Los antioxidantes de frutas y verduras reducen el daño oxidativo post-entrenamiento; los deportistas veganos del estudio de Lynch (2021, 56 atletas) mostraron marcadores inflamatorios un 25 % más bajos.\n\n• El hierro no hemo se absorbe mejor acompañado de vitamina C; un puño de lentejas con pimiento rojo dobla su biodisponibilidad sin suplementos.\n\n• La creatina y la vitamina B12 son los únicos nutrientes que requieren suplementación sistemática en dietas 100 % vegetales para mantener la potencia muscular.\n\n• Los carbohidratos de cereales integrales y tubérculos sostienen el glucógeno muscular durante sesiones largas sin los picos de insulina asociados a azúcares simples.\n\n• La recuperación mejora cuando la comida post-entrenamiento combina proteína vegetal (20-40 g) con carbohidratos de absorción media en los primeros 30 minutos tras el esfuerzo.\n\n• Una dieta vegetal mal planificada falla igual que cualquier otra: el rendimiento depende de la variedad, la densidad calórica suficiente y el seguimiento periódico con análisis de sangre.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "La viñeta sobre creatina y B12 simplifica en exceso: la creatina no es estrictamente 'requerida' para mantener potencia, es opcional según objetivos.",
+        "La cita de Lynch (2021) introduce un dato específico que podría considerarse 'concepto nuevo' respecto a la instrucción de no añadir información no tratada previamente.",
+        "Algunas viñetas superan ligeramente el límite implícito de 2 líneas en formatos estrechos (la última, por ejemplo)."
+      ]
+    },
+    "human_rating": null,
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 7,
+      "engagement": 7,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "El dato de Lynch (2021, 56 atletas) suena plausible pero no verificable sin más contexto",
+        "Algunas viñetas rozan el límite de 2 líneas y mezclan varios datos (post-entrenamiento, recuperación)"
+      ]
+    }
+  },
+  {
+    "topic": "Liderazgo de equipos remotos",
+    "prompt_title": "Título y promesa conceptual",
+    "prompt_id": "f01d764a-1f6c-4787-a1f9-374318be03ac",
+    "prompt_content": "Escribe el título y la apertura conceptual mínima de un capítulo de no ficción práctica sobre {TEMA_DEL_LIBRO}. El título debe insinuar que {PRINCIPIO_CENTRAL_DEL_CAPITULO} tiene un poder mayor del que el lector suele imaginar, sin sonar exagerado ni publicitario.\n\nDespués del título, escribe 1 párrafo breve que plantee la promesa del capítulo: el lector descubrirá por qué los cambios visibles suelen depender de procesos pequeños, repetidos y poco espectaculares. No desarrolles todavía la teoría ni entregues consejos.\n\nTono: {TONO_DEL_LIBRO}. Dirígete a {LECTOR_OBJETIVO}. La salida debe tener máximo 1 título y 1 párrafo.",
+    "fragment": "**Lo que sostiene a un equipo remoto no se ve: se repite**\n\nLos líderes que mantienen equipos distribuidos de alto rendimiento rara vez lo logran con gestos grandes. Lo logran con acuerdos pequeños, sostenidos en el tiempo, que el equipo aprende a anticipar. Este capítulo muestra cómo la confianza entre personas que nunca comparten oficina se construye a través de estructuras predecibles —no de carisma ni de supervisión— y por qué esos mecanismos silenciosos terminan determinando si tu equipo funciona cuando tú no estás mirando.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 7,
+      "completeness": 8,
+      "overall": 7,
+      "issues": [
+        "Meta-apertura explícita ('Este capítulo muestra cómo...') que el prompt sugiere evitar",
+        "Sin ejemplo concreto o dato que ancle la promesa; se mantiene en abstracciones ('acuerdos pequeños', 'estructuras predecibles')"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 7,
+      "completeness": 8,
+      "overall": 7,
+      "issues": [
+        "Meta-apertura explícita ('Este capítulo muestra cómo...') que el prompt sugiere evitar",
+        "Sin ejemplo concreto o dato que ancle la promesa; se mantiene en abstracciones ('acuerdos pequeños', 'estructuras predecibles')"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Liderazgo de equipos remotos",
+    "prompt_title": "Historia de estancamiento",
+    "prompt_id": "ade8f026-308a-4808-9d20-10ca220f0cad",
+    "prompt_content": "Escribe la apertura narrativa del capítulo sobre {TEMA_DEL_LIBRO}. Comienza con {CASO_O_HISTORIA}: una persona, grupo, equipo, empresa o comunidad que llevaba tiempo enfrentando estancamiento, frustración, malos resultados o una brecha clara entre lo que quería y lo que obtenía.\n\nPrimero muestra el problema visible con detalles concretos: qué intentaban lograr, qué no funcionaba, qué consecuencias acumulaban y por qué la situación parecía difícil de cambiar. No conviertas la escena en melodrama; debe sentirse sobria, realista y útil para {LECTOR_OBJETIVO}.\n\nNo expliques todavía {PRINCIPIO_CENTRAL_DEL_CAPITULO}. El objetivo es que el lector sienta la tensión antes de recibir la idea. Extensión: 2 a 3 párrafos, máximo 4.",
+    "fragment": "Valeria Moreno llevaba ocho años gestionando equipos de producto cuando su startup pasó de 18 a 40 personas en nueve meses. El crecimiento era la buena noticia. La mala llegó en la siguiente retrospectiva trimestral: tres funcionalidades entregadas tarde, dos ingenieros que renunciaron en silencio —avisaron por Slack un viernes por la tarde— y una encuesta interna que mostraba que el 61% del equipo no sabía con claridad cuáles eran las prioridades de la semana siguiente.\n\nValeria replicó lo que siempre había funcionado: reuniones de seguimiento diarias de 30 minutos, actualizaciones de estado en tiempo real y una política de puertas abiertas adaptada al formato virtual, que en la práctica significaba estar disponible en Slack entre las 9 y las 19 horas. El equipo estaba distribuido entre Ciudad de México, Bogotá, Madrid y Lisboa. Nadie en Europa llegaba a las 9. Nadie en México terminaba a las 19. Las reuniones se acumulaban. La atención se fragmentaba. Un análisis de uso de Calendly que Valeria hizo ella misma reveló que sus ingenieros sénior pasaban en promedio 22 horas semanales en videollamadas, el equivalente a más de la mitad de una jornada laboral.\n\nLo que desconcertaba a Valeria no era la distancia. Era que el esfuerzo era visible y los resultados no mejoraban. Más llamadas, menos claridad. Más mensajes, menos coordinación. Cada vez que intentaba apretar el control —solicitar actualizaciones más frecuentes, añadir una reunión de sincronización— la respuesta era una capa adicional de ruido sobre un sistema que ya no procesaba bien la información que tenía.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "El dato del 61% y las 22 horas en Calendly se presentan con precisión sospechosa sin contexto de medición real (riesgo de sonar fabricado)",
+        "Frase 'capa adicional de ruido sobre un sistema que ya no procesaba bien la información' roza la abstracción tras una escena muy concreta"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "El dato del 61% y las 22 horas en Calendly se presentan con precisión sospechosa sin contexto de medición real (riesgo de sonar fabricado)",
+        "Frase 'capa adicional de ruido sobre un sistema que ya no procesaba bien la información' roza la abstracción tras una escena muy concreta"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Liderazgo de equipos remotos",
+    "prompt_title": "Modelo de acumulación",
+    "prompt_id": "30fa9c4c-9ec2-4e80-82bc-e827c2bb9af9",
+    "prompt_content": "Explica {PRINCIPIO_CENTRAL_DEL_CAPITULO} mediante un modelo de acumulación. Presenta la idea de que una mejora pequeña, repetida durante suficiente tiempo, puede producir una diferencia mucho mayor que su tamaño inicial; y que una pequeña desviación repetida también puede producir deterioro.\n\nUsa una analogía clara relacionada con crecimiento, interés compuesto, dirección, entrenamiento, aprendizaje o cualquier mecanismo que ayude a {LECTOR_OBJETIVO} a entender el efecto acumulativo. Evita fórmulas excesivas; la explicación debe ser intuitiva y memorable.\n\nIncluye 2 o 3 ejemplos breves aplicados a {TEMA_DEL_LIBRO}, mostrando cómo una conducta pequeña puede acercar o alejar al lector de {RESULTADO_DESEADO}. Extensión: 3 a 4 párrafos.",
+    "fragment": "La confianza no se declara. Se deposita en pequeñas cantidades, repetidas con consistencia, hasta que el saldo se vuelve imposible de ignorar. Funciona como el interés compuesto: una tasa del uno por ciento aplicada cada día no parece nada en la semana uno, pero al cabo de un año ha transformado el capital original en algo irreconocible. El problema es que el mecanismo opera en ambas direcciones. La misma lógica que construye también destruye: una pequeña desviación repetida —llegar tarde a las reuniones de sincronización, responder mensajes críticos al día siguiente sin explicación— no produce un daño visible de inmediato, pero acumula un déficit silencioso que un día aparece como distancia, desconexión o rotación.\n\nEl mecanismo se entiende mejor con una imagen de navegación. Un avión que sale de Madrid hacia Nueva York con un error de rumbo de dos grados no nota la diferencia en los primeros minutos. Después de doce horas de vuelo, aterriza en una ciudad diferente. En equipos distribuidos, esa desviación de dos grados puede ser algo tan pequeño como omitir el contexto al asignar una tarea a alguien en otra zona horaria. Una vez, no importa. Repetido durante meses, el colaborador aprende que su tiempo y su razonamiento no se consideran, y empieza a ejecutar sin preguntar, sin proponer, sin comprometerse más allá del mínimo necesario.\n\nLos sistemas y los rituales son el mecanismo que convierte la intención en depósito constante. Un líder que cada semana dedica diez minutos a escribir una nota de reconocimiento específica —no \"buen trabajo\", sino \"tu análisis del lunes cambió la decisión que tomamos el jueves\"— está aplicando interés compuesto a la confianza de su equipo. Un equipo que documenta sus decisiones en un canal compartido antes de que alguien pregunte está construyendo autonomía estructural: cada persona puede actuar sin necesitar permiso porque el contexto ya existe. Por contraste, el líder que improvisa cada interacción según su energía del momento produce resultados inconsistentes, y la inconsistencia es el antídoto exacto de la confianza.\n\nTres patrones ilustran el efecto acumulativo con precisión. Primero: un gerente que responde preguntas en las primeras dos horas del día siguiente —dentro de una ventana acordada— señala al equipo que el asíncrono funciona y que pueden avanzar sin esperar. Después de noventa días, el equipo ha internalizado ese ritmo y opera con menor ansiedad y mayor velocidad. Segundo: un líder que cancela la reunión de revisión semanal tres veces seguidas sin reagendar ni comunicar el cierre de los temas pendientes produce el efecto opuesto. En seis semanas, los miembros del equipo empiezan a tomar decisiones de forma aislada, no por autonomía sino por abandono. Tercero: el simple hábito de terminar cada reunión con una frase que explicita quién hace qué y para cuándo —en lugar de asumir que todos salieron con la misma comprensión— reduce la ambigüedad acumulada que, sin ese ritual, se convierte en fricción invisible a los treinta días y en conflicto explícito a los noventa.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "Datos sin fuente verificable: cifras como 'noventa días', 'seis semanas', 'treinta días' funcionan como ilustración pero se presentan con tono empírico sin atribución",
+        "La frase 'la inconsistencia es el antídoto exacto de la confianza' suena ingeniosa pero es semánticamente imprecisa (un antídoto neutraliza, no destruye)",
+        "El cuarto párrafo es denso: tres ejemplos encadenados con estructura paralela rígida que satura el cierre"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "Datos sin fuente verificable: cifras como 'noventa días', 'seis semanas', 'treinta días' funcionan como ilustración pero se presentan con tono empírico sin atribución",
+        "La frase 'la inconsistencia es el antídoto exacto de la confianza' suena ingeniosa pero es semánticamente imprecisa (un antídoto neutraliza, no destruye)",
+        "El cuarto párrafo es denso: tres ejemplos encadenados con estructura paralela rígida que satura el cierre"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Liderazgo de equipos remotos",
+    "prompt_title": "Resumen operativo",
+    "prompt_id": "9082c724-6bb6-4358-ae29-f0a7bd0d2456",
+    "prompt_content": "Escribe un resumen final del capítulo sobre {TEMA_DEL_LIBRO}. Resume las ideas principales derivadas de {PRINCIPIO_CENTRAL_DEL_CAPITULO} en 5 a 7 viñetas breves, claras y prácticas.\n\nCada viñeta debe funcionar como una idea recordable para {LECTOR_OBJETIVO}. No agregues conceptos nuevos. No uses tono motivacional vacío. El resumen debe reforzar la transición hacia la aplicación práctica de {CONCEPTO_CENTRAL_DEL_LIBRO} .\nExtensión: máximo 7 viñetas. Cada viñeta debe tener máximo 2 líneas.",
+    "fragment": "- La confianza en equipos remotos no surge del tiempo en pantalla: surge de promesas cumplidas, procesos claros y resultados predecibles.\n\n- Un ritual semanal consistente —como una actualización asíncrona de 10 minutos— reemplaza la vigilancia y reduce la ambigüedad sobre quién hace qué.\n\n- Los sistemas de documentación compartida no son burocracia: son la memoria del equipo cuando no hay una oficina que la sostenga.\n\n- La visibilidad del trabajo importa más que la visibilidad de las personas. Un tablero actualizado comunica avance sin reuniones innecesarias.\n\n- Las zonas horarias exigen decisiones explícitas sobre qué es sincrónico y qué no. Sin esa definición, el equipo opera con ansiedad de disponibilidad permanente.\n\n- Un líder efectivo en entornos distribuidos diseña el contexto: establece cuándo se responde, cómo se escala un problema y qué cuenta como éxito.\n\n- La confianza se erosiona por inconsistencia, no por distancia. Un líder que cambia criterios o ignora acuerdos daña más al equipo que cualquier diferencia horaria.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "Sin atribución verificable: ningún dato, estudio o caso concreto respalda las afirmaciones",
+        "Algunas viñetas rozan la sentencia genérica ('La confianza se erosiona por inconsistencia') sin un anclaje específico"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 6,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 7,
+      "issues": [
+        "Sin atribución verificable: ningún dato, estudio o caso concreto respalda las afirmaciones",
+        "Algunas viñetas rozan la sentencia genérica ('La confianza se erosiona por inconsistencia') sin un anclaje específico"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Introducción al estoicismo práctico",
+    "prompt_title": "Título y promesa conceptual",
+    "prompt_id": "f01d764a-1f6c-4787-a1f9-374318be03ac",
+    "prompt_content": "Escribe el título y la apertura conceptual mínima de un capítulo de no ficción práctica sobre {TEMA_DEL_LIBRO}. El título debe insinuar que {PRINCIPIO_CENTRAL_DEL_CAPITULO} tiene un poder mayor del que el lector suele imaginar, sin sonar exagerado ni publicitario.\n\nDespués del título, escribe 1 párrafo breve que plantee la promesa del capítulo: el lector descubrirá por qué los cambios visibles suelen depender de procesos pequeños, repetidos y poco espectaculares. No desarrolles todavía la teoría ni entregues consejos.\n\nTono: {TONO_DEL_LIBRO}. Dirígete a {LECTOR_OBJETIVO}. La salida debe tener máximo 1 título y 1 párrafo.",
+    "fragment": "**Lo que sí depende de ti: el principio que cambia la ecuación**\n\nLa mayoría de las personas pasan años tratando de controlar resultados, opiniones ajenas y circunstancias externas, y se preguntan por qué el esfuerzo rara vez produce calma. Este capítulo explora una distinción de dos mil años de antigüedad que los estoicos colocaron en el centro de su práctica: separar con precisión lo que está en tu poder de lo que no lo está. No se trata de resignación ni de optimismo forzado, sino de una operación mental concreta que, repetida en situaciones cotidianas, redistribuye la energía hacia donde el cambio real es posible.",
+    "judge": {
+      "clarity": 7,
+      "accuracy": 6,
+      "cohesion": 7,
+      "engagement": 6,
+      "completeness": 7,
+      "overall": 6,
+      "issues": [
+        "Frases algo genéricas como 'el cambio real es posible' y 'redistribuye la energía' sin concreción",
+        "La instrucción pedía insinuar que el principio tiene un poder mayor del que se imagina; el título lo hace pero el párrafo no enfatiza esa promesa de magnitud",
+        "Primera oración larga (32 palabras) rompe el rango sugerido de 15-25"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 7,
+      "accuracy": 6,
+      "cohesion": 7,
+      "engagement": 6,
+      "completeness": 7,
+      "overall": 6,
+      "issues": [
+        "Frases algo genéricas como 'el cambio real es posible' y 'redistribuye la energía' sin concreción",
+        "La instrucción pedía insinuar que el principio tiene un poder mayor del que se imagina; el título lo hace pero el párrafo no enfatiza esa promesa de magnitud",
+        "Primera oración larga (32 palabras) rompe el rango sugerido de 15-25"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Introducción al estoicismo práctico",
+    "prompt_title": "Historia de estancamiento",
+    "prompt_id": "ade8f026-308a-4808-9d20-10ca220f0cad",
+    "prompt_content": "Escribe la apertura narrativa del capítulo sobre {TEMA_DEL_LIBRO}. Comienza con {CASO_O_HISTORIA}: una persona, grupo, equipo, empresa o comunidad que llevaba tiempo enfrentando estancamiento, frustración, malos resultados o una brecha clara entre lo que quería y lo que obtenía.\n\nPrimero muestra el problema visible con detalles concretos: qué intentaban lograr, qué no funcionaba, qué consecuencias acumulaban y por qué la situación parecía difícil de cambiar. No conviertas la escena en melodrama; debe sentirse sobria, realista y útil para {LECTOR_OBJETIVO}.\n\nNo expliques todavía {PRINCIPIO_CENTRAL_DEL_CAPITULO}. El objetivo es que el lector sienta la tensión antes de recibir la idea. Extensión: 2 a 3 párrafos, máximo 4.",
+    "fragment": "Daniel cerró su laptop a las 2 de la madrugada con la misma sensación que lo había perseguido durante ocho meses: que había fallado en algo que todavía no lograba identificar con precisión. Su empresa de logística para restaurantes había operado diecisiete meses antes de quedarse sin liquidez. No fue un colapso dramático. Fue un desgaste gradual: clientes que pagaban tarde, un proveedor que no cumplió, una expansión que inició tres semanas antes de que el mercado se contrajera. Al final, debía 340,000 pesos, había despedido a once personas y tenía una hoja de cálculo con cuarenta y dos decisiones que ahora le parecían errores evidentes.\n\nEl problema no era el fracaso en sí. Era lo que Daniel hacía con él cada noche. Repasaba la lista mentalmente, decisión por decisión, buscando el momento exacto en que todo había podido salvarse. Si hubiera esperado un mes más para contratar. Si hubiera negociado distinto con el banco. Si hubiera ignorado el consejo de su socio en la reunión de marzo. Cada escenario alternativo generaba alivio por unos segundos y luego lo devolvía al mismo punto: la empresa ya no existía, y él seguía siendo el responsable. Su médico le diagnosticó ansiedad generalizada en el mes cinco. En el mes ocho, Daniel dejó de responder correos de personas que querían contratarlo como consultor porque no se sentía capaz de aconsejar a nadie.\n\nLo que más lo paralizaba no era la deuda ni la vergüenza pública. Era la sensación de que no entendía qué había salido mal, y que sin entenderlo, cualquier cosa que intentara después podía repetir el mismo patrón. Seguía revisando variables que ya no existían, buscando control sobre un pasado que no tenía ninguna posibilidad de modificar. Fue en ese estado cuando un amigo le envió un fragmento breve del *Enchiridion* de Epicteto, un manual escrito hace casi dos mil años por un esclavo griego que nunca dirigió una empresa ni firmó un contrato. Daniel lo leyó sin expectativas. La primera oración lo detuvo.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 9,
+      "engagement": 9,
+      "completeness": 10,
+      "overall": 9,
+      "issues": [
+        "El cierre con 'La primera oración lo detuvo' roza el cliché de gancho narrativo",
+        "Algunos detalles numéricos (340,000 pesos, cuarenta y dos decisiones) son verosímiles pero no verificables; aceptable en apertura narrativa pero conviene anclar el caso si es real"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 9,
+      "engagement": 9,
+      "completeness": 10,
+      "overall": 9,
+      "issues": [
+        "El cierre con 'La primera oración lo detuvo' roza el cliché de gancho narrativo",
+        "Algunos detalles numéricos (340,000 pesos, cuarenta y dos decisiones) son verosímiles pero no verificables; aceptable en apertura narrativa pero conviene anclar el caso si es real"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Introducción al estoicismo práctico",
+    "prompt_title": "Modelo de acumulación",
+    "prompt_id": "30fa9c4c-9ec2-4e80-82bc-e827c2bb9af9",
+    "prompt_content": "Explica {PRINCIPIO_CENTRAL_DEL_CAPITULO} mediante un modelo de acumulación. Presenta la idea de que una mejora pequeña, repetida durante suficiente tiempo, puede producir una diferencia mucho mayor que su tamaño inicial; y que una pequeña desviación repetida también puede producir deterioro.\n\nUsa una analogía clara relacionada con crecimiento, interés compuesto, dirección, entrenamiento, aprendizaje o cualquier mecanismo que ayude a {LECTOR_OBJETIVO} a entender el efecto acumulativo. Evita fórmulas excesivas; la explicación debe ser intuitiva y memorable.\n\nIncluye 2 o 3 ejemplos breves aplicados a {TEMA_DEL_LIBRO}, mostrando cómo una conducta pequeña puede acercar o alejar al lector de {RESULTADO_DESEADO}. Extensión: 3 a 4 párrafos.",
+    "fragment": "Los estoicos dividían el mundo en dos categorías: lo que depende de nosotros y lo que no. Epicteto lo llamaba la distinción fundamental, el eje sobre el que gira cualquier práctica filosófica. Lo que depende de nosotros son nuestras decisiones, interpretaciones y respuestas. Lo que no depende de nosotros es todo lo demás: el clima, la opinión ajena, el resultado de una negociación, la salud del cuerpo. Confundir las dos categorías —tratar lo exterior como si fuera controlable, o abandonar lo interior como si no lo fuera— es la fuente más común de ansiedad crónica.\n\nEl efecto de aplicar esta distinción no es inmediato ni espectacular. Funciona como el interés compuesto de una cuenta bancaria: el primer mes el rendimiento parece irrelevante, pero la dirección del movimiento determina todo lo que vendrá después. Un inversor que gana un uno por ciento mensual y otro que pierde un uno por ciento mensual parecen casi iguales en enero; en cinco años, la diferencia entre ambos es estructural. Con la mente ocurre lo mismo. Quien practica durante tres semanas separar lo controlable de lo incontrolable antes de reaccionar no nota un cambio de carácter; quien lo practica durante tres años ha reconfigurado su modo de responder al estrés. La mejora es pequeña; la acumulación, decisiva.\n\nEsto tiene dos direcciones posibles, y ambas importan. Un lector que cada mañana dedica dos minutos a identificar qué preocupaciones del día pertenecen a su esfera de acción —y cuáles no— entrena su atención hacia lo accionable. Con el tiempo, esa revisión deja de ser un ejercicio consciente y se convierte en un filtro automático. El mismo mecanismo, invertido, produce el deterioro: quien cada vez que recibe una crítica dedica energía a analizar si el crítico tenía razón en hacerla —en lugar de evaluar solo si la observación es útil— alimenta un hábito de dependencia del juicio externo. Ninguna de las dos conductas parece decisiva en un día cualquiera. Repetidas durante meses, construyen caracteres distintos.\n\nLa clave práctica es que no se necesita una transformación inicial para empezar el proceso; se necesita una conducta lo suficientemente pequeña para ser sostenible. Pausar dos segundos antes de responder a un correo que genera frustración, preguntarse \"¿qué parte de esto puedo cambiar?\", es un gesto casi invisible. Pero ese gesto, repetido cada vez que aparece la fricción, es exactamente el mecanismo que los estoicos describían cuando hablaban de ejercicio filosófico. No como teoría, sino como práctica diaria de la misma naturaleza que el entrenamiento físico: irrelevante en la sesión de hoy, determinante en la persona que uno es dentro de un año.",
+    "judge": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "La analogía del 1% mensual es funcional pero ya muy trillada en literatura de hábitos",
+        "Atribución a Epicteto sin cita textual ni referencia a obra específica (Enquiridión)"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 8,
+      "accuracy": 7,
+      "cohesion": 9,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "La analogía del 1% mensual es funcional pero ya muy trillada en literatura de hábitos",
+        "Atribución a Epicteto sin cita textual ni referencia a obra específica (Enquiridión)"
+      ]
+    },
+    "human_rating": null
+  },
+  {
+    "topic": "Introducción al estoicismo práctico",
+    "prompt_title": "Resumen operativo",
+    "prompt_id": "9082c724-6bb6-4358-ae29-f0a7bd0d2456",
+    "prompt_content": "Escribe un resumen final del capítulo sobre {TEMA_DEL_LIBRO}. Resume las ideas principales derivadas de {PRINCIPIO_CENTRAL_DEL_CAPITULO} en 5 a 7 viñetas breves, claras y prácticas.\n\nCada viñeta debe funcionar como una idea recordable para {LECTOR_OBJETIVO}. No agregues conceptos nuevos. No uses tono motivacional vacío. El resumen debe reforzar la transición hacia la aplicación práctica de {CONCEPTO_CENTRAL_DEL_LIBRO} .\nExtensión: máximo 7 viñetas. Cada viñeta debe tener máximo 2 líneas.",
+    "fragment": "• La dicotomía del control es el punto de partida: solo tus juicios, decisiones e impulsos dependen de ti. Todo lo demás —el clima, la opinión ajena, el resultado— no.\n\n• Dirigir energía hacia lo que no controlas no es perseverancia: es desgaste. Los estoicos lo llamaban actuar contra la naturaleza de las cosas.\n\n• El sufrimiento no viene del evento sino de la interpretación que haces de él. Cambiar el juicio sobre lo ocurrido es el único cambio que está en tu poder.\n\n• Aceptar lo externo no significa aprobarlo ni rendirse. Significa dejar de gastar recursos mentales en resistir lo que ya sucedió o lo que no puedes modificar.\n\n• Epicteto distinguía entre el arquero y la flecha: el arquero controla la técnica, no el viento. Actuar con excelencia en lo propio es suficiente.\n\n• Esta distinción no es pasividad: es claridad operativa. Sabes exactamente dónde intervenir y dónde soltar, lo que reduce la parálisis ante los problemas cotidianos.\n\n• La tranquilidad mental no es ausencia de dificultades. Es el resultado estable de enfocar la atención solo en el territorio que realmente gobiernas.",
+    "judge": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "La viñeta del arquero introduce una imagen que podría considerarse un matiz nuevo si no se mencionó antes en el capítulo",
+        "Algunas viñetas rozan la sentencia aforística sin anclaje concreto ('claridad operativa')"
+      ]
+    },
+    "judge_v2": {
+      "clarity": 9,
+      "accuracy": 8,
+      "cohesion": 8,
+      "engagement": 8,
+      "completeness": 9,
+      "overall": 8,
+      "issues": [
+        "La viñeta del arquero introduce una imagen que podría considerarse un matiz nuevo si no se mencionó antes en el capítulo",
+        "Algunas viñetas rozan la sentencia aforística sin anclaje concreto ('claridad operativa')"
+      ]
+    },
+    "human_rating": null
+  }
+]

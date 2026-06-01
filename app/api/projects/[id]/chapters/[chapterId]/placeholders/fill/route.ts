@@ -52,11 +52,6 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
   const effort = body.effort as ReasoningEffort | undefined;
-  const temperatureRaw = body.temperature;
-  if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
-    return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
-  }
-  const temperature = temperatureRaw as number | undefined;
 
   // Rate limit: prevent fills from racing with in-flight generations.
   // Note: the lock serializes the rate check but NOT the SSE fill work (which
@@ -124,7 +119,6 @@ export async function POST(
           projectId,
           model,
           effort,
-          temperature,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));

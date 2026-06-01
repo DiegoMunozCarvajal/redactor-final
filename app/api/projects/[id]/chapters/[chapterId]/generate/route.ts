@@ -39,8 +39,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
-  const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
-  const effort = body.effort as "off" | "max" | undefined;
+  const effort = body.effort as "off" | "max" | "xhigh" | undefined;
   const skipAssembly = body.skipAssembly === true;
   const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
     ? "sequential"
@@ -75,7 +74,6 @@ export async function POST(
           generationId: gen.id,
           projectId,
           ...(model ? { model } : {}),
-          ...(temperature !== undefined ? { temperature } : {}),
           ...(effort !== undefined ? { effort } : {}),
           skipAssembly,
           assemblyAlgorithm,

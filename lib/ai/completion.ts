@@ -31,7 +31,7 @@ export class ProviderCallError extends Error {
   }
 }
 
-export type ReasoningEffort = "off" | "minimal" | "low" | "medium" | "high" | "max";
+export type ReasoningEffort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface CompletionOptions<T extends z.ZodType> {
   cachedSystemPrompt?: string;
@@ -357,6 +357,10 @@ function getErrorMessage(error: unknown): string {
 // to a specific value only when reasoning is active.
 const MODELS_WITHOUT_TEMPERATURE_SUPPORT = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
 
+// Anthropic thinking models (Opus 4.7+) reject the `temperature` parameter.
+// When effort is not explicitly set, omit temperature instead of failing.
+const ANTHROPIC_MODELS_WITHOUT_TEMPERATURE = new Set(["claude-opus-4-8"]);
+
 // ---------------------------------------------------------------------------
 // Reasoning effort → provider-specific mappings
 // ---------------------------------------------------------------------------
@@ -364,8 +368,8 @@ const MODELS_WITHOUT_TEMPERATURE_SUPPORT = new Set(["o1", "o1-mini", "o3", "o3-m
 type EffortConfig =
   | { kind: "deepseek"; thinkingDisabled: true }
   | { kind: "deepseek"; thinkingDisabled: false; reasoningEffort: "high" | "max" }
-  | { kind: "openai"; reasoningEffort?: "minimal" | "low" | "medium" | "high" }
-  | { kind: "anthropic"; effort?: "low" | "medium" | "high" }
+  | { kind: "openai"; reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" }
+  | { kind: "anthropic"; effort?: "low" | "medium" | "high" | "xhigh" | "max" }
   | { kind: "google"; thinkingBudget?: number };
 
 function mapEffort(effort: ReasoningEffort | undefined, provider: string): EffortConfig {
@@ -378,15 +382,19 @@ function mapEffort(effort: ReasoningEffort | undefined, provider: string): Effor
     }
     case "openai": {
       if (!effort || effort === "off") return { kind: "openai" };
-      // OpenAI doesn't have "max" — map to "high"
-      const level = effort === "max" ? "high" : effort;
-      return { kind: "openai", reasoningEffort: level as "minimal" | "low" | "medium" | "high" };
+      // OpenAI supports 5 levels: minimal, low, medium, high, xhigh.
+      // "max" maps to "xhigh" (OpenAI's highest).
+      const effortMap: Record<string, "minimal" | "low" | "medium" | "high" | "xhigh"> = {
+        minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "xhigh",
+      };
+      return { kind: "openai", reasoningEffort: effortMap[effort] ?? "high" };
     }
     case "anthropic": {
       if (!effort || effort === "off") return { kind: "anthropic" };
-      // Map our effort levels to Anthropic's output_config.effort values
-      const effortMap: Record<string, "low" | "medium" | "high"> = {
-        minimal: "low", low: "low", medium: "medium", high: "high", max: "high",
+      // Map our effort levels to Anthropic's output_config.effort values.
+      // Anthropic supports 5 levels: low, medium, high, xhigh, max.
+      const effortMap: Record<string, "low" | "medium" | "high" | "xhigh" | "max"> = {
+        minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max",
       };
       return { kind: "anthropic", effort: effortMap[effort] ?? "high" };
     }
@@ -547,12 +555,14 @@ async function completeWithAnthropic<T extends z.ZodType>(
 
     const response = await client.messages.create({
       model,
-      max_tokens: maxTokens ?? 4096,
+      max_tokens: maxTokens ?? 16384,
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
-      ...(effortConfig.effort
+      // Anthropic rejects thinking + forced tool_choice together.
+      // When using structured output (schema), omit thinking/effort.
+      ...(!schema && effortConfig.effort
         ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
-        : temperature !== undefined
+        : !ANTHROPIC_MODELS_WITHOUT_TEMPERATURE.has(model) && temperature !== undefined
           ? { temperature }
           : {}),
       tools: [
@@ -597,14 +607,17 @@ async function completeWithAnthropic<T extends z.ZodType>(
       );
     }
   } else {
+    // Thinking tokens count against max_tokens. When effort is active, the
+    // model needs extra budget — default to 32768 so visible output isn't starved.
+    const defaultMaxTokens = effortConfig.effort ? 32768 : 16384;
     const response = await client.messages.create({
       model,
-      max_tokens: maxTokens ?? 4096,
+      max_tokens: maxTokens ?? defaultMaxTokens,
       system: systemParam,
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.effort
         ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
-        : temperature !== undefined
+        : !ANTHROPIC_MODELS_WITHOUT_TEMPERATURE.has(model) && temperature !== undefined
           ? { temperature }
           : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
@@ -742,7 +755,10 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
   // When thinking is enabled, temperature/top_p are silently ignored by the API
   // — omit them to avoid confusion.
   const effectiveTemperature = schema ? 0 : temperature;
-  const thinkingEnabled = !effortConfig.thinkingDisabled;
+  // DeepSeek rejects thinking + structured output (json_object) together:
+  // "Thinking may not be enabled when tool_choice forces tool use."
+  // Force thinking disabled when a schema is present.
+  const thinkingEnabled = schema ? false : !effortConfig.thinkingDisabled;
 
   if (!schema) {
     // For non-structured DeepSeek, use OpenAI-compatible path with effort.

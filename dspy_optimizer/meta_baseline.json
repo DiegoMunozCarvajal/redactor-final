@@ -1,0 +1,790 @@
+{
+  "overall_mean": 6.283333333333333,
+  "results": [
+    {
+      "chapter": "chapter_01",
+      "templates_found": 9,
+      "templates_real": 9,
+      "templates_used": 6,
+      "count_penalty": 1.0,
+      "fragments": [
+        {
+          "template": "Apertura con caso transformador",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2295,
+          "score": 8,
+          "issues": [
+            "La atribución del caso queda débil o posiblemente no verificable: \"El equipo de Nexo Pagos, una fintech mexicana\" y \"Carlos Mata\" suenan concretos, pero no se ofrece fuente ni señales de que sea un caso real frente a uno verosímil.",
+            "Hay métricas llamativas sin respaldo suficiente: \"los bloqueos técnicos se resolvían en promedio cinco veces más rápido\" y \"La velocidad de entrega se triplicó\" carecen de método, línea de base o evidencia observable.",
+            "La frase \"sin bugs críticos\" resulta absoluta y poco precisa; sería más creíble si definiera criterio, periodo o umbral."
+          ]
+        },
+        {
+          "template": "Apertura con caso transformador",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1982,
+          "score": 7,
+          "issues": [
+            "Dato probablemente inexacto o poco fiable: \"En 76 años, solo había conseguido una medalla de oro olímpica\" suena inconsistente con la historia del ciclismo británico.",
+            "Afirmación causal no respaldada: \"los mecánicos limpiaban las bicicletas con el mismo trapo para todas, propagando bacterias y averías\" mezcla higiene y fallos mecánicos de forma poco verosímil.",
+            "Generalización matemática simplificada: \"mejorar un 1 % cada elemento controlable genera, por acumulación, un salto enorme\" presenta una lógica atractiva, pero sin matices ni evidencia concreta de cómo se tradujo en esos resultados."
+          ]
+        },
+        {
+          "template": "Formulación de la idea contraintuitiva",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: \"---\\n\\n---\". No hay prosa que evaluar.",
+            "No cumple la instrucción original: no explica el principio, no contrasta marcos ni vincula el contenido con liderazgo de equipos remotos.",
+            "No hay ejemplos, datos, transiciones ni desarrollo argumental verificable."
+          ]
+        },
+        {
+          "template": "Formulación de la idea contraintuitiva",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 3148,
+          "score": 7,
+          "issues": [
+            "La afirmación «A los tres meses, quien eligió no enfadarse cincuenta veces ha remodelado un circuito cerebral» suena específica pero no ofrece fuente ni respaldo verificable.",
+            "El cierre «Veremos cómo pequeñas prácticas...» funciona como meta-apertura y debilita la inmersión del fragmento.",
+            "La analogía «actúa como el agua que gotea sobre la piedra» es eficaz pero algo cliché frente al resto del tono."
+          ]
+        },
+        {
+          "template": "Efecto compuesto con ejemplos cruzados",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: \"--- ---\". No desarrolla ninguna idea ni ofrece prosa evaluable.",
+            "No cumple la instrucción de explicar el efecto compuesto aplicado al liderazgo de equipos remotos, con metáfora y ejemplos.",
+            "No conecta con una tesis anterior ni prepara la siguiente sección sobre la demora en la visibilidad de los resultados."
+          ]
+        },
+        {
+          "template": "Efecto compuesto con ejemplos cruzados",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2442,
+          "score": 8,
+          "issues": [
+            "La cifra de \"más de treinta horas de claridad estratégica\" suena precisa pero no se explica ni se justifica, lo que debilita la credibilidad.",
+            "\"un trimestre de pequeñas rendiciones apenas enciende una alarma tenue\" usa una formulación algo abstracta y menos concreta que el resto del fragmento.",
+            "Afirmaciones como \"ansiedad crónica\" o \"reputaciones dañadas\" aparecen sin ejemplo o sustento específico, lo que las vuelve algo generales."
+          ]
+        },
+        {
+          "template": "Trayectoria, no estado actual",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1480,
+          "score": 6,
+          "issues": [
+            "El fragmento queda truncado en \"tu tarea diaria no es inspeccionar el indicador final, sino decidir qué\", lo que deja la idea central sin cerrar.",
+            "La atribución \"Según Gallup, más de la mitad de los empleados que se van llevaban un año buscando alternativas\" es demasiado vaga: no especifica estudio, año ni formulación exacta verificable.",
+            "Solo desarrolla tres ejemplos y la transición hacia \"por qué el progreso suele parecer invisible durante mucho tiempo\" apenas queda insinuada, no preparada con claridad."
+          ]
+        },
+        {
+          "template": "Trayectoria, no estado actual",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2923,
+          "score": 8,
+          "issues": [
+            "Falta respaldo concreto en afirmaciones ejemplificadoras: \"El dinero invertido a un interés modesto tarda años en duplicarse\" enuncia una idea válida, pero sin cifra, tasa o referencia que la vuelva más precisa.",
+            "Hay una formulación algo imprecisa o poco natural en \"La ejecución impecable no demuestra un talento innato, sino que indexa las miles de horas de ensayo silencioso\"; \"indexa\" suena técnica y rompe el tono.",
+            "Algunas imágenes rozan el lugar común y restan fuerza original: \"depositas una moneda en la cuenta de tu serenidad\"."
+          ]
+        },
+        {
+          "template": "La meseta invisible del progreso",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2254,
+          "score": 8,
+          "issues": [
+            "La afirmación técnica \"el sistema radicular acumula reservas de almidón y fosfatos que definirán el tamaño y la duración de las varas\" suena específica, pero no ofrece atribución ni contexto verificable.",
+            "La frase \"La experiencia de liderar un equipo distribuido sigue un patrón casi idéntico\" fuerza la analogía: persuasiva en tono, pero exagerada en equivalencia causal.",
+            "Aunque prepara bien la transición, no formula todavía con nitidez la \"pregunta decisiva\" prometida; se queda en \"El desafío real no es encontrar la práctica correcta, sino sostenerla\"."
+          ]
+        },
+        {
+          "template": "La meseta invisible del progreso",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2780,
+          "score": 8,
+          "issues": [
+            "La afirmación \"Al quinto año, en apenas seis semanas, el tallo emerge del suelo y crece hasta alcanzar más de veinte metros de altura\" usa una anécdota muy difundida pero raramente documentada con precisión verificable; suena ilustrativa, pero no sólidamente respaldada.",
+            "La frase \"James Clear, autor de Hábitos Atómicos, documenta este fenómeno\" sobrevende la fuente: Clear populariza una metáfora, pero no \"documenta\" el fenómeno en sentido empírico.",
+            "\"Los estudios de neuroimagen de Richard Davidson en el Center for Healthy Minds muestran que cambios medibles en la densidad de materia gris requieren repetición consistente\" resulta demasiado general y no especifica estudio, fecha ni metodología."
+          ]
+        },
+        {
+          "template": "Puente hacia el cambio de enfoque",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2572,
+          "score": 8,
+          "issues": [
+            "La afirmación \"la mejora se frena a las seis semanas de cualquier iniciativa\" introduce una cifra precisa sin fuente ni contexto verificable.",
+            "La definición \"Una Idea Puente es un estándar de trabajo explícito y observable\" suena útil, pero el término central aparece con mayúsculas y formulación conceptual propia, sin anclaje externo ni indicio de si es marco original o adaptación.",
+            "La frase \"un colaborador en Lisboa interpretará distinto a uno en Bogotá\" ilustra bien la variación, pero funciona como ejemplo hipotético, no como evidencia que respalde la afirmación general."
+          ]
+        },
+        {
+          "template": "Puente hacia el cambio de enfoque",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar ni desarrollo de la idea solicitada.",
+            "No formula el problema central sobre por qué algunas personas perseveran y otras abandonan en el estoicismo práctico.",
+            "No introduce la idea puente ni cierra la fase explicativa para abrir la argumentativa."
+          ]
+        }
+      ],
+      "scores": [
+        8,
+        7,
+        1,
+        7,
+        1,
+        8,
+        6,
+        8,
+        8,
+        8,
+        8,
+        1
+      ],
+      "mean_score": 5.916666666666667,
+      "composite_score": 5.916666666666667
+    },
+    {
+      "chapter": "chapter_02",
+      "templates_found": 8,
+      "templates_real": 8,
+      "templates_used": 6,
+      "count_penalty": 1.0,
+      "fragments": [
+        {
+          "template": "Apertura del problema y giro de enfoque",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1981,
+          "score": 8,
+          "issues": [
+            "Generaliza sin apoyo verificable en «Has leído que la autonomía baja la rotación y acelera las decisiones»; no cita estudio, autor ni contexto.",
+            "La afirmación «Confundimos confianza con cercanía física porque durante décadas nos formamos en oficinas donde el pasillo resolvía lo que el organigrama no alcanzaba» suena plausible, pero queda como explicación amplia sin evidencia concreta.",
+            "«La confianza opera como un andamio, no como un sentimiento» es una imagen potente, pero abstracta; le falta un detalle observable que la aterrice mejor."
+          ]
+        },
+        {
+          "template": "Apertura del problema y giro de enfoque",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2000,
+          "score": 7,
+          "issues": [
+            "“La dicotomía del control, tal como la formuló Epicteto” simplifica y presenta como cita doctrinal una formulación sin atribución concreta ni contexto textual.",
+            "“La tranquilidad brota de ese discernimiento” afirma un efecto fuerte sin apoyo empírico ni ejemplo concreto.",
+            "“Sin él, cualquier método se desmorona en cuanto la realidad tose fuerte” es una imagen eficaz pero algo enfática y absoluta (“cualquier método”)."
+          ]
+        },
+        {
+          "template": "Mapa de niveles de cambio",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2292,
+          "score": 7,
+          "issues": [
+            "Falta la 'fórmula fácil de recordar' pedida para cada nivel: aunque aparece 'resultados (lo que obtienes), procesos (lo que haces) e identidad (lo que crees que eres o representas)', no se presenta como fórmula memorable ni de forma paralela para cada nivel.",
+            "Hay afirmaciones causales sin respaldo concreto: 'Solo consigue más ansiedad y menos autonomía' y 'La transformación funciona en sentido opuesto' se enuncian como verdades generales sin datos, fuente o atribución.",
+            "El ejemplo central suena plausible pero no verificable: 'Decidieron definirse primero como “un equipo de profesionales que actúa con transparencia radical...”' describe un caso sin contexto identificable, fuente ni detalles que permitan comprobarlo."
+          ]
+        },
+        {
+          "template": "Mapa de niveles de cambio",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 588,
+          "score": 3,
+          "issues": [
+            "El fragmento queda truncado en \"el criterio del\", lo que interrumpe el sentido y deja la idea sin cerrar.",
+            "No desarrolla los tres niveles pedidos: solo introduce resultados y menciona procesos e identidad sin explicarlos ni dar sus fórmulas.",
+            "Falta el cierre solicitado: no anuncia el contraste entre metas externas y la clase de persona, equipo o sistema que se quiere llegar a ser."
+          ]
+        },
+        {
+          "template": "Contraste decisivo entre dos enfoques",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 3366,
+          "score": 8,
+          "issues": [
+            "La afirmación \"Esa seguridad se construye con rituales de identidad, no con contabilidad de aciertos\" simplifica en exceso lo que halló Proyecto Aristóteles; el estudio identifica la seguridad psicológica como factor clave, pero no demuestra de forma directa esa causalidad específica.",
+            "El ejemplo \"Doist utiliza una reunión mensual llamada 'círculo de intención'\" suena concreto pero no ofrece atribución verificable dentro del texto; puede percibirse como dato no suficientemente respaldado.",
+            "El cierre \"La siguiente sección explora cómo construir esos sistemas de creencias desde cero\" incurre en una meta-transición explícita que debilita un poco la naturalidad del fragmento."
+          ]
+        },
+        {
+          "template": "Contraste decisivo entre dos enfoques",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2757,
+          "score": 8,
+          "issues": [
+            "La atribución a Epicteto es vaga en “lo que Epicteto llamaba ‘lo que es tuyo’”; falta referencia más precisa o formulación menos cuasi-citada.",
+            "Algunas formulaciones son abstractas o enfáticas sin apoyo concreto, por ejemplo: “la forma de vivirla determina por completo su efecto”.",
+            "La frase “la calma depende de nosotros” simplifica en exceso la tesis estoica y puede sonar doctrinal sin matiz suficiente."
+          ]
+        },
+        {
+          "template": "Prueba narrativa y principio de congruencia",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2024,
+          "score": 7,
+          "issues": [
+            "La afirmación \"Diversos estudios en psicología organizacional muestran que los propósitos anclados en la identidad crean un compromiso emocional más resistente\" carece de fuente concreta y verificable.",
+            "La frase \"En menos de un trimestre, sin recordatorios ni presión externa, su patrón de delegación se consolidó\" introduce un resultado preciso sin evidencia observable dentro del caso.",
+            "El ejemplo inicial \"Cuando una persona se fuerza a madrugar sin sentirse 'madrugadora'\" es claro pero genérico y poco conectado con el tema del proyecto sobre liderazgo de equipos remotos."
+          ]
+        },
+        {
+          "template": "Prueba narrativa y principio de congruencia",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 360,
+          "score": 4,
+          "issues": [
+            "No cumple partes centrales de la instrucción: falta el caso breve desarrollado, el principio general explícito y la advertencia final sobre etiquetas limitantes.",
+            "Afirmación sin respaldo en \"el cerebro boicotea lo que no encaja\": suena categórica pero no ofrece ejemplo concreto, matiz ni fuente.",
+            "El fragmento queda truncado como sección: plantea la idea inicial, pero no deja \"listo el siguiente giro\" ni cierra la progresión pedida."
+          ]
+        },
+        {
+          "template": "La doble cara de la identidad",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2875,
+          "score": 8,
+          "issues": [
+            "Afirmaciones fuertes sin respaldo externo: \"En entornos distribuidos, donde la confianza se teje en la previsibilidad de los actos y no en la cercanía del pasillo, esta dinámica es el cimiento operativo más sólido\".",
+            "Generalización no demostrada: \"Estas narrativas generan resistencia porque convierten la adaptación en una traición a uno mismo\".",
+            "La lista de autodefiniciones es útil, pero no se atribuye que \"se escuchan con frecuencia\", lo que deja la frecuencia como impresión del autor."
+          ]
+        },
+        {
+          "template": "La doble cara de la identidad",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 3196,
+          "score": 8,
+          "issues": [
+            "La atribución \"La investigación de James Clear en *Atomic Habits* confirma...\" es débil: se cita un libro de divulgación sin detallar estudios, metodología ni fuente primaria verificable.",
+            "La apertura no retoma de forma explícita la advertencia previa sobre las etiquetas, pese a que la instrucción pedía enlazar con el bloque anterior.",
+            "La afirmación \"La identidad restrictiva no describe un límite real; lo construye\" suena categórica y sugerente, pero carece de matiz o respaldo concreto."
+          ]
+        },
+        {
+          "template": "Mecanismo de formación: las acciones construyen identidad",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1529,
+          "score": 5,
+          "issues": [
+            "El fragmento queda truncado en \"Cada vez que reconoces por escrito un error antes de que el equipo lo señale\", lo que rompe la idea y deja la sección inconclusa.",
+            "Faltan el cierre pedido y la preparación del paso práctico siguiente: no aparece con claridad la conclusión de que \"el cambio profundo puede diseñarse desde pequeñas repeticiones intencionales\".",
+            "Las afirmaciones son plausibles pero no están respaldadas con datos, casos o fuentes concretas, por ejemplo: \"Tus colaboradores no te creen organizado porque lo afirmes en una reunión; lo deducen cuando ven que siempre entregas la minuta antes de que termine el día\"."
+          ]
+        },
+        {
+          "template": "Mecanismo de formación: las acciones construyen identidad",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1898,
+          "score": 8,
+          "issues": [
+            "La afirmación \"La mente no distingue entre lo que le decimos y lo que le mostramos\" suena absoluta y no está respaldada ni matizada.",
+            "La frase \"la suma inclina la balanza de forma irreversible\" exagera el punto: la identidad puede cambiar, así que \"irreversible\" resulta inexacto.",
+            "La referencia \"Epicteto advertía que no podemos reclamar la identidad de luchador si evitamos el gimnasio\" carece de atribución más precisa y parece paráfrasis no verificable."
+          ]
+        }
+      ],
+      "scores": [
+        8,
+        7,
+        7,
+        3,
+        8,
+        8,
+        7,
+        4,
+        8,
+        8,
+        5,
+        8
+      ],
+      "mean_score": 6.75,
+      "composite_score": 6.75
+    },
+    {
+      "chapter": "chapter_04",
+      "templates_found": 9,
+      "templates_real": 8,
+      "templates_used": 6,
+      "count_penalty": 1.0,
+      "fragments": [
+        {
+          "template": "Apertura con intuición invisible",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1480,
+          "score": 7,
+          "issues": [
+            "La explicación incluye afirmaciones generales sin apoyo verificable: \"El cerebro humano aprende patrones mucho antes de ser capaz de nombrarlos\".",
+            "Algunas formulaciones son abstractas y rozan el lugar común: \"La confianza en equipos remotos no se teje con presencia física; se construye mediante sistemas y rituales\".",
+            "El cierre usa una meta-señal algo mecánica: \"El siguiente bloque explica cómo diseñar esos rituales...\"."
+          ]
+        },
+        {
+          "template": "Apertura con intuición invisible",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1992,
+          "score": 7,
+          "issues": [
+            "Afirmaciones amplias sin sustento verificable: \"la mente registra de forma inmediata lo que encaja y lo que no en el orden de las cosas\" y \"El cerebro humano aprende patrones mucho antes de que la mente pueda nombrarlos\".",
+            "Posible imprecisión conceptual al vincular de forma tan directa \"la piedra angular de su ética\" con \"la dicotomía del control\" a partir del caso narrado, sin matizar el salto entre intuición perceptiva y doctrina estoica.",
+            "Cierre con formulación metadiscursiva: \"En el siguiente bloque veremos cómo dejar de ignorarla y cómo usarla sin que nos arrastre\", menos elegante y más expositiva que el resto."
+          ]
+        },
+        {
+          "template": "Generalización del patrón con ejemplos cruzados",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1832,
+          "score": 7,
+          "issues": [
+            "La referencia \"según un estudio de la Universidad de Duke de 2012 sobre reconocimiento visual experto\" es demasiado vaga: no identifica autor, revista ni hallazgo concreto verificable.",
+            "La frase \"No necesita preguntar\" puede sonar excesiva o problemática en contexto de liderazgo, porque sugiere inferencia suficiente sin validación directa.",
+            "El cierre \"puede cegar ante una señal nueva que no encaja en el patrón aprendido\" introduce bien la ambivalencia, pero queda algo abstracto y sin ejemplo concreto."
+          ]
+        },
+        {
+          "template": "Generalización del patrón con ejemplos cruzados",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1879,
+          "score": 7,
+          "issues": [
+            "La analogía \"Igual que un músculo se hipertrofia con el entrenamiento, la mente estoica se afina\" simplifica un mecanismo complejo y suena algo formulaica.",
+            "Ejemplos como \"Un operador de renta fija percibe una pausa mínima en el flujo de órdenes\" carecen de atribución o detalle verificable, por lo que el sustento es más ilustrativo que probatorio.",
+            "La frase \"lee la situación a una velocidad que el razonamiento no alcanza\" es efectiva, pero exagera la oposición entre percepción entrenada y razonamiento deliberado."
+          ]
+        },
+        {
+          "template": "Del talento útil al piloto automático",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2180,
+          "score": 8,
+          "issues": [
+            "La atribución \"Según un estudio de la Universidad de Duke (2006), más del 40 % de las acciones cotidianas...\" es demasiado imprecisa: no menciona autores ni contexto del estudio.",
+            "La frase \"pide a la persona que 'pase' —ahora, a una sala virtual—\" suena algo forzada como ejemplo cotidiano y rompe levemente la naturalidad del párrafo.",
+            "En \"baja la productividad\" el ejemplo ilustra bien el automatismo, pero la inferencia \"podría reflejar concentración profunda\" queda planteada sin apoyo concreto."
+          ]
+        },
+        {
+          "template": "Del talento útil al piloto automático",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1365,
+          "score": 7,
+          "issues": [
+            "La frase \"Un conductor frena antes de que el semáforo en rojo se vuelva consciente\" suena imprecisa y algo forzada: el semáforo no \"se vuelve consciente\".",
+            "La afirmación \"Decidir cada paso agotaría la corteza prefrontal\" introduce un respaldo neurocognitivo sin fuente ni precisión suficiente.",
+            "El ejemplo \"desvías el tema sin notar que el disparador fue la palabra «decepcionante» en el mensaje\" atribuye una causalidad interna muy específica sin sostén observable."
+          ]
+        },
+        {
+          "template": "Analogía operativa y origen del método",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar.",
+            "No cumple la instrucción original de redactar 2 a 4 párrafos con un sistema observable y su traducción al contexto personal.",
+            "No aporta ejemplos, datos, cierre ni introduce una herramienta aplicable en el siguiente bloque."
+          ]
+        },
+        {
+          "template": "Analogía operativa y origen del método",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2325,
+          "score": 8,
+          "issues": [
+            "La frase \"el cerebro activa redes de control ejecutivo\" introduce una explicación neurocognitiva sin fuente específica, lo que la vuelve más afirmación plausible que respaldo verificable.",
+            "\"Las personas que aplican este autoexamen durante dos semanas reportan... una reducción media del 23%\" carece de referencia precisa de estudio, muestra o publicación, y suena insuficientemente atribuida.",
+            "\"Marco Aurelio practicaba un ejercicio similar cada amanecer, según sus Meditaciones\" es una inferencia algo fuerte: las Meditaciones respaldan la idea general, pero no necesariamente ese ritual matutino exacto."
+          ]
+        },
+        {
+          "template": "Herramienta central paso a paso",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar.",
+            "No cumple la instrucción de escribir 3 a 4 párrafos sobre una herramienta concreta.",
+            "No incluye procedimiento, ejemplo ni cierre que prepare el siguiente bloque."
+          ]
+        },
+        {
+          "template": "Herramienta central paso a paso",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 3027,
+          "score": 7,
+          "issues": [
+            "El marcador literal \"[Ejemplo Concreto]\" sugiere un placeholder no resuelto y rompe la naturalidad del fragmento.",
+            "La afirmación \"el claxon fue un reflejo ante la lentitud de otros coches, algo que no controlas\" simplifica en exceso la distinción estoica: la acción propia sí depende parcialmente de uno, aunque el disparador sea externo.",
+            "La clasificación binaria \"(interno)\"/\"(externo)\" puede resultar conceptualmente confusa frente a la formulación de Epicteto, porque mezcla origen de la reacción, intención y objeto de control."
+          ]
+        },
+        {
+          "template": "Criterio de evaluación sin moralismo",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 1753,
+          "score": 7,
+          "issues": [
+            "Generaliza sin respaldo concreto en frases como \"La confianza en estos equipos no depende de la presencia física, sino de sistemas y rituales explícitos\".",
+            "Usa formulaciones algo abstractas y poco específicas, por ejemplo: \"La ganancia puntual oculta un costo sostenido sobre la dinámica remota\".",
+            "La pregunta de autoevaluación es sólida pero algo larga y conceptual: \"¿Esta decisión me acerca a la clase de líder que construye confianza mediante procesos, y no mediante control?\"."
+          ]
+        },
+        {
+          "template": "Criterio de evaluación sin moralismo",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2024,
+          "score": 8,
+          "issues": [
+            "Se desvía parcialmente de la instrucción al sustituir «más o menos efectivas para {RESULTADO_DESEADO} y coherentes o no con {PRINCIPIO_CENTRAL_DEL_CAPITULO}» por la «dicotomía del control», sin explicitar del todo ese marco comparativo pedido.",
+            "La cita atribuida a Marco Aurelio («Hoy me encontraré con gente entrometida, ingrata...») aparece truncada y sin referencia verificable, lo que debilita la precisión.",
+            "«Esa etiqueta suele depender del resultado visible» generaliza en exceso: presenta como regla universal algo que necesitaría más matiz o ejemplo."
+          ]
+        }
+      ],
+      "scores": [
+        7,
+        7,
+        7,
+        7,
+        8,
+        7,
+        1,
+        8,
+        1,
+        7,
+        7,
+        8
+      ],
+      "mean_score": 6.25,
+      "composite_score": 6.25
+    },
+    {
+      "chapter": "chapter_05",
+      "templates_found": 9,
+      "templates_real": 9,
+      "templates_used": 6,
+      "count_penalty": 1.0,
+      "fragments": [
+        {
+          "template": "Apertura con evidencia y hallazgo contraintuitivo",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2384,
+          "score": 7,
+          "issues": [
+            "La apertura presenta datos muy específicos pero con atribución débil: \"Buffer analizó en 2023 los patrones de confianza\" y \"escala de Lencioni adaptada por el equipo de People de Buffer\" no ofrecen fuente verificable ni contexto metodológico suficiente.",
+            "Algunas afirmaciones cuantitativas suenan precisas pero quedan poco sustentadas: \"una brecha de 41 puntos porcentuales\" y \"redujo en un tercio los mensajes de microgestión\".",
+            "La frase \"encontró una bifurcación que pocos manuales de liderazgo explican\" añade dramatismo, pero es vaga y no concreta qué manuales o qué explicación faltaría."
+          ]
+        },
+        {
+          "template": "Apertura con evidencia y hallazgo contraintuitivo",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2429,
+          "score": 7,
+          "issues": [
+            "La atribución es insuficiente y potencialmente no verificable: \"En un experimento de la Universidad de Stanford\" no da autores, año ni estudio concreto, pese a incluir cifras muy específicas como \"un veintitrés por ciento más alto\".",
+            "Hay afirmaciones fisiológicas fuertes sin respaldo visible: \"Su ritmo cardíaco subió, su cortisol se disparó\" suena concluyente, pero no se ofrece ninguna fuente, medida o contexto metodológico.",
+            "La conexión entre el experimento y la doctrina estoica puede estar algo forzada: \"Epicteto abre su Manual con ella. Pero el experimento de Stanford revela...\"; falta mostrar con más precisión que la tarea experimental corresponde realmente a ese principio."
+          ]
+        },
+        {
+          "template": "Nombrar el principio y traducirlo a una fórmula simple",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2908,
+          "score": 8,
+          "issues": [
+            "La atribución \"Un estudio de Paul J. Zak en 2017 demostró que la oxitocina...\" es demasiado vaga: no identifica título, contexto ni metodología verificable.",
+            "La frase \"existe una estructura que vuelve inevitable ese cumplimiento\" sobreafirma el efecto de los sistemas; la estructura puede facilitar, no volver inevitable, el cumplimiento.",
+            "La fórmula \"visibilidad de promesas + evidencia de cumplimiento recurrente = confianza operativa\" es útil, pero simplifica un fenómeno que también depende de factores como capacidad, conflictos o incentivos."
+          ]
+        },
+        {
+          "template": "Nombrar el principio y traducirlo a una fórmula simple",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2207,
+          "score": 7,
+          "issues": [
+            "La definición de lo que no depende de nosotros es demasiado tajante en “lo que no depende de nosotros son los resultados, la opinión ajena, el clima o la salud”; en la práctica, la salud y algunos resultados pueden depender parcialmente de nuestras acciones.",
+            "“La tranquilidad nace de concentrar la energía exclusivamente en el primer grupo” simplifica una afirmación psicológica fuerte sin matices ni sustento concreto.",
+            "La referencia a William James (“el mayor descubrimiento de mi generación...”) aporta autoridad, pero no conecta de forma verificable con el mecanismo estoico ni ofrece contexto de fuente."
+          ]
+        },
+        {
+          "template": "Ampliación con ejemplos transversales y contraste con el error común",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2376,
+          "score": 7,
+          "issues": [
+            "Varias afirmaciones causales carecen de respaldo concreto: \"El miedo a la culpa baja porque el foco está en la secuencia, no en la persona\".",
+            "Cierra con una promesa no sustentada: \"La confianza se manifestará en una métrica simple: la caída abrupta de preguntas de control\".",
+            "Algunos ejemplos son plausibles pero no verificables ni atribuidos, como \"una gerenta de producto publica cada viernes un video de cuatro minutos\"."
+          ]
+        },
+        {
+          "template": "Ampliación con ejemplos transversales y contraste con el error común",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2292,
+          "score": 7,
+          "issues": [
+            "La analogía \"Como un cirujano que ignora el ruido de la calle y se concentra en el punto exacto del bisturí\" es vívida, pero algo forzada y poco verosímil en contexto.",
+            "Afirmaciones generales como \"En todos los casos, el sufrimiento innecesario nace de invertir energía mental en la segunda columna\" carecen de matiz o respaldo concreto.",
+            "La frase \"casi nunca es un déficit personal, sino un fallo de diseño\" simplifica en exceso causas complejas y no ofrece ejemplo o fuente que la sostenga."
+          ]
+        },
+        {
+          "template": "Instrucción directa y plantilla de aplicación inmediata",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar ('---').",
+            "No cumple la instrucción original: falta la plantilla, los 4-6 ejemplos y la transición pedida.",
+            "No es posible verificar claridad, cohesión ni sustento porque no hay contenido."
+          ]
+        },
+        {
+          "template": "Instrucción directa y plantilla de aplicación inmediata",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1829,
+          "score": 8,
+          "issues": [
+            "La afirmación \"Al aplicar la plantilla, reduces la rumiación y concentras energía donde sí produces efecto\" presenta un beneficio psicológico sin apoyo concreto ni atribución.",
+            "La categoría \"No depende de mí\" incluye ejemplos heterogéneos como \"el diagnóstico\", que puede simplificar en exceso una situación compleja donde sí hay márgenes de acción parciales.",
+            "La instrucción \"En la columna izquierda solo caben tus juicios, tus acciones deliberadas y tu atención\" es útil, pero algo rígida: no matiza casos intermedios o compartidos."
+          ]
+        },
+        {
+          "template": "Puente narrativo hacia una segunda estrategia derivada",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2300,
+          "score": 7,
+          "issues": [
+            "“Esta secuencia ilustra un patrón que llamamos efecto anclaje secuencial” introduce una etiqueta propia sin aclarar si es un término reconocido o una denominación del autor.",
+            "“Las investigaciones de la psicóloga Wendy Wood muestran que el 43% de las acciones diarias se realizan por mero contexto repetido” aporta un dato concreto pero sin año, estudio o fuente verificable.",
+            "“Un gerente de operaciones en una cadena de logística reemplazó los recordatorios de calendario...” funciona como ejemplo, pero queda vago por falta de contexto identificable y detalles observables."
+          ]
+        },
+        {
+          "template": "Puente narrativo hacia una segunda estrategia derivada",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2346,
+          "score": 6,
+          "issues": [
+            "La atribución factual es débil o posiblemente inventada: \"Un estudio de la Universidad de Stanford en 2018 mostró que quienes empezaban ordenando solo su cama... reportaban un 27 % más de probabilidades...\"; falta autor, contexto y suena poco verificable.",
+            "El nombre del patrón resulta poco asentado y puede parecer ad hoc: \"se conoce como el efecto de inercia conductual\"; no se justifica si es un término reconocido o una etiqueta del autor.",
+            "La transición final introduce una fórmula pero con una etiqueta algo confusa: \"A esa estrategia la llamaremos fórmula de acumulación\"; no queda del todo alineada con \"vincular una conducta nueva con una ya establecida\"."
+          ]
+        },
+        {
+          "template": "Segunda fórmula: anclar lo nuevo a lo ya existente",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2286,
+          "score": 7,
+          "issues": [
+            "La afirmación \"El cerebro no necesita recordar, decidir ni negociar consigo mismo: el contexto externo dicta la acción\" simplifica en exceso el mecanismo y no ofrece respaldo o matiz.",
+            "El caso \"Un responsable de área en una empresa con equipos distribuidos en tres husos horarios ancló la revisión de bienestar emocional...\" aporta color, pero carece de fuente o detalles verificables.",
+            "Algunos ejemplos se alejan del foco de liderazgo remoto general y suenan más a productividad individual, como \"Después de pinchar la tarjeta de salida, camino diez minutos sin mirar el teléfono\"."
+          ]
+        },
+        {
+          "template": "Segunda fórmula: anclar lo nuevo a lo ya existente",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2527,
+          "score": 8,
+          "issues": [
+            "La atribución conceptual en «El método se llama apilamiento atómico y deriva directamente de la dicotomía del control» mezcla un término popularizado recientemente con una noción estoica sin justificar del todo esa derivación.",
+            "La cita «Epicteto lo expuso así: “No nos perturban las cosas, sino las opiniones que tenemos de las cosas”» carece de referencia concreta, lo que debilita la verificabilidad.",
+            "El ejemplo «Al escuchar el mensaje de voz de un cliente, respondo con un guion breve que ya tengo preparado» no encaja igual de bien con la fórmula “después de [hábito ya consolidado]” porque describe una situación más contingente que un hábito firme."
+          ]
+        }
+      ],
+      "scores": [
+        7,
+        7,
+        8,
+        7,
+        7,
+        7,
+        1,
+        8,
+        7,
+        6,
+        7,
+        8
+      ],
+      "mean_score": 6.666666666666667,
+      "composite_score": 6.666666666666667
+    },
+    {
+      "chapter": "chapter_13",
+      "templates_found": 8,
+      "templates_real": 8,
+      "templates_used": 6,
+      "count_penalty": 1.0,
+      "fragments": [
+        {
+          "template": "Apertura con ritual o microacción reveladora",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2247,
+          "score": 7,
+          "issues": [
+            "La cifra atribuida a Microsoft carece de referencia verificable: \"Un estudio de Microsoft sobre trabajo híbrido en 2022 reveló que los equipos con rituales asíncronos de reconocimiento muestran un 22% más de confianza interpersonal...\"",
+            "Hay una afirmación causal fuerte sin sustento suficiente en el fragmento: \"Lo que ocurrió después —colaboración espontánea, menor rotación voluntaria, sensación de pertenencia— no fue casualidad.\"",
+            "El cierre usa una meta-transición algo convencional: \"A continuación veremos por qué estos rituales funcionan y cómo diseñarlos...\""
+          ]
+        },
+        {
+          "template": "Apertura con ritual o microacción reveladora",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 1867,
+          "score": 7,
+          "issues": [
+            "La afirmación \"Esta escena condensa un principio que los estoicos formularon hace más de dos mil años: la dicotomía del control\" simplifica una idea asociada sobre todo a Epicteto, pero no ofrece atribución ni matiz histórico.",
+            "La frase \"Y justo ahí, en ese reconocimiento de límites, brota la tranquilidad mental\" presenta un efecto psicológico como consecuencia directa sin ejemplo adicional ni respaldo concreto.",
+            "El cierre \"El estoicismo práctico empieza precisamente ahí\" clausura con fuerza, pero la transición hacia una explicación más general del mecanismo queda sugerida más que abierta."
+          ]
+        },
+        {
+          "template": "Expansión del principio: los momentos que definen la trayectoria",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: \"--- ---\"; no hay prosa que evaluar.",
+            "No cumple la instrucción: no explica puntos de inflexión, no ofrece analogía ni ejemplos cotidianos.",
+            "No introduce una categoría memorable ni cierra preparando una regla concreta."
+          ]
+        },
+        {
+          "template": "Expansión del principio: los momentos que definen la trayectoria",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2421,
+          "score": 7,
+          "issues": [
+            "La afirmación «bebiendo un vaso de agua en lugar de café dirige el sistema nervioso hacia la calma» suena demasiado categórica y carece de respaldo o matiz.",
+            "«Un estudio de la Universidad de Duke estimó que más del 40% de las acciones diarias no son decisiones conscientes» es una referencia imprecisa: no cita autor, año ni contexto metodológico.",
+            "La categoría memorable pedida queda débil: «la primera representación» funciona como término estoico, pero no se presenta con fuerza como etiqueta propia y recurrente del capítulo."
+          ]
+        },
+        {
+          "template": "Presentación de la regla operativa mínima",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar.",
+            "No desarrolla la regla práctica ni las transformaciones solicitadas por la instrucción.",
+            "No ofrece cierre ni explicación sobre la versión mínima como puerta de entrada."
+          ]
+        },
+        {
+          "template": "Presentación de la regla operativa mínima",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 0,
+          "score": 1,
+          "issues": [
+            "El fragmento está vacío: no hay texto que evaluar ('---').",
+            "No cumple la instrucción: falta la regla práctica, las 4-6 transformaciones y el cierre solicitado.",
+            "Sin contenido, no es posible verificar claridad, sustento, cohesión ni calidad de prosa."
+          ]
+        },
+        {
+          "template": "Por qué funciona: mostrar antes de mejorar",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2696,
+          "score": 8,
+          "issues": [
+            "Varias afirmaciones carecen de atribución verificable: \"He visto esa transición en un equipo de desarrollo distribuido: pasaron de cancelar el 40 % de las reuniones a mantener una asistencia del 95 % en dos semanas\".",
+            "El umbral numérico se presenta como regla sólida sin fuente: \"Una cifra superior al 90 % habilita cualquier mejora posterior\".",
+            "La frase \"Por eso dedicamos el siguiente espacio\" introduce una meta-transición algo expositiva y menos elegante que el resto."
+          ]
+        },
+        {
+          "template": "Por qué funciona: mostrar antes de mejorar",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2602,
+          "score": 8,
+          "issues": [
+            "“el sistema nervioso interpreta el esfuerzo como una agresión y activa todas las resistencias disponibles” presenta una explicación fisiológica enfática pero sin respaldo ni precisión verificable.",
+            "“La consistencia consolida un circuito neuronal antes de que puedas pedirle precisión” usa lenguaje neurocientífico plausible pero genérico, sin fuente ni ejemplo concreto.",
+            "“Los estoicos lo llamaban oikeiôsis” conecta bien con el tema, pero la aplicación al hábito cotidiano queda algo simplificada y sin atribución textual específica."
+          ]
+        },
+        {
+          "template": "Respuesta a la objeción: 'esto parece demasiado pequeño o artificial'",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2322,
+          "score": 7,
+          "issues": [
+            "Generaliza mecanismos psicológicos sin fuente ni respaldo verificable: \"El cerebro evalúa el esfuerzo total de la tarea, no su primer paso, y dilata el arranque\".",
+            "Usa formulaciones algo abstractas o cargadas de metáfora que restan precisión: \"el sistema de alarma ni se activa\".",
+            "La frase final depende del contexto del capítulo y funciona como meta-transición algo visible: \"esa identidad emergente es justo el suelo firme sobre el que se asentará el siguiente bloque\"."
+          ]
+        },
+        {
+          "template": "Respuesta a la objeción: 'esto parece demasiado pequeño o artificial'",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2196,
+          "score": 7,
+          "issues": [
+            "La atribución \"Investigadores de la Universidad de Stanford, en estudios sobre formación de hábitos\" es demasiado vaga y no ofrece fuente, autor ni fecha verificables.",
+            "La afirmación \"Esos tres minutos, repetidos durante diez jornadas, eliminan la imagen de 'alguien que no hace ejercicio'\" suena demasiado categórica para un cambio psicológico que normalmente sería gradual.",
+            "La metáfora \"La conducta deja de ser una montaña y se convierte en una piedra que se patea sin pensarlo\" funciona, pero roza el cliché y rebaja algo la precisión del argumento."
+          ]
+        },
+        {
+          "template": "Casos breves e identidad: cada repetición es una prueba de quién eres",
+          "topic": "Liderazgo de equipos remotos",
+          "fragment_chars": 2053,
+          "score": 8,
+          "issues": [
+            "Los casos suenan plausibles, pero carecen de atribución verificable: “Al cabo de seis semanas, tres desarrolladores comenzaron a responder...” y “Los resultados visibles tardaron diez semanas en aparecer” presentan detalles concretos sin fuente.",
+            "La frase “La práctica mínima y repetida tejió un pulso de atención que ninguna herramienta de gestión había logrado” exagera sin respaldo y cae en una comparación absoluta difícil de sostener.",
+            "Solo ofrece 2 mini casos cuando la instrucción pedía “2 o 3”; cumple el mínimo, pero el desarrollo queda algo apoyado en formulaciones generales en el tercer párrafo."
+          ]
+        },
+        {
+          "template": "Casos breves e identidad: cada repetición es una prueba de quién eres",
+          "topic": "Introducción al estoicismo práctico",
+          "fragment_chars": 2467,
+          "score": 8,
+          "issues": [
+            "Los mini casos son ilustrativos pero no están respaldados con atribución verificable; frases como \"Tras un trimestre, su equipo reportó menos conflictos\" suenan plausibles pero no permiten comprobar la afirmación.",
+            "La cita/atribución \"Como registra Epicteto, no es lo que haces ocasionalmente, sino aquello a lo que te entregas a diario lo que esculpe el carácter\" resulta demasiado libre y poco verificable para un estándar alto de no-ficción.",
+            "Algunas formulaciones rozan la abstracción sentenciosa, por ejemplo \"Esa decisión silenciosa fue más formativa que cualquier anotación en el cuaderno\", sin mostrar un detalle concreto adicional que la sostenga."
+          ]
+        }
+      ],
+      "scores": [
+        7,
+        7,
+        1,
+        7,
+        1,
+        1,
+        8,
+        8,
+        7,
+        7,
+        8,
+        8
+      ],
+      "mean_score": 5.833333333333333,
+      "composite_score": 5.833333333333333
+    }
+  ]
+}

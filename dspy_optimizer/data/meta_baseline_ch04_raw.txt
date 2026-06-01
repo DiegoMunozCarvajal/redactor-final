@@ -1,0 +1,308 @@
+# FASE 1 — DIAGNÓSTICO ESTRUCTURAL
+
+**1. Tesis o propósito central:**
+Para cambiar hábitos, primero debemos hacer conscientes los comportamientos automáticos que el cerebro ejecuta sin que los notemos. La conciencia es el punto de partida obligatorio de toda transformación conductual.
+
+**2. Tipo de texto:**
+Capítulo de libro práctico de no ficción con estructura híbrida: narrativo-explicativo-prescriptivo. Combina storytelling, divulgación científica y herramienta aplicable.
+
+**3. Secuencia argumental completa:**
+1. Apertura con anécdota impactante (paramédica que detecta infarto inminente solo mirando).
+2. Acumulación de casos análogos (analistas militares, curadores, radiólogos, peluqueros).
+3. Explicación científica del fenómeno: el cerebro como máquina de predicción.
+4. Aplicación del principio a los hábitos: actuamos sin conciencia del estímulo.
+5. Lado oscuro del automatismo: ejemplos cómicos/cotidianos (cajera cortando tarjeta de crédito, maestra preescolar, salvavidas).
+6. Transición conceptual: necesidad de hacer consciente lo inconsciente (cita de Jung).
+7. Introducción de la herramienta: Pointing-and-Calling del sistema ferroviario japonés.
+8. Validación con datos (reducción de errores 85%, accidentes 30%).
+9. Adaptación personal: la Habits Scorecard, paso a paso.
+10. Matices: no hay hábitos buenos o malos, sino efectivos; criterio de identidad deseada.
+11. Cierre prescriptivo: observar sin juicio + uso verbal del Pointing-and-Calling personal.
+12. Recapitulación: el cambio empieza con conciencia.
+
+**4. Patrón de apertura:**
+Anécdota viva con diálogo directo, misterio inicial ("¿qué vio ella?") y revelación posterior con explicación científica.
+
+**5. Patrón de desarrollo:**
+Anécdota → patrón generalizable → explicación cognitiva → implicación para el lector → ejemplos cotidianos → herramienta práctica → matices → instrucción ejecutable.
+
+**6. Patrón de cierre:**
+Resumen del principio central en una frase contundente que reconecta con la tesis: "El proceso del cambio de comportamiento siempre comienza con la conciencia."
+
+**7. Recursos de estilo dominantes:**
+- Frases cortas y declarativas.
+- Anécdotas con diálogo directo.
+- Listas concretas y visualizables.
+- Citas de autoridad (Jung, Klein).
+- Datos cuantitativos como anclaje de credibilidad.
+- Tono cercano, en segunda persona ("tú").
+- Reformulaciones provocadoras ("no existen hábitos buenos o malos").
+- Humor ligero y autoobservación ("Tengo a mi esposo").
+
+**8. Tipo de ejemplos:**
+- Casos extremos de expertos (paramédica, oficial militar).
+- Anécdotas cotidianas cómicas (cajera, maestra, salvavidas).
+- Ejemplos del propio autor (su esposa empacando).
+- Listas funcionales (rutina matutina con símbolos +/–/=).
+
+**9. Función de cada parte:**
+- Apertura: enganche emocional y curiosidad.
+- Casos análogos: universalización del fenómeno.
+- Ciencia: legitimación racional.
+- Ejemplos cotidianos: aterrizaje al lector.
+- Cita-puente: transición a la solución.
+- Herramienta principal: utilidad concreta.
+- Matices: anticipación de objeciones.
+- Cierre: consolidación del principio.
+
+**10. Riesgos de pérdida de fidelidad:**
+- Perder la potencia narrativa de las anécdotas si se vuelven genéricas.
+- Saltar la explicación científica que da peso al argumento.
+- Reducir la herramienta a una lista sin contexto vivencial.
+- Eliminar los matices de "hábitos efectivos vs buenos/malos", que es donde reside la sofisticación del autor.
+- Perder el tono coloquial y cercano.
+
+---
+
+# FASE 2 — BIBLIOTECA DE PROMPTS MODULARES
+
+## Tabla general de bloques
+
+| # | Nombre del bloque | Función estructural |
+|---|---|---|
+| 1 | Apertura con anécdota-misterio | Engancha emocionalmente y plantea pregunta latente |
+| 2 | Casos análogos en cadena | Universaliza el fenómeno |
+| 3 | Explicación científica del principio | Da fundamento racional |
+| 4 | Aplicación al lector cotidiano | Aterriza el principio en la vida diaria |
+| 5 | Lado oscuro del automatismo | Muestra el problema con ejemplos cómicos |
+| 6 | Cita-puente hacia la solución | Transición conceptual al cambio |
+| 7 | Introducción de la herramienta principal | Presenta el método con caso real validado |
+| 8 | Adaptación práctica para el lector | Convierte la herramienta en ejercicio |
+| 9 | Matices y criterios de evaluación | Anticipa objeciones y refina el método |
+| 10 | Instrucción de ejecución sin juicio | Da el modo correcto de aplicar |
+| 11 | Cierre con principio recapitulado | Consolida la tesis |
+
+---
+
+## BLOQUE 1 — Apertura con anécdota-misterio
+
+**Función:** Capturar al lector mediante una historia breve con diálogo directo, donde un experto detecta algo invisible para los demás, generando una pregunta que el resto del capítulo responderá.
+
+**Prompt reutilizable:**
+```
+Escribe la apertura de un capítulo sobre {PRINCIPIO_CENTRAL_DEL_CAPITULO} dentro de un libro sobre {TEMA_DEL_LIBRO} dirigido a {LECTOR_OBJETIVO}. Comienza con una anécdota real o verosímil donde una persona con años de experiencia en un oficio detecta algo crítico que nadie más puede ver, salvándole la vida o evitando un desastre a otra persona. Usa diálogo directo breve y verosímil. Mantén un tono {TONO_DEL_LIBRO}, con frases cortas y declarativas.
+
+La escena debe terminar con dos o tres preguntas abiertas que el lector se hará naturalmente ("¿Qué vio? ¿Cómo lo supo?"). No expliques aún el fenómeno: solo siembra el misterio. Máximo 4 párrafos. El último párrafo debe dejar la curiosidad suspendida y preparar el terreno para una explicación que vendrá después.
+```
+
+**Placeholders:** `{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{TEMA_DEL_LIBRO}`, `{LECTOR_OBJETIVO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Para otros libros, sustituir el oficio (paramédica) por un experto coherente con el tema (un coach, un inversor, un terapeuta). La estructura misterio→pregunta se mantiene.
+
+---
+
+## BLOQUE 2 — Casos análogos en cadena
+
+**Función:** Mostrar que el fenómeno no es único, sino un patrón general. Tres o cuatro ejemplos breves de distintos campos refuerzan que se trata de algo universal.
+
+**Prompt reutilizable:**
+```
+Continúa el capítulo presentando tres o cuatro ejemplos breves de otros campos donde expertos detectan patrones invisibles para los no entrenados, en línea con {PRINCIPIO_CENTRAL_DEL_CAPITULO}. Cada ejemplo debe ocupar dos o tres frases y mostrar a un profesional distinto reconociendo señales sin poder explicar cómo lo hace.
+
+Usa campos variados (militar, artístico, médico, cotidiano) para sugerir universalidad. Mantén el ritmo rápido: un ejemplo tras otro, sin desarrollar demasiado ninguno. Tono {TONO_DEL_LIBRO}. Cierra el bloque con una frase de transición que apunte hacia una explicación general del fenómeno. Máximo 4 párrafos.
+```
+
+**Placeholders:** `{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Adaptar los campos según el tema del libro. Si el libro trata de negocios, usar ejemplos de inversores, vendedores, negociadores. Mantener siempre el patrón "experto que sabe sin saber cómo sabe".
+
+---
+
+## BLOQUE 3 — Explicación científica del principio
+
+**Función:** Aportar el fundamento racional que explica las anécdotas previas. Convierte la magia aparente en ciencia comprensible.
+
+**Prompt reutilizable:**
+```
+Explica ahora el principio cognitivo o psicológico que subyace a los ejemplos anteriores, en relación con {CONCEPTO_CENTRAL_DEL_LIBRO}. Usa lenguaje claro y accesible, sin jerga técnica innecesaria. Describe cómo el cerebro o el cuerpo humano procesa la información de manera no consciente y por qué la repetición genera patrones de reconocimiento automático.
+
+Apóyate en una analogía fuerte (por ejemplo, "el cerebro es una máquina de X"). Conecta este principio directamente con {PRINCIPIO_CENTRAL_DEL_CAPITULO}, mostrando que lo que parecía intuición experta es en realidad aprendizaje codificado. Tono {TONO_DEL_LIBRO}. Máximo 4 párrafos. Cierra preparando el salto hacia cómo esto se aplica a la vida cotidiana del lector.
+```
+
+**Placeholders:** `{CONCEPTO_CENTRAL_DEL_LIBRO}`, `{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Si el libro no es de hábitos, ajustar la base científica (neurociencia, economía conductual, psicología social). Mantener la analogía central como ancla.
+
+---
+
+## BLOQUE 4 — Aplicación al lector cotidiano
+
+**Función:** Pasar de la explicación abstracta a una experiencia que el lector reconoce en sí mismo. Crea identificación inmediata.
+
+**Prompt reutilizable:**
+```
+Aterriza el principio explicado en el bloque anterior usando un ejemplo de la vida cotidiana de {LECTOR_OBJETIVO} que cualquiera reconoce en sí mismo (como el hambre, el sueño, el deseo de mirar el teléfono). Muestra cómo procesos invisibles dentro del cuerpo o la mente disparan acciones que parecen surgir de la nada.
+
+Usa segunda persona ("tú"), con un tono cercano y conversacional. El objetivo es que el lector diga "esto me pasa". Termina el bloque con una afirmación contundente que conecte esa experiencia cotidiana con {PRINCIPIO_CENTRAL_DEL_CAPITULO}, revelando una verdad incómoda o sorprendente sobre cómo funcionamos. Máximo 4 párrafos.
+```
+
+**Placeholders:** `{LECTOR_OBJETIVO}`, `{PRINCIPIO_CENTRAL_DEL_CAPITULO}`
+
+**Notas de uso:** El ejemplo cotidiano debe ser universal y no requerir conocimiento previo. Evitar ejemplos demasiado específicos a una cultura o profesión.
+
+---
+
+## BLOQUE 5 — Lado oscuro del automatismo
+
+**Función:** Mostrar que el mismo mecanismo que es útil también nos atrapa. Usa anécdotas cómicas o absurdas para hacer evidente el problema.
+
+**Prompt reutilizable:**
+```
+Presenta el reverso del principio: el mismo mecanismo que nos resulta útil también nos conduce a errores o conductas indeseadas. Ilustra este punto con dos o tres anécdotas breves, ligeramente cómicas, de personas que ejecutan acciones automáticas en contextos donde ya no aplican (por ejemplo, una persona que sigue actuando según un rol antiguo, o que repite un gesto sin sentido).
+
+Las anécdotas deben ser concretas, visuales y memorables. Después de las anécdotas, conecta el patrón con {RESULTADO_DESEADO} del lector, mostrando por qué este automatismo invisible es el principal obstáculo. Tono {TONO_DEL_LIBRO}, con humor leve. Máximo 4 párrafos.
+```
+
+**Placeholders:** `{RESULTADO_DESEADO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Las anécdotas pueden ser reales, atribuidas a "alguien que conocí" o "encontré en mi investigación". Mantener tono observacional, no acusatorio.
+
+---
+
+## BLOQUE 6 — Cita-puente hacia la solución
+
+**Función:** Transición conceptual entre el problema y la herramienta. Una cita de autoridad consolida el viraje del capítulo.
+
+**Prompt reutilizable:**
+```
+Construye un párrafo de transición que cierre el diagnóstico del problema y abra el camino hacia una solución práctica. Incluye una cita breve de un pensador, científico o figura reconocida ({FUENTE_O_PAPER_BASE}) que capture la idea de que lo no consciente nos gobierna hasta que lo hacemos consciente.
+
+Antes de la cita, prepara el terreno explicando por qué la conciencia es el requisito previo a cualquier cambio. Después de la cita, conecta directamente con la herramienta que se introducirá. Tono {TONO_DEL_LIBRO}, denso pero claro. Máximo 4 párrafos. Este bloque debe sentirse como un momento de bisagra dentro del capítulo.
+```
+
+**Placeholders:** `{FUENTE_O_PAPER_BASE}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Si no se dispone de cita real, usar una de un autor accesible. La función es estructural: marcar el cambio de fase del capítulo.
+
+---
+
+## BLOQUE 7 — Introducción de la herramienta principal
+
+**Función:** Presentar el método central del capítulo mediante un caso real validado con datos, antes de adaptarlo al lector.
+
+**Prompt reutilizable:**
+```
+Introduce una herramienta o práctica concreta usada en un contexto profesional altamente exigente (industrial, médico, militar, aviación, etc.) que sirve como modelo para resolver el problema planteado en el capítulo. Describe el ritual paso a paso con detalle visual y sensorial: qué hace la persona, qué dice, qué señala.
+
+Después de describir la práctica, valídala con datos cuantitativos concretos sobre su efectividad ({EJEMPLO_CONCRETO}). Explica brevemente por qué funciona desde el punto de vista cognitivo: cómo eleva la conciencia de un nivel automático a uno deliberado. Tono {TONO_DEL_LIBRO}. Máximo 4 párrafos. Cierra preparando el salto hacia la versión personal de esta herramienta.
+```
+
+**Placeholders:** `{EJEMPLO_CONCRETO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** El caso profesional debe ser exótico o sorprendente para mantener interés. Los datos cuantitativos son esenciales: sin ellos, la herramienta pierde peso.
+
+---
+
+## BLOQUE 8 — Adaptación práctica para el lector
+
+**Función:** Convertir la herramienta profesional en un ejercicio aplicable. Aquí el lector recibe instrucciones concretas.
+
+**Prompt reutilizable:**
+```
+Adapta la herramienta presentada al contexto personal del lector. Presenta un ejercicio paso a paso con nombre propio que permita a {LECTOR_OBJETIVO} aplicar el principio a su vida diaria. Incluye una lista de ejemplo (mínimo 8 ítems) que muestre cómo se ve el ejercicio en la práctica.
+
+Acompaña la lista con un sistema simple de clasificación o evaluación (símbolos, etiquetas, preguntas). Da una versión "antes" (sin clasificar) y una versión "después" (clasificada) para que el lector vea el ejercicio completo. Tono {TONO_DEL_LIBRO}, instructivo pero amable. Máximo 4 párrafos más las dos listas.
+```
+
+**Placeholders:** `{LECTOR_OBJETIVO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** La lista debe ser cotidiana y reconocible. El sistema de clasificación debe ser tan simple que el lector pueda replicarlo sin instrucciones adicionales.
+
+---
+
+## BLOQUE 9 — Matices y criterios de evaluación
+
+**Función:** Anticipar la objeción "¿cómo sé si esto es bueno o malo para mí?" y refinar el método con un criterio más sofisticado.
+
+**Prompt reutilizable:**
+```
+Anticipa una objeción natural que el lector tendrá al aplicar el ejercicio: "¿Cómo decido qué es bueno o malo en mi caso?" Reconoce que las etiquetas simples son imprecisas y propone un criterio más refinado para evaluar comportamientos, basado en {RESULTADO_DESEADO} a largo plazo o en {CONCEPTO_CENTRAL_DEL_LIBRO}.
+
+Ofrece además una pregunta-filtro potente que el lector pueda hacerse a sí mismo cuando dude (por ejemplo, una pregunta sobre identidad, propósito o consecuencia futura). Da un ejemplo breve de cómo aplicar este criterio en un caso ambiguo. Tono {TONO_DEL_LIBRO}, reflexivo y matizado. Máximo 4 párrafos.
+```
+
+**Placeholders:** `{RESULTADO_DESEADO}`, `{CONCEPTO_CENTRAL_DEL_LIBRO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Este bloque es lo que distingue un libro común de uno sofisticado. No omitirlo: aquí se construye autoridad intelectual.
+
+---
+
+## BLOQUE 10 — Instrucción de ejecución sin juicio
+
+**Función:** Indicar el modo correcto de aplicar la herramienta: observación sin autocrítica, más una variante verbal poderosa.
+
+**Prompt reutilizable:**
+```
+Instruye al lector sobre cómo aplicar el ejercicio en la práctica sin caer en la autocrítica. Enfatiza que el primer paso no es cambiar nada, sino observar como si se mirara a otra persona. Usa una frase breve y memorable que capture esa actitud (por ejemplo, "Qué interesante que haga eso").
+
+Después, ofrece una técnica complementaria: una versión hablada o verbal del ejercicio que el lector puede usar en momentos de tentación o riesgo, diciendo en voz alta la acción y su consecuencia. Da un ejemplo concreto de cómo sonaría esa frase en una situación cotidiana ({EJERCICIO_PRACTICO}). Tono {TONO_DEL_LIBRO}, directo y compasivo. Máximo 4 párrafos.
+```
+
+**Placeholders:** `{EJERCICIO_PRACTICO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** La actitud sin juicio es clave; sin ella, el lector abandona el ejercicio. Asegurar que esto quede explícito.
+
+---
+
+## BLOQUE 11 — Cierre con principio recapitulado
+
+**Función:** Consolidar la tesis en una frase final memorable que conecte todo el recorrido del capítulo.
+
+**Prompt reutilizable:**
+```
+Cierra el capítulo con un párrafo breve que recapitule el principio central: que toda transformación relacionada con {CONCEPTO_CENTRAL_DEL_LIBRO} comienza con la conciencia. Vincula las herramientas presentadas (la del contexto profesional y la del lector) bajo un mismo paraguas conceptual.
+
+Termina con una frase corta, declarativa y casi aforística que el lector pueda recordar. No introduzcas ideas nuevas. Tono {TONO_DEL_LIBRO}, contundente. Máximo 2 párrafos.
+```
+
+**Placeholders:** `{CONCEPTO_CENTRAL_DEL_LIBRO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:** Resistir la tentación de añadir contenido. El cierre debe ser breve y dejar resonancia.
+
+---
+
+# Lista consolidada de placeholders
+
+**Globales:**
+- `{TEMA_DEL_LIBRO}`
+- `{CONCEPTO_CENTRAL_DEL_LIBRO}`
+- `{LECTOR_OBJETIVO}`
+- `{RESULTADO_DESEADO}`
+- `{TONO_DEL_LIBRO}`
+- `{PRINCIPIO_CENTRAL_DEL_CAPITULO}`
+
+**Locales:**
+- `{EJEMPLO_CONCRETO}` (datos cuantitativos de validación)
+- `{FUENTE_O_PAPER_BASE}` (cita de autoridad)
+- `{EJERCICIO_PRACTICO}` (ejemplo de aplicación verbal)
+
+---
+
+# FASE 3 — AUDITORÍA FINAL
+
+**1. Cobertura arquitectónica:**
+Los 11 bloques reconstruyen las 12 fases identificadas en la secuencia argumental original. La fase 10 (matices sobre hábitos efectivos) y la fase 11 (criterio de identidad) se consolidaron en el Bloque 9, lo cual mantiene coherencia.
+
+**2. Saltos lógicos:**
+No detecto saltos lógicos. Cada bloque prepara explícitamente el siguiente: misterio→universalización→ciencia→aplicación→problema→puente→herramienta→adaptación→matices→ejecución→cierre.
+
+**3. Redundancias:**
+Posible solapamiento leve entre Bloque 8 (adaptación práctica) y Bloque 10 (ejecución). Se mantienen separados porque uno construye el ejercicio y el otro instruye sobre la actitud al ejecutarlo, que son funciones distintas.
+
+**4. Bloques a dividir:**
+El Bloque 8 podría dividirse en "ejercicio + lista ejemplo" si el autor quisiera más extensión, pero en formato actual cumple con 4 párrafos + listas.
+
+**5. Placeholders:**
+Equilibrados. Los 6 globales aparecen recurrentemente; los 3 locales solo donde son necesarios. No hay exceso ni carencia.
+
+**6. Ensamble final:**

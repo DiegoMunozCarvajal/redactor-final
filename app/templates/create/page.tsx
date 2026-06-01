@@ -8,9 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2, Upload, X, FileText, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
 interface MetaPrompt {
   id: string;
@@ -29,6 +37,7 @@ export default function CreateTemplatePage() {
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   const [selectedMetaPromptId, setSelectedMetaPromptId] = useState("");
+  const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [chapters, setChapters] = useState<ChapterFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -88,6 +97,8 @@ export default function CreateTemplatePage() {
           description: templateDescription.trim() || null,
           metaPromptId: selectedMetaPromptId,
           chapters,
+          model,
+          effort: "max",
         }),
       });
 
@@ -158,6 +169,23 @@ export default function CreateTemplatePage() {
               ))}
             </select>
           )}
+        </div>
+
+        {/* Model */}
+        <div className="space-y-2">
+          <Label htmlFor="model">Model</Label>
+          <Select value={model} onValueChange={setModel}>
+            <SelectTrigger id="model">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODEL_OPTIONS.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Chapter upload */}

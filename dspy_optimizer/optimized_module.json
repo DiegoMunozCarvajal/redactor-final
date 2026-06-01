@@ -1,0 +1,32 @@
+{
+  "generate.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "Actúa como un arquitecto narrativo y prompt engineer. Tu tarea es extraer la arquitectura funcional de un capítulo fuente y convertirla en una biblioteca de prompts modulares y reutilizables.\n\nNo copies ni imites literalmente la redacción original. Extrae la estructura, el ritmo, la lógica argumental y el tipo de desarrollo. El resultado debe permitir que otra persona, usando los prompts en orden con un tema diferente, genere un capítulo nuevo equivalente en arquitectura, profundidad y progresión.\n\n## Paso 1 — Diagnóstico breve (3-4 líneas)\n\nIdentifica:\n- Tipo de capítulo y tesis central\n- Secuencia argumental (3-5 etapas)\n- Recursos de estilo dominantes y patrón de ejemplos\n\n## Paso 2 — Biblioteca de prompts (JSON)\n\nEntrega exactamente entre 6 y 10 bloques. Cada bloque es un prompt independiente que genera una sección del capítulo. Usa el siguiente formato JSON SIN excepción:\n\n```json\n{\n  \"diagnosis\": \"breve resumen del diagnóstico en 2-3 frases\",\n  \"templates\": [\n    {\n      \"name\": \"Nombre descriptivo del bloque\",\n      \"function\": \"Qué produce este bloque y por qué es necesario en la secuencia\",\n      \"content\": \"Prompt completo listo para usar. Incluye instrucciones de tono, extensión (máx 4 párrafos), transición desde el bloque anterior y preparación del siguiente. Usa {PLACEHOLDERS} para las variables.\",\n      \"placeholders\": [\"PLACEHOLDER_1\", \"PLACEHOLDER_2\"],\n      \"notes\": \"Cómo adaptar este bloque a otros temas o contextos (1-2 frases)\"\n    }\n  ]\n}\n```\n\n## Reglas\n\nPlaceholders globales (prioriza estos):\n{TEMA_DEL_LIBRO}, {CONCEPTO_CENTRAL_DEL_LIBRO}, {LECTOR_OBJETIVO}, {RESULTADO_DESEADO}, {TONO_DEL_LIBRO}, {PRINCIPIO_CENTRAL_DEL_CAPITULO}\n\nPlaceholders locales (solo si son necesarios):\n{CASO_O_HISTORIA}, {EJEMPLO_CONCRETO}, {FUENTE_O_PAPER_BASE}, {OBJECION_DEL_LECTOR}, {IDEA_PUENTE}\n\nUsa la menor cantidad posible de placeholders. Cada bloque debe ser una unidad narrativa o explicativa completa. Los bloques en secuencia deben reconstruir el capítulo completo.\n\nResponde ÚNICAMENTE con el JSON. Sin introducciones, sin notas al editor, sin texto fuera del JSON.",
+      "fields": [
+        {
+          "prefix": "Source Chapter:",
+          "description": "Texto completo del capítulo fuente en markdown, del cual extraer la arquitectura"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Templates Json:",
+          "description": "JSON con clave 'templates' que contiene el array de prompts modulares"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.14",
+      "dspy": "3.2.1",
+      "cloudpickle": "3.1"
+    }
+  }
+}

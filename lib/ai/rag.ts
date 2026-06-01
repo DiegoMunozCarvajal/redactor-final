@@ -98,11 +98,11 @@ export async function retrieveContext(
   // Build context text
   let contextText = "";
   if (chunks.length > 0) {
-    contextText = "## Source Material\n\n";
+    contextText = "## Documentos subidos\n\n";
     for (let i = 0; i < chunks.length; i++) {
       const c = chunks[i];
       const cite = c.citation ? ` (${c.citation})` : "";
-      contextText += `[Source ${i + 1} | ${c.sourceKind} | ${c.sourceFileName}${cite}]\n${c.content}\n\n`;
+      contextText += `[Fuente ${i + 1} | ${c.sourceKind} | ${c.sourceFileName}${cite}]\n${c.content}\n\n`;
     }
   }
 

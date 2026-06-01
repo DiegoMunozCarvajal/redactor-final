@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -25,7 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
-import { MODEL_OPTIONS } from "@/lib/ai/providers";
+import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 
@@ -63,10 +62,9 @@ export function PlaceholderFillSection({
   onSaveDefinition,
   onFillComplete,
 }: Props) {
-  const [model, setModel] = useState("deepseek-v4-pro");
-  const [effort, setEffort] = useState<string>("max");
-  const [temperature, setTemperature] = useState(0.7);
+  const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [filling, setFilling] = useState(false);
+  const [fillingOne, setFillingOne] = useState<Set<string>>(new Set());
   const [states, setStates] = useState<Record<string, PlaceholderState>>({});
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -114,7 +112,7 @@ export function PlaceholderFillSection({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, effort, temperature }),
+          body: JSON.stringify({ model, effort: "max" }),
         },
       );
 
@@ -190,7 +188,63 @@ export function PlaceholderFillSection({
     } finally {
       setFilling(false);
     }
-  }, [projectId, chapterId, model, effort, temperature, placeholders, total, onFillComplete]);
+  }, [projectId, chapterId, model, placeholders, total, onFillComplete]);
+
+  const fillOne = useCallback(async (phName: string) => {
+    setFillingOne((prev) => new Set(prev).add(phName));
+    setStates((prev) => ({
+      ...prev,
+      [phName]: {
+        ...getState(phName),
+        status: "generating",
+      },
+    }));
+
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/chapters/${chapterId}/placeholders/${encodeURIComponent(phName)}/fill`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, effort: "max" }),
+        },
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setStates((prev) => ({
+          ...prev,
+          [phName]: {
+            definition: data.definition ?? "",
+            status: "filled",
+            sources: data.sources ?? [],
+            ragChunks: data.ragChunks,
+            provider: data.provider,
+          },
+        }));
+        void onFillComplete?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error ?? `Error filling {${phName}}`);
+        setStates((prev) => ({
+          ...prev,
+          [phName]: { ...(prev[phName] ?? { definition: "", sources: [] }), status: "error" },
+        }));
+      }
+    } catch {
+      toast.error("Network error");
+      setStates((prev) => ({
+        ...prev,
+        [phName]: { ...(prev[phName] ?? { definition: "", sources: [] }), status: "error" },
+      }));
+    } finally {
+      setFillingOne((prev) => {
+        const next = new Set(prev);
+        next.delete(phName);
+        return next;
+      });
+    }
+  }, [projectId, chapterId, model, onFillComplete]);
 
   function startEdit(name: string) {
     const state = getState(name);
@@ -264,27 +318,6 @@ export function PlaceholderFillSection({
               ))}
             </SelectContent>
           </Select>
-          <Select value={effort} onValueChange={setEffort} disabled={filling}>
-            <SelectTrigger className="w-[62px] h-7 text-[11px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="max" className="text-[11px]">Max</SelectItem>
-              <SelectItem value="off" className="text-[11px]">Alto</SelectItem>
-            </SelectContent>
-          </Select>
-          {effort === "off" && (
-            <Input
-              type="number"
-              min={0}
-              max={1}
-              step={0.1}
-              value={temperature}
-              onChange={(e) => { const v = parseFloat(e.target.value); setTemperature(isNaN(v) ? 0.7 : v); }}
-              className="w-[52px] h-7 text-[11px] px-1"
-              disabled={filling}
-            />
-          )}
           <Button
             size="sm"
             className="text-xs h-7"
@@ -334,6 +367,18 @@ export function PlaceholderFillSection({
                       </span>
                     )}
                   </div>
+                  {state.status !== "generating" && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-5 w-5 flex-shrink-0 text-muted-foreground/50 hover:text-foreground"
+                      onClick={() => fillOne(ph.name)}
+                      disabled={filling || fillingOne.has(ph.name)}
+                      title={`Fill {${ph.name}}`}
+                    >
+                      <Sparkles className="h-2.5 w-2.5" />
+                    </Button>
+                  )}
                   {state.provider && ["rag", "semantic-scholar", "web"].includes(state.provider) && (
                     <span className={`text-[9px] px-1 py-0.5 rounded flex-shrink-0 ${
                       state.provider === "rag"
@@ -342,8 +387,10 @@ export function PlaceholderFillSection({
                           ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
                           : "bg-muted text-muted-foreground"
                     }`}>
-                      {state.provider === "rag" && state.ragChunks
-                        ? `RAG (${state.ragChunks})`
+                      {state.provider === "rag"
+                        ? state.ragChunks
+                          ? `RAG (${state.ragChunks})`
+                          : "RAG"
                         : state.provider === "semantic-scholar"
                           ? "Semantic Scholar"
                           : "Web"}
@@ -415,7 +462,7 @@ export function PlaceholderFillSection({
 
                 {state.status === "error" && (
                   <p className="text-[11px] text-destructive mt-1 ml-5.5">
-                    Failed to generate. Click Fill All to retry.
+                    Failed to generate. Click the sparkle icon to retry.
                   </p>
                 )}
 

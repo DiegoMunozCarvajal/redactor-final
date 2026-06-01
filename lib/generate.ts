@@ -72,9 +72,10 @@ export interface GeneratePromptParams {
   projectTopic?: string | null;
 }
 
-/** Assembly output scales with fragment count. Each fragment contributes ~1024 tokens. */
+/** Assembly output scales with fragment count. Each fragment contributes ~2048 tokens.
+ *  Base floor accounts for thinking overhead when effort is active. */
 function assemblyMaxTokens(fragmentCount: number): number {
-  return Math.max(16384, fragmentCount * 1024);
+  return Math.max(32768, fragmentCount * 2048);
 }
 
 export interface GenerateResult {
@@ -129,10 +130,16 @@ export async function generatePromptContent(
   const userContent = prompt.userPrompt ?? prompt.content;
   const content = applyPlaceholders(userContent, placeholders, projectTopic);
 
+  // Anthropic ephemeral cache: when userPrompt is set, prompt.content is the
+  // static system prompt — cache it across calls within the 5-min TTL window.
+  const isAnthropic = getProviderForModel(model) === "anthropic";
+  const useCache = isAnthropic && !!prompt.userPrompt;
+
   const result = await generateCompletion({
     model,
-    systemPrompt: effectiveSystemPrompt,
+    systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: content,
+    ...(useCache ? { cachedSystemPrompt: prompt.content, cacheSystemPrompt: true } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(effort !== undefined ? { effort } : {}),
@@ -187,7 +194,7 @@ async function mergeTwoFragments(
 
   const result = await generateCompletion({
     model,
-    systemPrompt,
+    systemPrompt: useCache ? "" : systemPrompt,
     userPrompt: userContent,
     maxTokens: effectiveMaxTokens,
     ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
@@ -444,7 +451,7 @@ export async function generateChapterAssembly(
 
   const result = await generateCompletion({
     model,
-    systemPrompt: effectiveSystemPrompt,
+    systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: content,
     maxTokens: effectiveMaxTokens,
     ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
@@ -512,11 +519,17 @@ export async function generateChapterCritique(
 
   const effectiveMaxTokens = maxTokens ?? critiqueMaxTokens(chapterContent.length);
 
+  // Anthropic ephemeral cache: when userPrompt is set, critiquePrompt.content
+  // is the static system prompt — cache it across critique calls.
+  const isAnthropic = getProviderForModel(model) === "anthropic";
+  const useCache = isAnthropic && !!critiquePrompt.userPrompt;
+
   const result = await generateCompletion({
     model,
-    systemPrompt: effectiveSystemPrompt,
+    systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
+    ...(useCache ? { cachedSystemPrompt: critiquePrompt.content, cacheSystemPrompt: true } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });

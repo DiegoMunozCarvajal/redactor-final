@@ -1,0 +1,311 @@
+# FASE 1 — DIAGNÓSTICO ESTRUCTURAL
+
+**1. Tesis o propósito central:**
+La forma más efectiva de iniciar un nuevo hábito no depende de la motivación, sino de diseñar señales obvias y específicas que indiquen cuándo y dónde ejecutar la conducta. Dos herramientas concretas logran esto: las intenciones de implementación y el apilamiento de hábitos.
+
+**2. Tipo de texto:**
+Capítulo práctico de no ficción conductual con estructura mixta: divulgación científica + manual operativo. Combina evidencia experimental, anécdota histórica, marcos conceptuales y herramientas aplicables.
+
+**3. Secuencia argumental completa:**
+1. Apertura con estudio empírico (experimento de ejercicio en UK, 2001).
+2. Conceptualización del hallazgo (intenciones de implementación).
+3. Generalización con múltiples estudios (votación, impuestos, salud).
+4. Diagnóstico del lector ("no falta motivación, falta claridad").
+5. Fórmula práctica + ejemplos cotidianos.
+6. Beneficio secundario (ayuda a decir no).
+7. Transición conceptual: cita puente (Zweig) hacia segunda herramienta.
+8. Anécdota histórica (Diderot) como apertura del segundo bloque.
+9. Conceptualización (Efecto Diderot → encadenamiento conductual).
+10. Presentación del habit stacking como variante de intención de implementación.
+11. Fórmula + ejemplos + cadenas largas.
+12. Refinamientos (cómo elegir buen disparador, especificidad).
+13. Cierre con error personal del autor + reformulación de la 1ª Ley.
+
+**4. Patrón de apertura:**
+Estudio científico narrado con detalle (sujetos, grupos, condiciones, resultados cuantitativos sorprendentes) que conduce a nombrar un concepto técnico.
+
+**5. Patrón de desarrollo:**
+Concepto → evidencia múltiple → diagnóstico del problema del lector → fórmula → ejemplos en categorías de vida (meditación, ejercicio, pareja, dinero) → matices y advertencias.
+
+**6. Patrón de cierre:**
+Reformulación del principio + error personal corregido + reconexión con la ley general que estructura el libro.
+
+**7. Recursos de estilo dominantes:**
+- Cifras precisas y contraste estadístico (35-38% vs 91%).
+- Fórmulas en plantilla ("When X, I will Y").
+- Listas verticales de ejemplos categorizados.
+- Anécdota histórica con detalle sensorial.
+- Citas puente de figuras externas.
+- Anécdota personal autocrítica como pedagogía.
+- Frases sentenciosas cortas ("Ambiguity gone.").
+
+**8. Tipo de ejemplos:**
+- Estudios académicos resumidos.
+- Anécdotas históricas (Diderot).
+- Ejemplos hipotéticos cotidianos (café, dientes, gimnasio).
+- Ejemplo autobiográfico (push-ups).
+- Listas de hábitos diarios universales.
+
+**9. Función de cada parte:**
+- Estudio inicial: prueba empírica que legitima.
+- Conceptualización: nombrar el fenómeno da poder al lector.
+- Diagnóstico: confronta al lector con su error mental.
+- Fórmula: convierte teoría en acción.
+- Ejemplos: muestran amplitud de aplicación.
+- Anécdota Diderot: bisagra narrativa hacia segunda herramienta.
+- Habit stacking: profundización + variante.
+- Cadenas y refinamientos: nivel avanzado.
+- Cierre: integración con marco general del libro.
+
+**10. Riesgos de pérdida de fidelidad:**
+- Convertir un texto con dos herramientas interconectadas en bloques sueltos sin la bisagra narrativa.
+- Perder el equilibrio entre evidencia, anécdota y prescripción.
+- Reducir ejemplos a una sola categoría (siempre dar 4-6 ámbitos de vida).
+- Olvidar la voz autocrítica del autor en el cierre.
+- No replicar la progresión de simple → avanzado → matiz.
+
+---
+
+# FASE 2 — TABLA GENERAL DE BLOQUES
+
+| # | Bloque | Función estructural |
+|---|--------|---------------------|
+| 1 | Apertura con estudio empírico | Anclar el principio en evidencia narrada |
+| 2 | Conceptualización y generalización | Nombrar el fenómeno y mostrar su amplitud |
+| 3 | Diagnóstico del lector + fórmula práctica | Confrontar mentalidad y entregar herramienta 1 |
+| 4 | Beneficio secundario + cita puente | Profundizar utilidad y transicionar |
+| 5 | Anécdota histórica como bisagra | Introducir la segunda herramienta vía relato |
+| 6 | Presentación de la herramienta avanzada | Definir habit stacking y su fórmula |
+| 7 | Cadenas, variantes y aplicaciones amplias | Mostrar versatilidad y nivel avanzado |
+| 8 | Refinamientos: cómo elegir buen disparador | Matizar con criterios técnicos |
+| 9 | Cierre con error personal + reconexión al marco | Integrar enseñanza con humildad y ley general |
+
+---
+
+# FASE 3 — DESARROLLO DE CADA BLOQUE
+
+---
+
+### BLOQUE 1 — Apertura con estudio empírico narrado
+
+**Función del bloque:**
+Abre el capítulo con un experimento real contado con detalle (sujetos, grupos, condiciones, resultados cuantitativos contrastantes) que sorprende al lector y prepara la introducción de un concepto técnico. Establece autoridad científica desde la primera línea.
+
+**Prompt reutilizable:**
+```
+Escribe la apertura de un capítulo sobre {PRINCIPIO_CENTRAL_DEL_CAPITULO} dentro de un libro cuyo concepto central es {CONCEPTO_CENTRAL_DEL_LIBRO}. El tono debe ser {TONO_DEL_LIBRO} y dirigirse a {LECTOR_OBJETIVO}.
+
+Comienza narrando un estudio empírico real o plausible relacionado con {FUENTE_O_PAPER_BASE}. Estructura la narración así: año y lugar, número de participantes, división en grupos con condiciones distintas (idealmente tres grupos, donde uno aplica el principio que enseñarás), y resultados cuantitativos contrastantes que sorprendan al lector.
+
+Cuida tres elementos: (1) precisión de cifras y porcentajes, (2) ritmo informativo que no se sienta árido, (3) que el resultado del grupo experimental sea claramente superior y revelador. Cierra el bloque nombrando técnicamente el fenómeno que produjo ese resultado y dando una definición breve y clara en una sola oración.
+
+Extensión máxima: 4 párrafos. No introduzcas aún la fórmula práctica ni ejemplos de aplicación; eso vendrá en bloques posteriores.
+```
+
+**Placeholders utilizados:**
+`{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{CONCEPTO_CENTRAL_DEL_LIBRO}`, `{TONO_DEL_LIBRO}`, `{LECTOR_OBJETIVO}`, `{FUENTE_O_PAPER_BASE}`
+
+**Notas de uso:**
+Si el tema no tiene un estudio adecuado, sustitúyelo por un experimento natural, una estadística institucional o un caso documentado. Mantén la estructura "condición inicial → variación experimental → resultado contrastante".
+
+---
+
+### BLOQUE 2 — Conceptualización y generalización mediante múltiples evidencias
+
+**Función del bloque:**
+Eleva el caso particular a principio general. Muestra que el fenómeno funciona en muchos contextos (3-5 dominios distintos) y define la fórmula conceptual abstracta ("Cuando X, haré Y") que el lector puede recordar.
+
+**Prompt reutilizable:**
+```
+Continúa el capítulo expandiendo el concepto introducido al final del bloque anterior. Tu objetivo es elevar el hallazgo de un caso aislado a un principio general aplicable.
+
+Primero, presenta la fórmula abstracta del principio en una sola línea destacada y memorable, usando lenguaje condicional simple. Luego enumera entre 3 y 5 dominios distintos donde el mismo principio ha sido validado (por ejemplo: salud, finanzas, conducta cívica, educación, relaciones), citando de manera breve estudios o programas que lo demuestren. La variedad de dominios es clave: no repitas el mismo tipo de ejemplo.
+
+Mantén un tono divulgativo pero respaldado en evidencia. Evita tecnicismos innecesarios. Cada evidencia debe ocupar una o dos oraciones, no párrafos enteros.
+
+Extensión máxima: 4 párrafos. Cierra con una frase contundente que resuma el patrón: las personas que aplican este principio logran resultados desproporcionadamente mejores que quienes no lo hacen.
+```
+
+**Placeholders utilizados:**
+`{PRINCIPIO_CENTRAL_DEL_CAPITULO}`
+
+**Notas de uso:**
+Adapta los dominios al universo de tu lector. Si el libro es de productividad ejecutiva, usa dominios profesionales; si es de salud, usa dominios médicos y de hábitos físicos.
+
+---
+
+### BLOQUE 3 — Diagnóstico del lector + fórmula práctica con ejemplos
+
+**Función del bloque:**
+Confronta al lector con un error mental común ("no te falta motivación, te falta claridad"), entrega la fórmula práctica concreta y la ilustra con 4-6 ejemplos en categorías distintas de la vida cotidiana.
+
+**Prompt reutilizable:**
+```
+Escribe el bloque central práctico del capítulo. Debes lograr tres cosas en este orden:
+
+Primero, confronta al lector con un diagnóstico mental erróneo común relacionado con {PRINCIPIO_CENTRAL_DEL_CAPITULO}. Usa frases directas en segunda persona o en plural inclusivo ("decimos que vamos a...", "creemos que nos falta..."). Reformula el problema: lo que parece falta de voluntad es en realidad falta de claridad o de diseño.
+
+Segundo, entrega la fórmula práctica del capítulo en formato de plantilla con campos a completar (corchetes con variables como TIEMPO, LUGAR, CONDUCTA). Que sea visualmente clara y fácil de copiar.
+
+Tercero, ilustra la fórmula con entre 4 y 6 ejemplos breves en categorías distintas de la vida: salud, aprendizaje, relaciones, trabajo, finanzas u otras relevantes para {LECTOR_OBJETIVO}. Cada ejemplo en una sola línea, encabezado por la categoría en negrita.
+
+Extensión máxima: 4 párrafos (los ejemplos en lista cuentan como un párrafo). Tono {TONO_DEL_LIBRO}.
+```
+
+**Placeholders utilizados:**
+`{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{LECTOR_OBJETIVO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:**
+La variedad de categorías es crucial. Evita que todos los ejemplos sean del mismo ámbito. Adapta las categorías al perfil de tu lector objetivo.
+
+---
+
+### BLOQUE 4 — Beneficio secundario + cita puente
+
+**Función del bloque:**
+Profundiza la utilidad de la herramienta señalando un beneficio menos obvio (ej.: ayuda a decir no a distracciones), y cierra con una cita o reflexión de un autor externo que sirva de bisagra hacia la siguiente herramienta del capítulo.
+
+**Prompt reutilizable:**
+```
+Escribe un bloque corto que profundice la herramienta presentada en el bloque anterior añadiendo un beneficio secundario menos evidente. Por ejemplo: cómo la claridad sobre cuándo y dónde actuar ayuda a rechazar distracciones, a resistir desvíos, o a generar una urgencia casi automática con la repetición.
+
+Desarrolla este beneficio con una explicación de causa-efecto: cuando no se es específico, ocurre X consecuencia negativa; cuando sí se es específico, ocurre Y consecuencia positiva. Usa una imagen o analogía sensorial para hacerlo memorable.
+
+Cierra el bloque con una cita corta de un autor, científico o pensador externo ({IDEA_PUENTE}) que refuerce el punto y prepare la transición hacia una segunda herramienta o variante que se introducirá a continuación. La cita debe sentirse natural, no decorativa.
+
+Extensión máxima: 3 párrafos. Tono reflexivo dentro de {TONO_DEL_LIBRO}.
+```
+
+**Placeholders utilizados:**
+`{IDEA_PUENTE}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:**
+Si no tienes una cita real adecuada, usa una observación atribuida genéricamente ("como observan los investigadores del comportamiento..."). La función es de bisagra, no de autoridad ornamental.
+
+---
+
+### BLOQUE 5 — Anécdota histórica como bisagra narrativa
+
+**Función del bloque:**
+Introduce una segunda herramienta o variante mediante una anécdota histórica concreta y vívida (personaje real, fecha, lugar, conflicto pequeño que revela un patrón conductual). La anécdota se conceptualiza después con nombre técnico.
+
+**Prompt reutilizable:**
+```
+Inicia una nueva sección del capítulo con una anécdota histórica vívida que ilustre un patrón conductual relevante para {PRINCIPIO_CENTRAL_DEL_CAPITULO}. La anécdota debe cumplir estos criterios:
+
+(1) Personaje real con nombre, época y contexto socioeconómico claro. (2) Un evento puntual y datable que cambia su situación. (3) Una consecuencia conductual en cadena que revela un patrón humano universal. (4) Detalles sensoriales o económicos concretos (cantidades, objetos, descripciones físicas) que hagan la escena memorable.
+
+Cuenta la historia con ritmo narrativo, no como dato enciclopédico. Después del relato, dedica un párrafo a nombrar técnicamente el fenómeno que ilustra (un "efecto" o "principio" con apellido del protagonista funciona bien) y a generalizarlo a la vida del lector con 2 o 3 ejemplos cotidianos breves.
+
+Cierra preparando el terreno: este patrón de encadenamiento conductual, aplicado deliberadamente, puede convertirse en una herramienta poderosa para construir hábitos.
+
+Extensión máxima: 4 párrafos. Usa {CASO_O_HISTORIA} como base si dispones de uno.
+```
+
+**Placeholders utilizados:**
+`{PRINCIPIO_CENTRAL_DEL_CAPITULO}`, `{CASO_O_HISTORIA}`
+
+**Notas de uso:**
+Si no hay anécdota histórica disponible, usa un caso empresarial documentado o una historia cultural. Lo importante es la estructura: personaje → evento → cadena de consecuencias → patrón nombrable.
+
+---
+
+### BLOQUE 6 — Presentación de la herramienta avanzada y su fórmula
+
+**Función del bloque:**
+Presenta una segunda herramienta como variante o evolución de la primera, atribuye su origen a una fuente específica, entrega su fórmula y la ilustra con ejemplos en múltiples categorías.
+
+**Prompt reutilizable:**
+```
+Presenta formalmente una segunda herramienta práctica que sea variante, evolución o complemento de la primera herramienta presentada en bloques anteriores. La estructura debe ser:
+
+Primero, nombra la herramienta y atribúyela a su creador o fuente original ({FUENTE_O_PAPER_BASE}). Explica en una o dos oraciones cómo se relaciona con la primera herramienta y qué la hace distinta: por ejemplo, en lugar de usar tiempo y lugar como disparador, usa un hábito existente como disparador.
+
+Segundo, entrega la fórmula en plantilla destacada con campos entre corchetes. Debe ser tan simple que el lector pueda memorizarla.
+
+Tercero, ofrece entre 4 y 6 ejemplos breves en categorías diversas (salud, relaciones, productividad, seguridad, gratitud, etc.), cada uno encabezado por la categoría en negrita y formulado siguiendo exactamente la fórmula.
+
+Extensión máxima: 4 párrafos. Cierra con una frase que adelante la posibilidad de encadenar múltiples instancias de esta herramienta para crear secuencias más largas.
+```
+
+**Placeholders utilizados:**
+`{FUENTE_O_PAPER_BASE}`
+
+**Notas de uso:**
+La clave es presentar la segunda herramienta como continuación natural de la primera, no como tema nuevo. Mantén la simetría de formato (fórmula + ejemplos categorizados) entre ambas herramientas.
+
+---
+
+### BLOQUE 7 — Cadenas avanzadas y aplicaciones contextuales amplias
+
+**Función del bloque:**
+Lleva al lector del uso básico al uso avanzado: cadenas de 3+ hábitos, inserción en rutinas existentes, y aplicaciones contextuales generales ("cuando X situación, haré Y") que cubren áreas como ejercicio, finanzas, ánimo, minimalismo.
+
+**Prompt reutilizable:**
+```
+Escribe un bloque que lleve al lector del uso básico al uso avanzado de la herramienta presentada en el bloque anterior. Debes mostrar tres niveles de sofisticación:
+
+Primero, muestra dos cadenas completas de 3 pasos cada una (por ejemplo, una rutina matutina y una nocturna), donde cada acción se conecta con la siguiente siguiendo la fórmula. Preséntalas como listas numeradas con el formato exacto de la fórmula.
+
+Segundo, explica brevemente cómo insertar un nuevo hábito en medio de una rutina ya existente, con un ejemplo tipo "antes hacías A > B > C; ahora harás A > B > nuevo hábito > C".
+
+Tercero, ofrece entre 5 y 7 aplicaciones generales para situaciones recurrentes ("cuando vea X, haré Y") en categorías diversas relevantes para {LECTOR_OBJETIVO}: por ejemplo ejercicio, finanzas, alimentación, relaciones sociales, estado de ánimo, minimalismo, olvidos.
+
+Extensión máxima: 4 párrafos (las listas cuentan como un párrafo). Mantén {TONO_DEL_LIBRO}.
+```
+
+**Placeholders utilizados:**
+`{LECTOR_OBJETIVO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:**
+La progresión simple → encadenado → contextual general es crucial. No omitas ninguno de los tres niveles porque cubren distintos perfiles de lector.
+
+---
+
+### BLOQUE 8 — Refinamientos y criterios de selección del buen disparador
+
+**Función del bloque:**
+Matiza la herramienta dando criterios técnicos para que funcione: el disparador debe tener la frecuencia adecuada, ser específico, ser inmediatamente accionable. Incluye método de brainstorming práctico (dos columnas).
+
+**Prompt reutilizable:**
+```
+Escribe un bloque de refinamiento técnico que ayude al lector a evitar errores comunes al aplicar la herramienta. Debes cubrir tres criterios de calidad del disparador:
+
+Primero, frecuencia: el disparador debe ocurrir con la misma cadencia que el hábito deseado (si quieres hacerlo diario, no lo apiles sobre algo que solo ocurre los lunes). Segundo, especificidad: el disparador debe estar amarrado a un momento físico concreto, no a una idea vaga como "cuando tenga un descanso". Tercero, accionabilidad inmediata: tras el disparador, la acción debe poder ejecutarse sin fricción adicional.
+
+Incluye un método práctico de brainstorming: invita al lector a hacer dos listas: (a) hábitos que realiza cada día sin falla, (b) cosas que le suceden cada día sin falla. Da entre 6 y 10 ejemplos de cada columna. Explica que el cruce de ambas listas con el hábito deseado revela el mejor disparador.
+
+Extensión máxima: 4 párrafos. Cierra con una frase que enfatice la importancia de la especificidad.
+```
+
+**Placeholders utilizados:**
+Ninguno específico; bloque autocontenido.
+
+**Notas de uso:**
+Adapta los ejemplos de las dos listas al estilo de vida del lector objetivo. El método de dos columnas es transferible casi sin cambios.
+
+---
+
+### BLOQUE 9 — Cierre con error personal del autor + reconexión al marco general
+
+**Función del bloque:**
+Cierra el capítulo con una anécdota autobiográfica corta donde el autor reconoce un error propio aplicando la herramienta, muestra cómo lo corrigió, y reconecta la enseñanza con la ley o marco general que estructura el libro.
+
+**Prompt reutilizable:**
+```
+Cierra el capítulo con tres movimientos breves:
+
+Primero, narra una anécdota autobiográfica corta donde tú (el autor) aplicaste mal la herramienta enseñada en este capítulo. Describe el intento fallido con el formato original que usaste, explica por qué no funcionó (ambigüedad, mal disparador, frecuencia inadecuada), y muestra la reformulación que sí funcionó. Usa una frase corta y sentenciosa al final del ajuste (tipo "Ambigüedad resuelta." o equivalente).
+
+Segundo, contrasta brevemente metas vagas ("leer más", "comer mejor") con instrucciones específicas ("después de cerrar la puerta", "después de servirme el plato"). Refuerza que la especificidad es lo que convierte una intención en un hábito.
+
+Tercero, reconecta el contenido del capítulo con {CONCEPTO_CENTRAL_DEL_LIBRO} o con la ley general que lo estructura. Una o dos oraciones que sitúen este capítulo dentro del arco mayor del libro.
+
+Extensión máxima: 3 párrafos. Tono honesto, pedagógico, ligeramente autocrítico dentro de {TONO_DEL_LIBRO}.
+```
+
+**Placeholders utilizados:**
+`{CONCEPTO_CENTRAL_DEL_LIBRO}`, `{TONO_DEL_LIBRO}`
+
+**Notas de uso:**
+La anécdota autobiográfica es el sello de cierre. Si el autor no quiere usar voz personal, puede sustituirla por un caso de un lector o cli

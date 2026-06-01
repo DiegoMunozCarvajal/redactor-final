@@ -22,8 +22,8 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string; temperature?: number; effort?: "off" | "max"; skipAssembly?: boolean; assemblyAlgorithm?: AssemblyAlgorithm }) => {
-    const { generationId, projectId, model, temperature, effort, skipAssembly, assemblyAlgorithm } = payload;
+  run: async (payload: { generationId: string; projectId: string; model?: string; effort?: "off" | "max" | "xhigh"; skipAssembly?: boolean; assemblyAlgorithm?: AssemblyAlgorithm }) => {
+    const { generationId, projectId, model, effort, skipAssembly, assemblyAlgorithm } = payload;
 
     // Load generation
     const [gen] = await db
@@ -208,7 +208,6 @@ export const generateChapter = task({
           placeholders,
           projectTopic: project.topic,
           ...(model ? { model } : {}),
-          ...(temperature !== undefined ? { temperature } : {}),
           ...(effort !== undefined ? { effort } : {}),
         });
 
@@ -253,7 +252,7 @@ export const generateChapter = task({
           fragmentContents,
           placeholders,
           model,
-          temperature,
+          undefined,
           effort,
           undefined,
         );
