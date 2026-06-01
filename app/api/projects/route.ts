@@ -147,6 +147,23 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Sync placeholders from project prompts — catch any {tokens} in prompt
+        // content that weren't already in the template's chapterPlaceholders table
+        for (const projectChapterId of [...chapterIdMap.values()]) {
+          const ppContents = await tx
+            .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
+            .from(projectPrompts)
+            .where(eq(projectPrompts.chapterId, projectChapterId));
+          const contents = ppContents.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]);
+          const detected = extractPlaceholders(contents);
+          if (detected.length > 0) {
+            await tx
+              .insert(chapterPlaceholders)
+              .values(detected.map((name) => ({ chapterId: projectChapterId, name })))
+              .onConflictDoNothing();
+          }
+        }
+
         // Backfill {tema} placeholder from project topic for all new project chapters
         if (p.topic) {
           const projectChapterIds = [...chapterIdMap.values()];

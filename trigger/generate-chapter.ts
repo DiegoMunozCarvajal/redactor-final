@@ -10,7 +10,7 @@ import {
   chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
-import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
+import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 
@@ -244,7 +244,9 @@ export const generateChapter = task({
       if (assemblyPrompt && fragmentContents.length > 0 && !skipAssembly) {
         const assemble = assemblyAlgorithm === "sequential"
           ? generateChapterAssemblySequential
-          : generateChapterAssemblyHierarchical;
+          : assemblyAlgorithm === "halves"
+            ? generateChapterAssemblyHalves
+            : generateChapterAssemblyHierarchical;
 
         const assembled = await assemble(
           assemblyPrompt,

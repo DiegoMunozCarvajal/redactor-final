@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
-import { generateChapterAssemblyHierarchical, generateChapterAssemblySequential, type AssemblyAlgorithm } from "@/lib/generate";
+import { generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
@@ -50,7 +50,11 @@ export async function POST(
   const temperature = typeof temperatureRaw === "number" && temperatureRaw >= 0 && temperatureRaw <= 1 ? temperatureRaw : undefined;
   const effort = body.effort as "off" | "max" | undefined;
   const assemblyPromptId = body.assemblyPromptId as string | undefined;
-  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential" ? "sequential" : "merge-sort";
+  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
+    ? "sequential"
+    : body.assemblyAlgorithm === "halves"
+      ? "halves"
+      : "merge-sort";
 
   if (temperatureRaw !== undefined && (typeof temperatureRaw !== "number" || temperatureRaw < 0 || temperatureRaw > 1)) {
     return NextResponse.json({ error: "temperature must be a number between 0 and 1" }, { status: 400 });
@@ -184,7 +188,9 @@ export async function POST(
       }));
       const assemble = assemblyAlgorithm === "sequential"
         ? generateChapterAssemblySequential
-        : generateChapterAssemblyHierarchical;
+        : assemblyAlgorithm === "halves"
+          ? generateChapterAssemblyHalves
+          : generateChapterAssemblyHierarchical;
 
       const assembled = await assemble(
         assemblyPrompt,

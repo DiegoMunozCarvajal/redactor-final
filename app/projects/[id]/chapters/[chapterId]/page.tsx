@@ -49,7 +49,7 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AVAILABLE_MODELS } from "@/lib/ai/providers";
+import { AVAILABLE_MODELS, MODELS_BY_STAGE } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
 import { EFFORT_OPTIONS } from "@/lib/ai/providers";
@@ -87,7 +87,8 @@ const MODELS = [
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", short: "Haiku" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", short: "Sonnet" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6", short: "Opus 4.6" },
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8", short: "Opus 4.8" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7", short: "Opus 4.7" },
   { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", short: "Gem Pro" },
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", short: "Gem Flash" },
   { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", short: "DS Pro" },
@@ -95,7 +96,14 @@ const MODELS = [
 ];
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
+const DEFAULT_ASSEMBLY_MODEL = "claude-opus-4-8";
 const FRAGMENT_GENERATION_CONCURRENCY = 3;
+
+// Models filtered for the assembly stage dropdown
+const ASSEMBLY_MODEL_IDS = new Set(
+  MODELS_BY_STAGE.assemble_small_book_chapter.map((m) => m.id),
+);
+const ASSEMBLY_MODELS = MODELS.filter((m) => ASSEMBLY_MODEL_IDS.has(m.id));
 
 interface FragmentData {
   id: string;
@@ -188,7 +196,9 @@ export default function ChapterPage() {
   const [selectingAssembly, setSelectingAssembly] = useState(false);
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
   const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
-  const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential">("merge-sort");
+  const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential" | "halves">("merge-sort");
+  const [assemblyModel, setAssemblyModel] = useState(DEFAULT_ASSEMBLY_MODEL);
+  const [assemblyEffort, setAssemblyEffort] = useState("max");
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
   const [critiquePromptId, setCritiquePromptId] = useState<string>("");
@@ -447,8 +457,10 @@ export default function ChapterPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fragmentIds,
-            model: "deepseek-v4-pro",
+            model: assemblyModel,
+            effort: assemblyEffort,
             assemblyAlgorithm,
+            ...(assemblyEffort === "off" ? { temperature: defaultTemperature } : {}),
             ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
@@ -1752,13 +1764,34 @@ export default function ChapterPage() {
           {/* Assembly controls */}
           <div className="flex items-center justify-between pt-4 border-t">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Model: DeepSeek V4 Pro</span>
-              <Select value={assemblyAlgorithm} onValueChange={(v) => setAssemblyAlgorithm(v as "merge-sort" | "sequential")}>
-                <SelectTrigger className="w-[120px] h-7 text-[10px]">
+              <Select value={assemblyModel} onValueChange={setAssemblyModel}>
+                <SelectTrigger className="w-[140px] h-7 text-[10px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSEMBLY_MODELS.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="text-[10px]">
+                      {m.short}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={assemblyEffort} onValueChange={setAssemblyEffort}>
+                <SelectTrigger className="w-[60px] h-7 text-[10px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="max" className="text-[10px]">Max</SelectItem>
+                  <SelectItem value="off" className="text-[10px]">Off</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={assemblyAlgorithm} onValueChange={(v) => setAssemblyAlgorithm(v as "merge-sort" | "sequential" | "halves")}>
+                <SelectTrigger className="w-[110px] h-7 text-[10px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="merge-sort" className="text-[10px]">Merge-Sort</SelectItem>
+                  <SelectItem value="halves" className="text-[10px]">Halves</SelectItem>
                   <SelectItem value="sequential" className="text-[10px]">Sequential</SelectItem>
                 </SelectContent>
               </Select>

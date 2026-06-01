@@ -176,11 +176,17 @@ async function mergeTwoFragments(
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2);
 
+  // Anthropic ephemeral cache: the assemblyPrompt.content (system prompt) is static
+  // across all merge calls in a chapter. Cache it to avoid re-sending every merge.
+  const isAnthropic = getProviderForModel(model) === "anthropic";
+  const useCache = isAnthropic && !!assemblyPrompt.userPrompt;
+
   const result = await generateCompletion({
     model,
     systemPrompt,
     userPrompt: userContent,
     maxTokens: effectiveMaxTokens,
+    ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });
@@ -256,7 +262,82 @@ export async function generateChapterAssemblyHierarchical(
   };
 }
 
-export type AssemblyAlgorithm = "merge-sort" | "sequential";
+export async function generateChapterAssemblyHalves(
+  assemblyPrompt: PromptLike,
+  fragments: { title?: string; content: string }[],
+  placeholders: Record<string, string>,
+  model = DEFAULT_GENERATION_MODEL,
+  temperature?: number,
+  effort?: ReasoningEffort,
+  maxTokens?: number,
+): Promise<GenerateResult> {
+  if (fragments.length === 0) {
+    throw new Error("No fragments to assemble");
+  }
+
+  if (fragments.length === 1) {
+    return {
+      text: fragments[0].content,
+      model,
+      provider: getProviderForModel(model),
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
+  if (fragments.length === 2) {
+    return mergeTwoFragments(
+      fragments[0], fragments[1],
+      assemblyPrompt, placeholders, model, temperature, effort, maxTokens,
+    );
+  }
+
+  const totalUsage = { inputTokens: 0, outputTokens: 0 };
+
+  // Split into two roughly equal halves
+  const mid = Math.floor(fragments.length / 2);
+  const leftFragments = fragments.slice(0, mid);
+  const rightFragments = fragments.slice(mid);
+
+  // Assemble each half in one shot using the full assembly prompt
+  const assembleHalf = async (
+    half: { title?: string; content: string }[],
+  ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> => {
+    if (half.length === 1) {
+      return { text: half[0].content, usage: { inputTokens: 0, outputTokens: 0 } };
+    }
+    const result = await generateChapterAssembly(
+      assemblyPrompt, half, placeholders,
+      model, temperature, effort, maxTokens,
+    );
+    return { text: result.text, usage: result.usage };
+  };
+
+  const leftResult = await assembleHalf(leftFragments);
+  totalUsage.inputTokens += leftResult.usage.inputTokens;
+  totalUsage.outputTokens += leftResult.usage.outputTokens;
+
+  const rightResult = await assembleHalf(rightFragments);
+  totalUsage.inputTokens += rightResult.usage.inputTokens;
+  totalUsage.outputTokens += rightResult.usage.outputTokens;
+
+  // Merge the two assembled halves
+  const merged = await mergeTwoFragments(
+    { content: leftResult.text },
+    { content: rightResult.text },
+    assemblyPrompt, placeholders, model, temperature, effort, maxTokens,
+  );
+  totalUsage.inputTokens += merged.usage.inputTokens;
+  totalUsage.outputTokens += merged.usage.outputTokens;
+
+  return {
+    text: merged.text,
+    model,
+    provider: getProviderForModel(model),
+    usage: totalUsage,
+  };
+}
+
+export type AssemblyAlgorithm = "merge-sort" | "sequential" | "halves";
 
 export async function generateChapterAssemblySequential(
   assemblyPrompt: PromptLike,
@@ -353,11 +434,16 @@ export async function generateChapterAssembly(
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length);
 
+  // Anthropic ephemeral cache: system prompt (assemblyPrompt.content) is static
+  const isAnthropic = getProviderForModel(model) === "anthropic";
+  const useCache = isAnthropic && !!assemblyPrompt.userPrompt;
+
   const result = await generateCompletion({
     model,
     systemPrompt: effectiveSystemPrompt,
     userPrompt: content,
     maxTokens: effectiveMaxTokens,
+    ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });

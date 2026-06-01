@@ -527,6 +527,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
   schema: T | undefined,
   effortConfig: EffortConfig & { kind: "anthropic" },
   cacheSystemPrompt?: boolean,
+  temperature?: number,
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getAnthropicClient();
   const systemParam = buildAnthropicSystemPrompt(
@@ -551,7 +552,9 @@ async function completeWithAnthropic<T extends z.ZodType>(
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.effort
         ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
-        : {}),
+        : temperature !== undefined
+          ? { temperature }
+          : {}),
       tools: [
         {
           name: "respond",
@@ -601,7 +604,9 @@ async function completeWithAnthropic<T extends z.ZodType>(
       messages: [{ role: "user" as const, content: userPrompt }],
       ...(effortConfig.effort
         ? { thinking: { type: "adaptive" as const }, output_config: { effort: effortConfig.effort } }
-        : {}),
+        : temperature !== undefined
+          ? { temperature }
+          : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -915,6 +920,7 @@ export async function generateCompletion<T extends z.ZodType>(
           schema,
           effortConfig as EffortConfig & { kind: "anthropic" },
           options.cacheSystemPrompt,
+          temperature,
         );
         break;
       case "google":

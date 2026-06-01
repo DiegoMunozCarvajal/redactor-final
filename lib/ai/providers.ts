@@ -78,6 +78,13 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     supportsStructuredOutput: true,
   },
   {
+    id: "claude-opus-4-8",
+    label: "Claude Opus 4.8",
+    provider: "anthropic",
+    pricing: { input: 15, output: 75 },
+    supportsStructuredOutput: true,
+  },
+  {
     id: "claude-opus-4-7",
     label: "Claude Opus 4.7",
     provider: "anthropic",
@@ -160,9 +167,10 @@ export const MODELS_BY_STAGE = {
     ["claude-haiku-4-5", "gpt-5.5-mini", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),
   ),
   draft_small_book: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   assemble_small_book_chapter: [
+    requireModelDefinition("claude-opus-4-8"),
     requireModelDefinition("claude-opus-4-7"),
     requireModelDefinition("claude-sonnet-4-6"),
     requireModelDefinition("gpt-5.5"),
@@ -172,10 +180,10 @@ export const MODELS_BY_STAGE = {
     requireModelDefinition("deepseek-v4-pro"),
   ],
   draft_workbook: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.4", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   critique_revise: AVAILABLE_MODELS.filter((m) =>
-    ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
+    ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "gpt-5.5", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id)
   ),
   book_title: AVAILABLE_MODELS.filter((m) =>
     ["claude-haiku-4-5", "gpt-5.5-mini", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4", "gemini-2.5-flash", "gemini-2.5-pro", "deepseek-v4-flash", "deepseek-v4-pro"].includes(m.id),

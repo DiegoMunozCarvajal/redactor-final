@@ -42,7 +42,11 @@ export async function POST(
   const temperature = typeof body.temperature === "number" ? body.temperature : undefined;
   const effort = body.effort as "off" | "max" | undefined;
   const skipAssembly = body.skipAssembly === true;
-  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential" ? "sequential" : "merge-sort";
+  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
+    ? "sequential"
+    : body.assemblyAlgorithm === "halves"
+      ? "halves"
+      : "merge-sort";
 
   // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two

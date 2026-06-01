@@ -32,7 +32,7 @@ export const chapterGenerations = pgTable(
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{
-      algorithm?: "merge-sort" | "sequential" | "critique";
+      algorithm?: "merge-sort" | "sequential" | "halves" | "critique";
       promptId?: string;
       promptTitle?: string;
       promptSource?: string;

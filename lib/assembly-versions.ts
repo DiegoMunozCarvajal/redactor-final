@@ -1,5 +1,5 @@
 export interface AssemblyMetadata {
-  algorithm?: "merge-sort" | "sequential" | "critique";
+  algorithm?: "merge-sort" | "sequential" | "halves" | "critique";
   promptId?: string;
   promptTitle?: string;
   promptSource?: string;
