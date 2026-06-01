@@ -3,7 +3,11 @@
  * Redacts common secret patterns and truncates to 500 characters.
  */
 export function sanitizeError(err: unknown): string {
-  const message = err instanceof Error ? err.message : "Unknown error";
+  let message = err instanceof Error ? err.message : "Unknown error";
+  // Include cause (e.g. Drizzle wraps PostgreSQL errors — real error is in .cause)
+  if (err instanceof Error && err.cause instanceof Error) {
+    message = `${message} [cause: ${err.cause.message}]`;
+  }
   // Redact common secret patterns before truncation
   const redacted = message
     .replace(/sk-[a-zA-Z0-9]{24,}/g, "sk-***")
