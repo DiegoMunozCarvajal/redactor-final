@@ -93,29 +93,6 @@ export function AssemblyPromptSection({
               </CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              {/* Assembly library dropdown — always visible */}
-              {assemblyLibrary && assemblyLibrary.length > 0 && onSelectFromLibrary && (
-                <div className="flex items-center gap-1.5">
-                  <select
-                    className="h-7 rounded-md border border-input bg-background px-2 text-[10px] max-w-[180px]"
-                    value={prompt.id}
-                    onChange={(e) => {
-                      if (e.target.value && e.target.value !== prompt.id) {
-                        onSelectFromLibrary(e.target.value)
-                      }
-                    }}
-                  >
-                    {assemblyLibrary.map((ap) => (
-                      <option key={ap.id} value={ap.id}>
-                        {ap.name}
-                      </option>
-                    ))}
-                  </select>
-                  {selectingFromLibrary && (
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                  )}
-                </div>
-              )}
               {onAssemble && (
                 <Button size="sm" className="text-xs" onClick={onAssemble} disabled={assembling}>
                   {assembling ? (

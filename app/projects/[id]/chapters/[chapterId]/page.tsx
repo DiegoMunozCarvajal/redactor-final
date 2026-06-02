@@ -1479,7 +1479,7 @@ export default function ChapterPage() {
         assemblyLibrary={assemblyPromptList}
         onSelectFromLibrary={handleSelectAssemblyPrompt}
         selectingFromLibrary={selectingAssembly}
-        onAssemble={() => setAssemblyModalOpen(true)}
+        onAssemble={openAssemblyModal}
         assembling={isAssemblingChapter}
         onDelete={async () => {
           if (!assemblyPrompt) return;
