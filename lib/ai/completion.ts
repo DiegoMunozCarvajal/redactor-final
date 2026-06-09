@@ -9,7 +9,7 @@ import OpenAI from "openai";
 import { getModelPricing, getProviderForModel, requireModelDefinition } from "./providers";
 type TrackedStage = string;
 
-const STAGE_TIMEOUT_MS = 300_000; // 5 minutes
+const STAGE_TIMEOUT_MS = 900_000; // 15 minutes — Opus 4.8 + thinking can exceed 10m
 
 type ProviderResult<T> = {
   data: T;
@@ -553,7 +553,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
     });
     const jsonSchema = sanitizeForAnthropic(rawSchema as Record<string, unknown>);
 
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model,
       max_tokens: maxTokens ?? 16384,
       system: systemParam,
@@ -577,6 +577,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
       ],
       tool_choice: { type: "tool" as const, name: "respond" },
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
     const completionTokens = response.usage?.output_tokens ?? 0;
@@ -610,7 +611,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
     // Thinking tokens count against max_tokens. When effort is active, the
     // model needs extra budget — default to 32768 so visible output isn't starved.
     const defaultMaxTokens = effortConfig.effort ? 32768 : 16384;
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model,
       max_tokens: maxTokens ?? defaultMaxTokens,
       system: systemParam,
@@ -621,6 +622,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
           ? { temperature }
           : {}),
     }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
     const completionTokens = response.usage?.output_tokens ?? 0;
