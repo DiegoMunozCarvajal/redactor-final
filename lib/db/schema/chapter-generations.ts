@@ -29,6 +29,9 @@ export const chapterGenerations = pgTable(
       model?: string;
       provider?: string;
       effort?: string;
+      algorithm?: string;
+      fragmentIds?: string[];
+      assemblyPromptId?: string;
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{

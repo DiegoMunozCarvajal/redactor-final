@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, projectPrompts, assemblyPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
-import { generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type AssemblyAlgorithm } from "@/lib/generate";
+import { ensureTriggerConfigured } from "@/lib/trigger/setup";
+import { generateChapter } from "@/trigger/generate-chapter";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import type { AssemblyAlgorithm } from "@/lib/generate";
 
 export async function POST(
   req: NextRequest,
@@ -46,7 +48,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const fragmentIds: string[] = body.fragmentIds ?? [];
   const model = body.model as string | undefined;
-  const effort = body.effort as "off" | "max" | undefined;
+  const effort = body.effort as "off" | "max" | "xhigh" | undefined;
   const assemblyPromptId = body.assemblyPromptId as string | undefined;
   const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
     ? "sequential"
@@ -66,19 +68,11 @@ export async function POST(
     );
   }
 
-  // Load selected fragments with prompt titles
+  // Pre-flight: verify fragments exist
   const selectedFragments = await db
-    .select({
-      id: fragments.id,
-      content: fragments.content,
-      position: fragments.position,
-      generationId: fragments.chapterGenerationId,
-      promptTitle: projectPrompts.title,
-    })
+    .select({ id: fragments.id })
     .from(fragments)
-    .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
-    .where(inArray(fragments.id, fragmentIds))
-    .orderBy(asc(fragments.position));
+    .where(inArray(fragments.id, fragmentIds));
 
   if (selectedFragments.length !== fragmentIds.length) {
     return NextResponse.json(
@@ -87,19 +81,11 @@ export async function POST(
     );
   }
 
-  // Load the assembly prompt — either from the global assembly_prompts table (if assemblyPromptId provided)
-  // or from the chapter's embedded project prompt (backward compat).
-  let assemblyPrompt: {
-    id: string;
-    title: string;
-    content: string;
-    userPrompt?: string | null;
-    source: "library" | "chapter";
-  } | null = null;
-
+  // Pre-flight: verify an assembly prompt will be available at task execution.
+  // Priority: explicit assemblyPromptId > project default > chapter embedded.
   if (assemblyPromptId) {
     const [ap] = await db
-      .select()
+      .select({ id: assemblyPrompts.id })
       .from(assemblyPrompts)
       .where(eq(assemblyPrompts.id, assemblyPromptId))
       .limit(1);
@@ -110,16 +96,10 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = {
-      id: ap.id,
-      title: ap.name,
-      content: ap.content,
-      userPrompt: ap.userPrompt,
-      source: "library",
-    };
-  } else {
+  } else if (!project.assemblyPromptId) {
+    // No explicit prompt and no project default — must have chapter-level
     const [embedded] = await db
-      .select()
+      .select({ id: projectPrompts.id })
       .from(projectPrompts)
       .where(
         and(
@@ -135,18 +115,45 @@ export async function POST(
         { status: 400 },
       );
     }
-    assemblyPrompt = {
-      id: embedded.id,
-      title: embedded.title,
-      content: embedded.content,
-      userPrompt: embedded.userPrompt,
-      source: "chapter",
-    };
   }
 
+  // Pre-flight: validate placeholders
   const placeholders = await getChapterPlaceholders(chapterId, project.topic);
+
+  // Resolve which assembly prompt will be used for placeholder validation
+  let apContent: string | null = null;
+  let apUserPrompt: string | null = null;
+
+  const effectiveAssemblyPromptId = assemblyPromptId ?? project.assemblyPromptId;
+  if (effectiveAssemblyPromptId) {
+    const [ap] = await db
+      .select({ content: assemblyPrompts.content, userPrompt: assemblyPrompts.userPrompt })
+      .from(assemblyPrompts)
+      .where(eq(assemblyPrompts.id, effectiveAssemblyPromptId))
+      .limit(1);
+    if (ap) {
+      apContent = ap.content;
+      apUserPrompt = ap.userPrompt;
+    }
+  } else {
+    const [embedded] = await db
+      .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
+      .from(projectPrompts)
+      .where(
+        and(
+          eq(projectPrompts.chapterId, chapterId),
+          eq(projectPrompts.isAssembly, true),
+        ),
+      )
+      .limit(1);
+    if (embedded) {
+      apContent = embedded.content;
+      apUserPrompt = embedded.userPrompt;
+    }
+  }
+
   const missingPlaceholders = getMissingPlaceholderNames(
-    [assemblyPrompt.content, assemblyPrompt.userPrompt].filter(Boolean) as string[],
+    [apContent, apUserPrompt].filter(Boolean) as string[],
     placeholders,
   );
   if (missingPlaceholders.length > 0) {
@@ -159,68 +166,57 @@ export async function POST(
     );
   }
 
-  let generationId: string | undefined;
-
+  // Serialize rate limit check and Trigger.dev dispatch under advisory lock
+  let gen: typeof chapterGenerations.$inferSelect | null = null;
   const lockResult = await withProjectLock(projectId, async () => {
+    // Rate check BEFORE creating our own row — otherwise it self-counts
+    // and always trips MAX_GENERATIONS_PER_WINDOW = 1.
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
-    // Create generation record inside lock, after rate check,
-    // so the check doesn't count this request's own record.
-    const [gen] = await db
+    const meta = {
+      type: "assembly" as const,
+      model: model ?? null,
+      effort: effort ?? null,
+      algorithm: assemblyAlgorithm,
+      fragmentIds,
+      ...(assemblyPromptId ? { assemblyPromptId } : {}),
+    };
+    const [row] = await db
       .insert(chapterGenerations)
-      .values({ projectId, chapterId, status: "assembling" })
+      .values({
+        projectId,
+        chapterId,
+        status: "pending" as const,
+        generationMetadata: meta as typeof chapterGenerations.$inferSelect["generationMetadata"],
+      })
       .returning();
-    generationId = gen.id;
+    gen = row;
 
     try {
-      const fragmentContents = selectedFragments.map((f) => ({
-        title: f.promptTitle ?? undefined,
-        content: f.content ?? "",
-      }));
-      const assemble = assemblyAlgorithm === "sequential"
-        ? generateChapterAssemblySequential
-        : assemblyAlgorithm === "halves"
-          ? generateChapterAssemblyHalves
-          : generateChapterAssemblyHierarchical;
-
-      const assembled = await assemble(
-        assemblyPrompt,
-        fragmentContents,
-        placeholders,
-        model,
-        undefined,
-        effort,
-        undefined,
+      ensureTriggerConfigured();
+      await generateChapter.trigger(
+        {
+          generationId: gen.id,
+          projectId,
+          ...(model ? { model } : {}),
+          ...(effort !== undefined ? { effort } : {}),
+          assemblyAlgorithm,
+          fragmentIds,
+          ...(assemblyPromptId ? { assemblyPromptId } : {}),
+        },
+        { idempotencyKey: gen.id },
       );
-
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: assembled.text,
-          assemblyMetadata: {
-            algorithm: assemblyAlgorithm,
-            promptId: assemblyPrompt.id,
-            promptTitle: assemblyPrompt.title,
-            promptSource: assemblyPrompt.source,
-            model: assembled.model,
-            fragmentCount: fragmentContents.length,
-          },
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, gen.id));
-
-      return { generationId: gen.id, assembledContent: assembled.text };
+      return gen;
     } catch (err) {
       const message = sanitizeError(err);
       await db
         .update(chapterGenerations)
         .set({ status: "failed", error: message })
         .where(eq(chapterGenerations.id, gen.id));
-      throw err;
+      return gen;
     }
   });
 
@@ -238,17 +234,14 @@ export async function POST(
     );
   }
 
-  const genId = generationId;
-  if (!genId) {
-    return NextResponse.json({ error: "failed to create generation" }, { status: 500 });
-  }
+  const genId = gen!.id;
 
   logAudit({
     userId: user.id,
     action: "chapter.assemble",
     resourceType: "chapter_generation",
     resourceId: genId,
-    metadata: { projectId, chapterId, fragmentIds },
+    metadata: { projectId, chapterId, fragmentIds, assemblyAlgorithm },
   });
 
   return NextResponse.json(lockResult.result);

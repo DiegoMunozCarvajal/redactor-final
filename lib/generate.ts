@@ -111,6 +111,12 @@ export function applyPlaceholders(content: string, placeholders: Record<string, 
   return content;
 }
 
+/** Strip <<NAME>>...<</NAME>> wrappers that applyPlaceholders inserts.
+ *  LLMs sometimes reproduce these verbatim. Remove them from generated output. */
+function stripPlaceholderWrappers(text: string): string {
+  return text.replace(/<<([A-Z_]+)>>([\s\S]*?)<<\/\1>>/g, "$2");
+}
+
 export async function generatePromptContent(
   params: GeneratePromptParams,
 ): Promise<GenerateResult> {
@@ -146,7 +152,7 @@ export async function generatePromptContent(
   });
 
   return {
-    text: result.data as string,
+    text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
     usage: {
@@ -203,7 +209,7 @@ async function mergeTwoFragments(
   });
 
   return {
-    text: result.data as string,
+    text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
     usage: {
@@ -460,7 +466,7 @@ export async function generateChapterAssembly(
   });
 
   return {
-    text: result.data as string,
+    text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
     usage: {
@@ -535,7 +541,7 @@ export async function generateChapterCritique(
   });
 
   return {
-    text: result.data as string,
+    text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
     usage: {

@@ -9,7 +9,7 @@ import {
   assemblyPrompts,
   chapterPlaceholders,
 } from "@/lib/db/schema";
-import { eq, asc, and } from "drizzle-orm";
+import { eq, asc, and, inArray } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
@@ -22,8 +22,17 @@ export const generateChapter = task({
     minTimeoutInMs: 5_000,
     maxTimeoutInMs: 60_000,
   },
-  run: async (payload: { generationId: string; projectId: string; model?: string; effort?: "off" | "max" | "xhigh"; skipAssembly?: boolean; assemblyAlgorithm?: AssemblyAlgorithm }) => {
-    const { generationId, projectId, model, effort, skipAssembly, assemblyAlgorithm } = payload;
+  run: async (payload: {
+      generationId: string;
+      projectId: string;
+      model?: string;
+      effort?: "off" | "max" | "xhigh";
+      skipAssembly?: boolean;
+      assemblyAlgorithm?: AssemblyAlgorithm;
+      fragmentIds?: string[];
+      assemblyPromptId?: string;
+    }) => {
+    const { generationId, projectId, model, effort, skipAssembly, assemblyAlgorithm, fragmentIds, assemblyPromptId: payloadAssemblyPromptId } = payload;
 
     // Load generation
     const [gen] = await db
@@ -137,12 +146,13 @@ export const generateChapter = task({
       };
     }
 
-    // If project has a global assembly prompt, load it and use it instead
-    if (project.assemblyPromptId) {
+    // Resolve assembly prompt with priority: payload > project > chapter
+    const effectiveAssemblyPromptId = payloadAssemblyPromptId ?? project.assemblyPromptId;
+    if (effectiveAssemblyPromptId) {
       const [globalAp] = await db
         .select()
         .from(assemblyPrompts)
-        .where(eq(assemblyPrompts.id, project.assemblyPromptId))
+        .where(eq(assemblyPrompts.id, effectiveAssemblyPromptId))
         .limit(1);
       if (globalAp) {
         assemblyPrompt = {
@@ -154,7 +164,7 @@ export const generateChapter = task({
           promptTitle: globalAp.name,
           promptSource: "library",
         };
-        // Sync placeholders from global assembly prompt to chapterPlaceholders
+        // Sync placeholders from assembly prompt to chapterPlaceholders
         const apContents = [globalAp.content, globalAp.userPrompt].filter(
           (s): s is string => typeof s === "string" && s.length > 0,
         );
@@ -175,10 +185,13 @@ export const generateChapter = task({
       const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
       // Mandatory placeholder validation: all {name} tokens in content AND assembly
-      // prompts must have definitions before generating fragments
-      const contentPromptStrings = contentPrompts.flatMap((p) =>
-        [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
-      );
+      // prompts must have definitions before generating fragments.
+      // In assembly-only mode, content prompts are irrelevant — only validate assembly.
+      const contentPromptStrings = fragmentIds?.length
+        ? []
+        : contentPrompts.flatMap((p) =>
+            [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
+          );
       const assemblyPromptStrings = assemblyPrompt
         ? [assemblyPrompt.content, assemblyPrompt.userPrompt].filter(
             (s): s is string => typeof s === "string" && s.length > 0,
@@ -202,42 +215,80 @@ export const generateChapter = task({
         throw new Error(msg);
       }
 
-      for (const prompt of contentPrompts) {
-        const result = await generatePromptContent({
-          prompt,
-          placeholders,
-          projectTopic: project.topic,
-          ...(model ? { model } : {}),
-          ...(effort !== undefined ? { effort } : {}),
-        });
-
+      if (fragmentIds && fragmentIds.length > 0) {
+        // Assembly-only mode: use pre-selected fragments, skip content generation.
+        // Transition generating → assembling immediately.
         await db
-          .insert(fragments)
-          .values({
-            chapterGenerationId: generationId,
-            projectPromptId: prompt.id,
-            position: prompt.position,
-            content: result.text,
-            modelUsed: result.model,
-            tokensUsed:
-              (result.usage?.inputTokens ?? 0) +
-              (result.usage?.outputTokens ?? 0),
-            metadata: result.provider
-              ? { provider: result.provider }
-              : undefined,
+          .update(chapterGenerations)
+          .set({ status: "assembling" })
+          .where(eq(chapterGenerations.id, generationId));
+
+        const selectedFragments = await db
+          .select({
+            id: fragments.id,
+            content: fragments.content,
+            position: fragments.position,
+            promptTitle: projectPrompts.title,
+          })
+          .from(fragments)
+          .leftJoin(
+            projectPrompts,
+            eq(fragments.projectPromptId, projectPrompts.id),
+          )
+          .where(inArray(fragments.id, fragmentIds))
+          .orderBy(asc(fragments.position));
+
+        if (selectedFragments.length !== fragmentIds.length) {
+          throw new Error(
+            `Some fragments not found. Expected ${fragmentIds.length}, found ${selectedFragments.length}.`,
+          );
+        }
+
+        for (const f of selectedFragments) {
+          fragmentContents.push({
+            title: (f.promptTitle ?? "Fragment") as string,
+            content: f.content ?? "",
+          });
+        }
+      } else {
+        // Normal mode: generate content for each content prompt
+        for (const prompt of contentPrompts) {
+          const result = await generatePromptContent({
+            prompt,
+            placeholders,
+            projectTopic: project.topic,
+            ...(model ? { model } : {}),
+            ...(effort !== undefined ? { effort } : {}),
           });
 
-        fragmentContents.push({
-          title: prompt.title,
-          content: result.text,
-        });
-      }
+          await db
+            .insert(fragments)
+            .values({
+              chapterGenerationId: generationId,
+              projectPromptId: prompt.id,
+              position: prompt.position,
+              content: result.text,
+              modelUsed: result.model,
+              tokensUsed:
+                (result.usage?.inputTokens ?? 0) +
+                (result.usage?.outputTokens ?? 0),
+              metadata: result.provider
+                ? { provider: result.provider }
+                : undefined,
+            });
 
-      // Transition generating → assembling
-      await db
-        .update(chapterGenerations)
-        .set({ status: "assembling" })
-        .where(eq(chapterGenerations.id, generationId));
+          fragmentContents.push({
+            title: prompt.title,
+            content: result.text,
+          });
+        }
+
+        // Transition generating → assembling
+        await db
+          .update(chapterGenerations)
+          .set({ status: "assembling" })
+          .where(eq(chapterGenerations.id, generationId));
+      }
 
       // Assemble chapter (unless skipped)
       if (assemblyPrompt && fragmentContents.length > 0 && !skipAssembly) {

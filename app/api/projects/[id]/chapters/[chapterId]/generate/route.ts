@@ -51,21 +51,20 @@ export async function POST(
   // Rate limit must be inside the lock to close the TOCTOU window where two
   // concurrent requests both pass the check before either acquires the lock.
   //
-  // Create the generation row INSIDE the lock so a failed lock acquisition
-  // doesn't leave a stuck "generating" row behind.
+  // Rate check BEFORE insert — otherwise the row we just created self-counts
+  // and always trips MAX_GENERATIONS_PER_WINDOW = 1.
   let gen: typeof chapterGenerations.$inferSelect | null = null;
   const lockResult = await withProjectLock(projectId, async () => {
+    const rateCheck = await checkProjectRateLimit(projectId);
+    if (!rateCheck.allowed) {
+      return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
+    }
+
     const [row] = await db
       .insert(chapterGenerations)
       .values({ projectId, chapterId, status: "pending" })
       .returning();
     gen = row;
-    const rateCheck = await checkProjectRateLimit(projectId);
-    if (!rateCheck.allowed) {
-      // Delete the row we just created — don't leave a stuck "generating" row
-      await db.delete(chapterGenerations).where(eq(chapterGenerations.id, row.id));
-      return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
-    }
 
     try {
       ensureTriggerConfigured();
