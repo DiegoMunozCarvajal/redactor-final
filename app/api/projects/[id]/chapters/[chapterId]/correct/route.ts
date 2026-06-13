@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, critiquePrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, correctorPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
-import { generateChapterCritique } from "@/lib/generate";
+import { generateChapterCorrection } from "@/lib/generate";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
@@ -45,24 +45,54 @@ export async function POST(
     return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const critiquePromptId = body.critiquePromptId as string | undefined;
+  const correctorPromptId = body.correctorPromptId as string | undefined;
+  const correctorPrompt = body.correctorPrompt as { content: string; userPrompt?: string | null } | undefined;
+  const critiqueGenerationId = body.critiqueGenerationId as string | undefined;
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
-  if (!critiquePromptId) {
+  // Require either correctorPromptId (from library) or correctorPrompt (inline from project prompt)
+  if (!correctorPromptId && !correctorPrompt) {
     return NextResponse.json(
-      { error: "critiquePromptId is required" },
+      { error: "correctorPromptId or correctorPrompt is required" },
       { status: 400 },
     );
   }
 
-  // Determine what content to critique: use provided content or fetch latest assembly
-  let contentToCritique: string;
+  if (!critiqueGenerationId) {
+    return NextResponse.json(
+      { error: "critiqueGenerationId is required" },
+      { status: 400 },
+    );
+  }
+
+  // Load the critique generation to get its content
+  const [critiqueGen] = await db
+    .select()
+    .from(chapterGenerations)
+    .where(
+      and(
+        eq(chapterGenerations.id, critiqueGenerationId),
+        eq(chapterGenerations.projectId, projectId),
+        eq(chapterGenerations.chapterId, chapterId),
+      ),
+    )
+    .limit(1);
+
+  if (!critiqueGen?.assembledContent) {
+    return NextResponse.json(
+      { error: "critique generation not found or has no content" },
+      { status: 400 },
+    );
+  }
+
+  // Determine what content to correct: use provided content or fetch latest assembly
+  let contentToCorrect: string;
   if (body.content && typeof body.content === "string") {
-    contentToCritique = body.content;
+    contentToCorrect = body.content;
   } else {
     // Fetch the latest completed assembly for this chapter (exclude critiques and corrections)
-    const [latest] = await db
+    const [latestAssembly] = await db
       .select()
       .from(chapterGenerations)
       .where(
@@ -76,39 +106,52 @@ export async function POST(
       .orderBy(desc(chapterGenerations.completedAt))
       .limit(1);
 
-    if (!latest?.assembledContent) {
+    if (!latestAssembly?.assembledContent) {
       return NextResponse.json(
         { error: "No assembled content found. Assemble the chapter first, or provide content directly." },
         { status: 400 },
       );
     }
-    contentToCritique = latest.assembledContent;
+    contentToCorrect = latestAssembly.assembledContent;
   }
 
-  // Load the critique prompt
-  const [cp] = await db
-    .select()
-    .from(critiquePrompts)
-    .where(eq(critiquePrompts.id, critiquePromptId))
-    .limit(1);
+  // Resolve corrector prompt: inline object or library lookup
+  let cpContent: string;
+  let cpUserPrompt: string | null;
+  let cpName: string;
 
-  if (!cp) {
-    return NextResponse.json(
-      { error: "critique prompt not found" },
-      { status: 400 },
-    );
+  if (correctorPrompt) {
+    cpContent = correctorPrompt.content;
+    cpUserPrompt = correctorPrompt.userPrompt ?? null;
+    cpName = "Project Corrector";
+  } else {
+    const [cp] = await db
+      .select()
+      .from(correctorPrompts)
+      .where(eq(correctorPrompts.id, correctorPromptId!))
+      .limit(1);
+
+    if (!cp) {
+      return NextResponse.json(
+        { error: "corrector prompt not found" },
+        { status: 400 },
+      );
+    }
+    cpContent = cp.content;
+    cpUserPrompt = cp.userPrompt;
+    cpName = cp.name;
   }
 
   const placeholders = await getChapterPlaceholders(chapterId, project.topic);
   const missingPlaceholders = getMissingPlaceholderNames(
-    [cp.content, cp.userPrompt].filter(Boolean) as string[],
+    [cpContent, cpUserPrompt].filter(Boolean) as string[],
     placeholders,
   );
   if (missingPlaceholders.length > 0) {
     const missing = missingPlaceholders.join(", ");
     return NextResponse.json(
       {
-        error: `Cannot run critique "${cp.name}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
+        error: `Cannot run corrector "${cpName}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
       },
       { status: 400 },
     );
@@ -134,45 +177,54 @@ export async function POST(
           chapterId,
           status: "generating",
           generationMetadata: {
-            type: "critique",
-            promptId: cp.id,
-            promptTitle: cp.name,
+            type: "correction",
+            promptId: correctorPromptId ?? "inline",
+            promptTitle: cpName,
             model: resolvedModel,
+            critiqueGenerationId,
           },
         })
         .returning();
       gen = inserted;
       generationId = gen.id;
-      const result = await generateChapterCritique({
-        critiquePrompt: {
-          content: cp.content,
-          userPrompt: cp.userPrompt,
+
+      const result = await generateChapterCorrection({
+        correctorPrompt: {
+          content: cpContent,
+          userPrompt: cpUserPrompt,
         },
-        content: contentToCritique,
+        content: contentToCorrect,
+        critiqueContent: critiqueGen.assembledContent!,
         placeholders,
         model: resolvedModel,
         effort,
         projectTopic: project.topic,
       });
 
+      // Extract <capitulo_corregido> from the output for clean display
+      const capMatch = result.text.match(/<capitulo_corregido>([\s\S]*?)<\/capitulo_corregido>/);
+      const cleanChapter = capMatch ? capMatch[1].trim() : result.text;
+
       await db
         .update(chapterGenerations)
         .set({
           status: "completed",
-          assembledContent: result.text,
+          assembledContent: cleanChapter,
           assemblyMetadata: {
-            algorithm: "critique",
-            promptId: cp.id,
-            promptTitle: cp.name,
-            promptSource: "library",
+            algorithm: "correction",
+            promptId: correctorPromptId ?? "inline",
+            promptTitle: cpName,
+            promptSource: correctorPromptId ? "library" : "project",
             model: result.model,
             fragmentCount: 1,
+            critiqueGenerationId,
+            correctionRaw: result.text,
           },
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, gen.id));
 
-      return { generationId: gen.id, critiqueContent: result.text };
+      return { generationId: gen.id, correctionContent: result.text };
     } catch (err) {
       const message = sanitizeError(err);
       if (gen) {
@@ -206,10 +258,10 @@ export async function POST(
 
   logAudit({
     userId: user.id,
-    action: "chapter.critique",
+    action: "chapter.correction",
     resourceType: "chapter_generation",
     resourceId: genId,
-    metadata: { projectId, chapterId, critiquePromptId: cp.id },
+    metadata: { projectId, chapterId, correctorPromptId: correctorPromptId ?? "inline", critiqueGenerationId },
   });
 
   return NextResponse.json(lockResult.result);

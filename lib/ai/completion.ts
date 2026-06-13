@@ -754,9 +754,10 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
 
   // DeepSeek json_object mode needs temperature=0 to prevent markdown
   // wrapping and hallucinated prose around the JSON output.
+  // DeepSeek V4 models only support temperature=1 outside json_object mode.
   // When thinking is enabled, temperature/top_p are silently ignored by the API
   // — omit them to avoid confusion.
-  const effectiveTemperature = schema ? 0 : temperature;
+  const effectiveTemperature = schema ? 0 : 1;
   // DeepSeek rejects thinking + structured output (json_object) together:
   // "Thinking may not be enabled when tool_choice forces tool use."
   // Force thinking disabled when a schema is present.
@@ -770,7 +771,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
     const reasoningEffort = effortConfig.thinkingDisabled
       ? undefined
       : (effortConfig.reasoningEffort as "minimal" | "low" | "medium" | "high");
-    return completeWithOpenAI(messages, model, temperature, maxTokens, undefined, {
+    return completeWithOpenAI(messages, model, effectiveTemperature, maxTokens, undefined, {
       kind: "openai" as const,
       reasoningEffort,
     }, deepseekClient);

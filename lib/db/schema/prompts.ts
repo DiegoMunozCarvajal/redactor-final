@@ -9,6 +9,7 @@ export const prompts = pgTable("prompts", {
   position: integer("position").notNull(),
   isAssembly: boolean("is_assembly").notNull().default(false),
   isCritique: boolean("is_critique").notNull().default(false),
+  isCorrector: boolean("is_corrector").notNull().default(false),
   title: text("title").notNull(),
   content: text("content").notNull(),
   userPrompt: text("user_prompt"),

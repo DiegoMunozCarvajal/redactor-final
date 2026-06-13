@@ -32,15 +32,18 @@ export const chapterGenerations = pgTable(
       algorithm?: string;
       fragmentIds?: string[];
       assemblyPromptId?: string;
+      critiqueGenerationId?: string;
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{
-      algorithm?: "merge-sort" | "sequential" | "halves" | "critique";
+      algorithm?: "merge-sort" | "sequential" | "halves" | "critique" | "correction";
       promptId?: string;
       promptTitle?: string;
       promptSource?: string;
       model?: string;
       fragmentCount?: number;
+      critiqueGenerationId?: string;
+      correctionRaw?: string;
     }>(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

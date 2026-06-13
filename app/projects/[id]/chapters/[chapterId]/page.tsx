@@ -52,6 +52,8 @@ import { enUS } from "date-fns/locale";
 import { MODELS_BY_STAGE } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
+import { CorrectorSection } from "@/components/prompts/corrector-section";
+import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
@@ -133,8 +135,10 @@ interface PromptData {
   position: number;
   isAssembly: boolean;
   isCritique: boolean;
+  isCorrector: boolean;
   title: string;
   content: string;
+  userPrompt?: string | null;
 }
 
 function statusBadge(status: string) {
@@ -184,6 +188,10 @@ export default function ChapterPage() {
   const [critiqueModel, setCritiqueModel] = useState(DEFAULT_MODEL);
   const [critiqueModalOpen, setCritiqueModalOpen] = useState(false);
   const [selectedCritiqueGenerationId, setSelectedCritiqueGenerationId] = useState<string | undefined>();
+  const [correctorPromptList, setCorrectorPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
+  const [selectingCorrector, setSelectingCorrector] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [correctorModalOpen, setCorrectorModalOpen] = useState(false);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
@@ -276,6 +284,17 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, []);
 
+  const fetchCorrectorLibrary = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/corrector-prompts", { signal });
+      if (signal?.aborted) return;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setCorrectorPromptList(data);
+      }
+    } catch { /* supplementary */ }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
@@ -284,9 +303,10 @@ export default function ChapterPage() {
       fetchPlaceholders(controller.signal),
       fetchAssemblyLibrary(controller.signal),
       fetchCritiqueLibrary(controller.signal),
+      fetchCorrectorLibrary(controller.signal),
     ]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary, fetchCritiqueLibrary]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary, fetchCritiqueLibrary, fetchCorrectorLibrary]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -685,6 +705,41 @@ export default function ChapterPage() {
     }
   }
 
+  async function handleSelectCorrectorPrompt(libraryId: string) {
+    setSelectingCorrector(true);
+    try {
+      const res = await fetch(`/api/corrector-prompts/${libraryId}`);
+      if (!res.ok) {
+        toast.error("Failed to load corrector prompt");
+        return;
+      }
+      const cp = await res.json();
+      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapterId: params.chapterId,
+          title: cp.name,
+          content: cp.content,
+          userPrompt: cp.userPrompt ?? null,
+          isCorrector: true,
+        }),
+      });
+      if (createRes.ok) {
+        toast.success(`Corrector prompt "${cp.name}" added`);
+        fetchPrompts();
+        fetchPlaceholders();
+      } else {
+        const err = await createRes.json().catch(() => ({}));
+        toast.error(err.error ?? "Failed to add corrector prompt");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSelectingCorrector(false);
+    }
+  }
+
   function openAssemblyModal() {
     // Pre-select the latest fragment for each content prompt
     const sel: Record<string, string> = {};
@@ -756,9 +811,10 @@ export default function ChapterPage() {
     }
   }
 
-  const contentPrompts = prompts.filter((p) => !p.isAssembly && !p.isCritique);
+  const contentPrompts = prompts.filter((p) => !p.isAssembly && !p.isCritique && !p.isCorrector);
   const assemblyPrompt = prompts.find((p) => p.isAssembly);
   const critiquePrompt = prompts.find((p) => p.isCritique);
+  const correctorPrompt = prompts.find((p) => p.isCorrector);
   const totalContentDone = contentPrompts.filter(
     (p) => promptFragmentMap.has(p.id),
   ).length;
@@ -770,7 +826,7 @@ export default function ChapterPage() {
   // Generations with null generationMetadata (pre-metadata records) pass through
   // safely: getAssemblyVersions filters on assembledContent, so they're excluded anyway.
   const assemblyGenerations = generations.filter(
-    (g) => g.generationMetadata?.type !== "critique",
+    (g) => g.generationMetadata?.type !== "critique" && g.generationMetadata?.type !== "correction",
   );
   const assemblyVersions = getAssemblyVersions(assemblyGenerations);
   const hasAssembly = assemblyVersions.length > 0;
@@ -1508,6 +1564,23 @@ export default function ChapterPage() {
         }}
       />
 
+      <CorrectorPromptSection
+        prompt={correctorPrompt}
+        correctorLibrary={correctorPromptList}
+        onSelectFromLibrary={handleSelectCorrectorPrompt}
+        selectingFromLibrary={selectingCorrector}
+        onCorrect={() => setCorrectorModalOpen(true)}
+        correcting={correcting}
+        onDelete={async () => {
+          if (!correctorPrompt) return;
+          await fetch(`/api/projects/${params.id}/prompts/${correctorPrompt.id}`, {
+            method: "DELETE",
+          });
+          fetchPrompts();
+          fetchPlaceholders();
+        }}
+      />
+
       {/* Assembly Modal */}
       <Dialog open={assemblyModalOpen} onOpenChange={setAssemblyModalOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
@@ -1679,6 +1752,23 @@ export default function ChapterPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Corrector Section */}
+      <CorrectorSection
+        projectId={params.id}
+        chapterId={params.chapterId}
+        generations={generations}
+        hasAssembly={hasAssembly}
+        projectCorrectorPromptId={correctorPrompt?.id}
+        projectCorrectorPromptContent={correctorPrompt?.content}
+        projectCorrectorPromptUserPrompt={correctorPrompt?.userPrompt}
+        modalOpen={correctorModalOpen}
+        onOpenChange={setCorrectorModalOpen}
+        onGenerationCreated={() => {
+          fetchChapter();
+          fetchPlaceholders();
+        }}
+      />
 
       {/* Critique Modal */}
       <Dialog open={critiqueModalOpen} onOpenChange={setCritiqueModalOpen}>

@@ -15,6 +15,7 @@ import {
   Wand2,
   Puzzle,
   MessageSquareQuote,
+  Wrench,
 } from "lucide-react";
 import { useDensity } from "@/lib/hooks/use-density";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const STATIC_ITEMS: NavItem[] = [
   { href: "/meta-prompts", label: "Meta-Prompts", icon: Wand2 },
   { href: "/assemblies", label: "Assembly", icon: Puzzle },
   { href: "/critiques", label: "Critique", icon: MessageSquareQuote },
+  { href: "/correctores", label: "Correctores", icon: Wrench },
 ];
 
 function getStoredCollapsed(): boolean {
@@ -331,7 +333,7 @@ function buildNavItems(pathname: string, resolvedLabels: Record<string, string>)
     return { ...item, active: isParentActive };
   });
 
-  const SKIP_ENTITY = new Set(["metaprompts", "assemblies", "critiques", "create", "chapters"]);
+  const SKIP_ENTITY = new Set(["metaprompts", "assemblies", "critiques", "correctores", "create", "chapters"]);
 
   if (parts.length < 2) return items;
 

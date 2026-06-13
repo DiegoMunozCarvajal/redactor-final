@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, content, userPrompt, position, isAssembly, isCritique } = body;
+  const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
@@ -62,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [prompt] = await db
     .update(prompts)
-    .set({ title, content, userPrompt, position, isAssembly, isCritique })
+    .set({ title, content, userPrompt, position, isAssembly, isCritique, isCorrector })
     .where(eq(prompts.id, id))
     .returning();
 

@@ -550,3 +550,76 @@ export async function generateChapterCritique(
     },
   };
 }
+
+export interface GenerateCorrectionParams {
+  correctorPrompt: PromptLike;
+  content: string;
+  critiqueContent: string;
+  placeholders: Record<string, string>;
+  model?: string;
+  temperature?: number;
+  effort?: ReasoningEffort;
+  maxTokens?: number;
+  projectTopic?: string | null;
+}
+
+export async function generateChapterCorrection(
+  params: GenerateCorrectionParams,
+): Promise<GenerateResult> {
+  const {
+    correctorPrompt,
+    content: chapterContent,
+    critiqueContent,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = params;
+
+  const effectiveSystemPrompt = correctorPrompt.userPrompt
+    ? correctorPrompt.content
+    : "";
+  const userContent = correctorPrompt.userPrompt ?? correctorPrompt.content;
+
+  let processedUserContent = applyPlaceholders(userContent, placeholders, projectTopic);
+
+  // Replace content placeholders
+  processedUserContent = processedUserContent.replace(
+    /\{\{CONTENIDO_CAPITULO\}\}/g,
+    chapterContent.replace(/\$/g, "$$$$"),
+  );
+  processedUserContent = processedUserContent.replace(
+    /\{\{CONTENIDO_CRITICA\}\}/g,
+    critiqueContent.replace(/\$/g, "$$$$"),
+  );
+
+  // Correction output scales with input (chapter + critique)
+  const inputLength = chapterContent.length + critiqueContent.length;
+  const effectiveMaxTokens = maxTokens ?? Math.max(8192, Math.ceil(inputLength / 4) + 8192);
+
+  // Anthropic ephemeral cache
+  const isAnthropic = getProviderForModel(model) === "anthropic";
+  const useCache = isAnthropic && !!correctorPrompt.userPrompt;
+
+  const result = await generateCompletion({
+    model,
+    systemPrompt: useCache ? "" : effectiveSystemPrompt,
+    userPrompt: processedUserContent,
+    maxTokens: effectiveMaxTokens,
+    ...(useCache ? { cachedSystemPrompt: correctorPrompt.content, cacheSystemPrompt: true } : {}),
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(effort !== undefined ? { effort } : {}),
+  });
+
+  return {
+    text: stripPlaceholderWrappers(result.data as string),
+    model,
+    provider: getProviderForModel(model),
+    usage: {
+      inputTokens: result.usage.promptTokens,
+      outputTokens: result.usage.completionTokens,
+    },
+  };
+}

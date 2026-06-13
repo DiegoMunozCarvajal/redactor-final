@@ -46,14 +46,14 @@ export async function PUT(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, content, userPrompt, position, isAssembly, isCritique } = body;
+  const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
 
   // Save version before updating assembly or critique prompt
-  if (isAssembly || isCritique || existing.isAssembly || existing.isCritique) {
+  if (isAssembly || isCritique || isCorrector || existing.isAssembly || existing.isCritique || existing.isCorrector) {
     await db.insert(promptVersions).values({
       promptId: existing.id,
       title: existing.title,
@@ -71,6 +71,7 @@ export async function PUT(
       ...(position !== undefined && { position }),
       ...(isAssembly !== undefined && { isAssembly }),
       ...(isCritique !== undefined && { isCritique }),
+      ...(isCorrector !== undefined && { isCorrector }),
     })
     .where(eq(projectPrompts.id, promptId))
     .returning();

@@ -69,7 +69,7 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { chapterId, title, content, userPrompt, isAssembly, isCritique } = body;
+  const { chapterId, title, content, userPrompt, isAssembly, isCritique, isCorrector } = body;
 
   if (!chapterId || !title || !content) {
     return NextResponse.json(
@@ -97,6 +97,7 @@ export async function POST(
       position: maxPos + 1,
       isAssembly: isAssembly ?? false,
       isCritique: isCritique ?? false,
+      isCorrector: isCorrector ?? false,
     })
     .returning();
 
