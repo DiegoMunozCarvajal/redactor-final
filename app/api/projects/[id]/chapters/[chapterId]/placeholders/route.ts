@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapterPlaceholders } from "@/lib/db/schema";
+import { projects, chapterPlaceholders, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { hashPromptContents } from "@/lib/placeholder-utils";
 
 export async function GET(
   _req: NextRequest,
@@ -31,7 +32,16 @@ export async function GET(
     .where(eq(chapterPlaceholders.chapterId, chapterId))
     .orderBy(asc(chapterPlaceholders.name));
 
-  return NextResponse.json(rows);
+  // Compute current prompts hash for stale detection
+  const promptRows = await db
+    .select({ content: projectPrompts.content })
+    .from(projectPrompts)
+    .where(eq(projectPrompts.chapterId, chapterId))
+    .orderBy(asc(projectPrompts.position));
+
+  const currentPromptsHash = hashPromptContents(promptRows.map((p) => p.content));
+
+  return NextResponse.json({ placeholders: rows, currentPromptsHash });
 }
 
 export async function PATCH(
@@ -74,12 +84,20 @@ export async function PATCH(
     }
   });
 
-  // Return updated list
+  // Return updated list with current prompts hash for consistency with GET
   const rows = await db
     .select()
     .from(chapterPlaceholders)
     .where(eq(chapterPlaceholders.chapterId, chapterId))
     .orderBy(asc(chapterPlaceholders.name));
 
-  return NextResponse.json(rows);
+  const promptRows = await db
+    .select({ content: projectPrompts.content })
+    .from(projectPrompts)
+    .where(eq(projectPrompts.chapterId, chapterId))
+    .orderBy(asc(projectPrompts.position));
+
+  const currentPromptsHash = hashPromptContents(promptRows.map((p) => p.content));
+
+  return NextResponse.json({ placeholders: rows, currentPromptsHash });
 }

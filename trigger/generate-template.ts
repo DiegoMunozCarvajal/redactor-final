@@ -5,7 +5,7 @@ import { metaPrompts, prompts, chapterPlaceholders } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
-import { sanitizeError } from "@/lib/sanitize-error";
+import { runSettledWithConcurrency } from "@/lib/promise-pool";
 
 const placeholderSchema = z.object({
   name: z.string(),
@@ -61,8 +61,14 @@ export const generateTemplate = task({
     // static across all chapters — cache it to avoid re-sending per chapter.
     const isAnthropic = getProviderForModel(model) === "anthropic";
 
-    for (const chapter of chapters) {
-      try {
+    // Process chapters concurrently (3 at a time) to avoid sequential timeout.
+    // Each chapter's LLM call and DB inserts are independent — safe to parallelize.
+    // onConflictDoNothing makes retries idempotent.
+    const TEMPLATE_CONCURRENCY = 3;
+    const results = await runSettledWithConcurrency(
+      chapters,
+      TEMPLATE_CONCURRENCY,
+      async (chapter) => {
         const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
         const userPrompt = (metaPrompt.userPrompt ?? `Analiza el siguiente capítulo fuente y extrae su arquitectura funcional.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de los bloques en formato JSON.`)
           .replace(/{{CAPITULO_FUENTE}}/g, capituloFuente);
@@ -118,13 +124,21 @@ export const generateTemplate = task({
               set: { function: fn, notes },
             });
         }
-      } catch (err) {
-        console.error(
-          `Failed to generate prompts for chapter ${chapter.chapterId}:`,
-          sanitizeError(err),
-        );
-        // Continue with other chapters — one failure doesn't block the rest
-      }
+      },
+    );
+
+    // Report failures with error details for debugging
+    const failed = results
+      .map((r, i) =>
+        r.status === "rejected"
+          ? `${chapters[i].title}: ${(r.reason as Error)?.message ?? String(r.reason)}`
+          : null,
+      )
+      .filter((s): s is string => s !== null);
+    if (failed.length > 0) {
+      console.error(
+        `Template generation: ${failed.length}/${chapters.length} chapters failed:\n  ${failed.join("\n  ")}`,
+      );
     }
   },
 });

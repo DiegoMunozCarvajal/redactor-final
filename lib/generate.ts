@@ -1,50 +1,124 @@
-import { generateCompletion } from "@/lib/ai/completion";
-import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
+import { generateCompletion } from "@/lib/ai/completion";
+import {
+  DEFAULT_GENERATION_MODEL,
+  getProviderForModel,
+} from "@/lib/ai/providers";
 
-const DEFAULT_SYSTEM_PROMPT = `Eres un escritor senior de no-ficción en español. Redactas la sección de un capítulo siguiendo las instrucciones que recibirás abajo.
+const DEFAULT_SYSTEM_PROMPT = `<rol>
+Eres un escritor senior de no-ficción en español. Escribes para lectores curiosos pero no expertos: personas que quieren entender ideas complejas sin perderse en jerga ni academicismos. Tu tono es cercano y preciso, cero pedante.
+</rol>
 
-## Cómo escribes
+<instrucciones>
+Redactas una sección breve de un capítulo siguiendo las reglas de abajo. El usuario te dará el tema y el enfoque en su mensaje.
 
-- **Una idea por párrafo.** El lector debe poder digerir y recordar cada concepto antes de pasar al siguiente. Máximo 5 oraciones por párrafo. Oraciones cortas (15-25 palabras) con ritmo variado: alternas extensión, estructura y cadencia para evitar monotonía.
+Antes de escribir, ejecuta estos pasos en silencio:
 
-- **Voz activa.** La voz activa responsabiliza a un agente concreto y acelera la lectura. Usas pasiva solo cuando el sujeto no importa o es desconocido.
-  > ❌ "Los resultados fueron publicados por el equipo."
-  > ✅ "El equipo publicó los resultados."
+<planificacion>
+1. Identifica la idea central que comunicará la sección (una sola).
+2. Elige una apertura que intrigue: una imagen, pregunta o dato — nunca un anuncio de contenido.
+3. Para cada párrafo planeado, define el dato, ejemplo o fuente concreta que respaldará la afirmación principal.
+4. Verifica que ninguna idea planificada requiera estructuras de contraste correctivo: "No es X, es Y", "No es X, sino Y", "X no es A, es B", o cualquier fórmula que niegue para luego afirmar. Si detectas una, reformula antes de escribir.
+</planificacion>
 
-- **Afirmación → respaldo.** Cada afirmación no obvia la sostienes en la oración siguiente con un ejemplo, dato o fuente concreta. Esto construye credibilidad párrafo a párrafo en lugar de pedirle al lector que confíe.
+Ahora redacta aplicando estas reglas:
 
-- **Abstracto → concreto.** Si mencionas un concepto abstracto, lo aterrizas de inmediato con una ilustración. La ilustración sigue al concepto en la misma oración o en la siguiente, sin espacio para la ambigüedad.
-  > ❌ "La fricción reduce la conversión."
-  > ✅ "La fricción reduce la conversión: un formulario de 8 campos recibe un 40% menos de envíos que uno de 3 campos."
+<reglas>
 
-- **Atribución verificable.** Calificas con atributos concretos: no dices "un estudio importante" sino "un estudio de 2023 con 12,000 participantes". Las citas a estudios, papers o fuentes incluyen autor o institución. Si no recuerdas el autor exacto o la institución de una fuente, describes el estudio por sus características verificables ("un meta-análisis de 2022 con 47 estudios publicados en The Lancet") o lo omites. Nunca inventes un autor, una fecha ni una institución.
+<regla id="una-idea">**Una idea por párrafo. Oraciones de ritmo variado: alternas extensión, estructura y cadencia para evitar monotonía.</regla>
 
-- **Precisión léxica.** Usas adjetivos que informan: "un aumento del 40%", "un método de tres pasos", "un autor con 20 años en el sector". Eliminas adjetivos que no añaden información verificable — "integral", "profundo", "innovador", "revolucionario", "fascinante" — y los reemplazas con el dato que los haría merecidos. Cada palabra se justifica: si al leer la oración sin ella el significado no cambia, la eliminas. Esto incluye "realmente", "verdaderamente", "básicamente", "simplemente".
+<regla id="voz-activa">**Voz activa.** Usas pasiva solo cuando el sujeto no importa o es desconocido.
+❌ "Los resultados fueron publicados por el equipo."
+✅ "El equipo publicó los resultados."</regla>
 
-- **Aperturas que enganchan.** Abres cada sección con una idea, pregunta o imagen que intrigue — no con un anuncio de lo que vendrá.
-  > ❌ "En esta sección explicaremos los tres tipos de sesgo cognitivo."
-  > ✅ "Tu cerebro te miente tres veces al día. Y tú le crees."
+<regla id="respaldo">**Afirmación → respaldo.** Cada afirmación no obvia la sostienes en la oración siguiente con un ejemplo, dato o fuente concreta.</regla>
 
-- **Transiciones que conectan.** El lector nunca se pregunta "¿y esto qué tiene que ver?". Cada párrafo retoma una palabra, imagen o pregunta del anterior, o anuncia brevemente hacia dónde va.
-  > ❌ "Otro factor importante es la consistencia."
-  > ✅ "Si la motivación enciende el motor, la consistencia lo mantiene andando."
+<regla id="concreto">**Abstracto → concreto.** Todo concepto abstracto se aterriza de inmediato con una ilustración en la misma oración o la siguiente.
+❌ "La fricción reduce la conversión."
+✅ "La fricción reduce la conversión: un formulario de 8 campos recibe un 40% menos de envíos que uno de 3 campos."</regla>
 
-- **Reencuadres afirmativos.** Evitas estructuras de contraste correctivo basadas en la fórmula "No es X, es Y". En su lugar, expresas la idea mediante afirmaciones directas, explicaciones causales o reformulaciones progresivas.
-  > ❌ "No es falta de talento: es falta de práctica."
-  > ✅ "La práctica constante explica mejor el progreso que una supuesta falta de talento."
+<regla id="atribucion">**Atribución verificable.** No dices "un estudio importante" sino "un estudio de 2023 con 12,000 participantes". Incluyes autor o institución. Si no recuerdas el dato exacto, describes la fuente por sus características verificables ("un meta-análisis de 2022 con 47 estudios publicados en The Lancet") o la omites. NUNCA inventes un autor, una fecha ni una institución.</regla>
 
-## Ejemplo
+<regla id="precision">**Precisión léxica.** Usas adjetivos que informan: "un aumento del 40%", "un método de tres pasos". Eliminas adjetivos sin información verificable: "integral", "profundo", "innovador", "revolucionario", "fascinante". Eliminas muletillas: "realmente", "verdaderamente", "básicamente", "simplemente". Si al leer la oración sin una palabra el significado no cambia, la eliminas.</regla>
 
-Las reglas anteriores producen textos como este. Fíjate en cómo cada regla opera simultáneamente:
+<regla id="apertura">**Aperturas que enganchan.** Abres con una idea, pregunta o imagen que intrigue — nunca con un anuncio de lo que vendrá.</regla>
 
-> La gente no abandona sus metas por falta de motivación. Las abandona por falta de un sistema. En un estudio de 2023, la Universidad de Stanford siguió a 800 personas que iniciaron una rutina de ejercicio y encontró que quienes planificaron un horario fijo semanal tuvieron el doble de adherencia a los seis meses, sin importar su nivel inicial de motivación.
->
-> Si estás pensando "yo ya intenté planificar y no funcionó", esa experiencia es más común de lo que parece. La mayoría no falla por falta de intención, sino porque intenta organizarse con sistemas demasiado pesados para sostenerlos en la vida real.
->
-> El tamaño del plan suele ser el punto donde todo empieza a romperse. La psicóloga BJ Fogg lo llama "la trampa de la motivación": cuando estás motivado, diseñas un plan para tu yo motivado. Pero tu yo del miércoles a las 6 AM no está motivado. Está cansado. Un plan de 30 minutos diarios de ejercicio falla en la primera semana para el 73% de las personas, según los datos de Fogg. Un plan de 5 minutos —hacer una lagartija, poner los tenis, salir a la puerta— sobrevive.
+<regla id="transiciones">**Transiciones que conectan.** Cada párrafo retoma una palabra, imagen o pregunta del anterior. El lector nunca se pregunta "¿y esto qué tiene que ver?".</regla>
 
-Responde ÚNICAMENTE con el contenido de la sección. Sin títulos, sin etiquetas, sin introducciones meta.`;
+<regla id="reencuadres" critica="true">**Reencuadres afirmativos. PROHIBIDO.** No uses estructuras de contraste correctivo: "No es X, es Y", "No es X, sino Y", "X no es A, es B", ni ninguna fórmula que niegue para luego afirmar. Esta regla es inflexible y tiene prioridad sobre cualquier otra consideración estilística. Si detectas esta estructura en tu texto, debes reescribir el pasaje completo.
+❌ "No es falta de talento: es falta de práctica."
+❌ "La gente no abandona sus metas por falta de motivación. Las abandona por falta de un sistema."
+❌ "No fallan por falta de intención, sino porque el sistema es pesado."
+✅ "La práctica constante explica mejor el progreso que una supuesta falta de talento."
+✅ "Un sistema bien diseñado —un horario fijo, por ejemplo— duplica la adherencia a cualquier meta, incluso cuando la motivación fluctúa."
+✅ "La variable que predice la supervivencia de un hábito es el peso del sistema."</regla>
+
+</reglas>
+</instrucciones>
+
+<ejemplo>
+<intro-ejemplo>El texto de abajo aplica simultáneamente todas las reglas. Cada párrafo demuestra varias reglas a la vez. Las anotaciones entre corchetes NO son parte del texto final — son solo para que veas cómo se aplica cada regla.</intro-ejemplo>
+
+<parrafo reglas="apertura, respaldo, concreto, atribucion">
+[APERTURA: dato con poder de sorpresa] Ocho de cada diez personas que empiezan una rutina de ejercicio la abandonan antes del primer mes. El factor común entre quienes la mantienen es un horario fijo — la motivación inicial resultó irrelevante. [RESPALDO: fuente concreta] En un estudio de 2023, la Universidad de Stanford siguió a 800 personas que iniciaron una rutina de ejercicio y encontró que quienes planificaron un horario fijo semanal duplicaron su adherencia a los seis meses, sin importar su nivel inicial de motivación. El sistema hizo el trabajo que la fuerza de voluntad no puede sostener sola.
+</parrafo>
+
+<parrafo reglas="transiciones, concreto, una-idea">
+[TRANSICIÓN: retoma la experiencia del lector] Esta experiencia —"yo ya intenté planificar y no funcionó"— apunta a un problema más concreto: [ATERRIZAJE: ilustración específica] la mayoría elige sistemas demasiado pesados para la vida real. El entusiasmo inicial infla el diseño, y el plan colapsa en la primera semana difícil.
+</parrafo>
+
+<parrafo reglas="respaldo, atribucion, precision, reencuadres">
+[ATRIBUCIÓN: autor nombrado] El psicólogo BJ Fogg describe este fenómeno como "la trampa de la motivación": cuando estás motivado, diseñas un plan para tu yo motivado. Pero tu yo del miércoles a las 6 AM está cansado y con la motivación bajo cero. [RESPALDO: dato numérico] Un plan de 30 minutos diarios de ejercicio colapsa en la primera semana para el 73% de las personas, según los datos de Fogg. Un plan de 5 minutos —hacer una lagartija, poner los tenis, salir a la puerta— se sostiene. [REENFOQUE AFIRMATIVO: atribuye sin negar] Lo que separa ambos resultados es el tamaño del compromiso inicial.
+</parrafo>
+</ejemplo>
+
+<autorevision>
+Antes de entregar el texto final, ejecuta esta revisión mental:
+
+<lista-verificacion>
+1. ¿Hay alguna estructura "No es X, es Y", "No es X, sino Y", "X no es A, es B", o cualquier fórmula que niegue para luego afirmar? → Si aparece, reescribe el pasaje completo usando las alternativas de la regla "reencuadres".
+2. ¿Algún párrafo tiene más de 5 oraciones? → Divide.
+3. ¿Alguna afirmación sin dato o fuente que la respalde en la oración siguiente? → Añade.
+4. ¿Algún adjetivo hueco ("profundo", "fascinante", "innovador") o muletilla ("realmente", "simplemente")? → Elimina o reemplaza con dato.
+5. ¿La apertura es un anuncio ("En esta sección...", "A continuación...")? → Reemplaza con imagen, pregunta o dato.
+6. ¿Algún párrafo no retoma una palabra o idea del anterior? → Añade transición.
+</lista-verificacion>
+
+Si todas las respuestas son correctas, entrega el texto. Si alguna falla, corrige el problema y repite la verificación desde el inicio.
+</autorevision>
+
+<formato-salida>
+Responde ÚNICAMENTE con el contenido de la sección. Sin títulos, sin etiquetas XML, sin introducciones meta.
+</formato-salida>`;
+
+// Shared style rules injected into assembly, critique, and correction system prompts.
+// These rules ensure consistent anti-pattern avoidance across the entire pipeline.
+const STYLE_RULES = `<reglas-estilo>
+Aplica estas reglas al texto que produzcas:
+
+<regla id="una-idea">**Una idea por párrafo.** Máximo 5 oraciones por párrafo. Oraciones cortas (15-25 palabras) con ritmo variado.</regla>
+
+<regla id="voz-activa">**Voz activa.** Usas pasiva solo cuando el sujeto no importa o es desconocido.</regla>
+
+<regla id="respaldo">**Afirmación → respaldo.** Cada afirmación no obvia la sostienes con un ejemplo, dato o fuente concreta.</regla>
+
+<regla id="concreto">**Abstracto → concreto.** Si mencionas un concepto abstracto, lo aterrizas de inmediato con una ilustración.</regla>
+
+<regla id="atribucion">**Atribución verificable.** No dices "un estudio importante" sino "un estudio de 2023 con 12,000 participantes". Nunca inventes un autor, una fecha ni una institución.</regla>
+
+<regla id="precision">**Precisión léxica.** Eliminas adjetivos que no añaden información verificable: "integral", "profundo", "innovador", "revolucionario", "fascinante". Eliminas "realmente", "verdaderamente", "básicamente", "simplemente".</regla>
+
+<regla id="transiciones">**Transiciones que conectan.** El lector nunca se pregunta "¿y esto qué tiene que ver?". Cada párrafo retoma una palabra, imagen o pregunta del anterior.</regla>
+
+<regla id="reencuadres" critica="true">**Reencuadres afirmativos. PROHIBIDO.** No uses estructuras de contraste correctivo: "No es X, es Y", "No es X, sino Y", "X no es A, es B", ni ninguna fórmula que niegue para luego afirmar. Esta regla es inflexible y tiene prioridad sobre cualquier otra consideración estilística. Si detectas esta estructura en tu texto, debes reescribir el pasaje completo.
+❌ "No es falta de talento: es falta de práctica."
+❌ "La gente no abandona sus metas por falta de motivación. Las abandona por falta de un sistema."
+❌ "No fallan por falta de intención, sino porque el sistema es pesado."
+✅ "La práctica constante explica mejor el progreso que una supuesta falta de talento."
+✅ "Un sistema bien diseñado —un horario fijo, por ejemplo— duplica la adherencia a cualquier meta, incluso cuando la motivación fluctúa."
+✅ "La variable que predice la supervivencia de un hábito es el peso del sistema."</regla>
+
+</reglas-estilo>`;
 
 export function sanitizeValue(value: string): string {
   return value
@@ -88,25 +162,36 @@ export interface GenerateResult {
   };
 }
 
-export function applyPlaceholders(content: string, placeholders: Record<string, string>, projectTopic?: string | null): string {
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function applyPlaceholders(
+  content: string,
+  placeholders: Record<string, string>,
+  projectTopic?: string | null,
+): string {
   // Sort longest-first to prevent {foo} matching inside {foo_bar}
   const entries = Object.entries(placeholders).sort(
     ([a], [b]) => b.length - a.length,
   );
   for (const [name, value] of entries) {
-    const token = `{${name}}`;
-    if (!content.includes(token)) continue;
     const sanitized = sanitizeValue(value);
-    // Escape $ to prevent special pattern interpretation in replaceAll ($&, $1, etc.)
-    content = content.replaceAll(
-      token,
+    // Case-insensitive regex: {tema} matches {TEMA}, {Tema}, etc.
+    const regex = new RegExp(`\\{${escapeRegex(name)}\\}`, "gi");
+    // Escape $ to prevent special pattern interpretation in replace ($&, $1, etc.)
+    content = content.replace(
+      regex,
       `<<${name.toUpperCase()}>>${sanitized.replace(/\$/g, "$$$$")}<</${name.toUpperCase()}>>`,
     );
   }
   // Fallback: if {tema} wasn't in the placeholder map but project has a topic, use it
-  if (projectTopic && content.includes("{tema}") && !placeholders["tema"]) {
+  if (projectTopic && !placeholders["tema"]) {
     const sanitized = sanitizeValue(projectTopic);
-    content = content.replaceAll("{tema}", `<<TEMA>>${sanitized.replace(/\$/g, "$$$$")}<</TEMA>>`);
+    content = content.replace(
+      /\{tema\}/gi,
+      `<<TEMA>>${sanitized.replace(/\$/g, "$$$$")}<</TEMA>>`,
+    );
   }
   return content;
 }
@@ -132,7 +217,9 @@ export async function generatePromptContent(
   } = params;
 
   // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
-  const effectiveSystemPrompt = prompt.userPrompt ? prompt.content : systemPrompt;
+  const effectiveSystemPrompt = prompt.userPrompt
+    ? prompt.content
+    : systemPrompt;
   const userContent = prompt.userPrompt ?? prompt.content;
   const content = applyPlaceholders(userContent, placeholders, projectTopic);
 
@@ -145,7 +232,9 @@ export async function generatePromptContent(
     model,
     systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: content,
-    ...(useCache ? { cachedSystemPrompt: prompt.content, cacheSystemPrompt: true } : {}),
+    ...(useCache
+      ? { cachedSystemPrompt: prompt.content, cacheSystemPrompt: true }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(effort !== undefined ? { effort } : {}),
@@ -172,7 +261,12 @@ async function mergeTwoFragments(
   effort?: ReasoningEffort,
   maxTokens?: number,
 ): Promise<GenerateResult> {
-  const systemPrompt = assemblyPrompt.userPrompt ? assemblyPrompt.content : "";
+  const baseSystemPrompt = assemblyPrompt.userPrompt
+    ? assemblyPrompt.content
+    : "";
+  const systemPrompt = baseSystemPrompt
+    ? `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
+    : `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}`;
   let userContent = assemblyPrompt.userPrompt ?? assemblyPrompt.content;
 
   userContent = applyPlaceholders(userContent, placeholders, undefined);
@@ -193,8 +287,8 @@ async function mergeTwoFragments(
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2);
 
-  // Anthropic ephemeral cache: the assemblyPrompt.content (system prompt) is static
-  // across all merge calls in a chapter. Cache it to avoid re-sending every merge.
+  // Anthropic ephemeral cache: the system prompt (STYLE_RULES + assemblyPrompt.content)
+  // is static across all merge calls in a chapter. Cache it to avoid re-sending every merge.
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!assemblyPrompt.userPrompt;
 
@@ -203,7 +297,9 @@ async function mergeTwoFragments(
     systemPrompt: useCache ? "" : systemPrompt,
     userPrompt: userContent,
     maxTokens: effectiveMaxTokens,
-    ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
+    ...(useCache
+      ? { cachedSystemPrompt: systemPrompt, cacheSystemPrompt: true }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });
@@ -242,7 +338,9 @@ export async function generateChapterAssemblyHierarchical(
   }
 
   // Build merge tree bottom-up
-  let currentLevel: Array<{ title?: string; content: string }> = fragments.map((f) => ({ title: f.title, content: f.content }));
+  let currentLevel: Array<{ title?: string; content: string }> = fragments.map(
+    (f) => ({ title: f.title, content: f.content }),
+  );
   const totalUsage = { inputTokens: 0, outputTokens: 0 };
 
   while (currentLevel.length > 1) {
@@ -303,8 +401,14 @@ export async function generateChapterAssemblyHalves(
 
   if (fragments.length === 2) {
     return mergeTwoFragments(
-      fragments[0], fragments[1],
-      assemblyPrompt, placeholders, model, temperature, effort, maxTokens,
+      fragments[0],
+      fragments[1],
+      assemblyPrompt,
+      placeholders,
+      model,
+      temperature,
+      effort,
+      maxTokens,
     );
   }
 
@@ -318,13 +422,24 @@ export async function generateChapterAssemblyHalves(
   // Assemble each half in one shot using the full assembly prompt
   const assembleHalf = async (
     half: { title?: string; content: string }[],
-  ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> => {
+  ): Promise<{
+    text: string;
+    usage: { inputTokens: number; outputTokens: number };
+  }> => {
     if (half.length === 1) {
-      return { text: half[0].content, usage: { inputTokens: 0, outputTokens: 0 } };
+      return {
+        text: half[0].content,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      };
     }
     const result = await generateChapterAssembly(
-      assemblyPrompt, half, placeholders,
-      model, temperature, effort, maxTokens,
+      assemblyPrompt,
+      half,
+      placeholders,
+      model,
+      temperature,
+      effort,
+      maxTokens,
     );
     return { text: result.text, usage: result.usage };
   };
@@ -341,7 +456,12 @@ export async function generateChapterAssemblyHalves(
   const merged = await mergeTwoFragments(
     { content: leftResult.text },
     { content: rightResult.text },
-    assemblyPrompt, placeholders, model, temperature, effort, maxTokens,
+    assemblyPrompt,
+    placeholders,
+    model,
+    temperature,
+    effort,
+    maxTokens,
   );
   totalUsage.inputTokens += merged.usage.inputTokens;
   totalUsage.outputTokens += merged.usage.outputTokens;
@@ -429,9 +549,12 @@ export async function generateChapterAssembly(
 
   // Assembly prompts from /assemblies always have userPrompt set.
   // content = system prompt, userPrompt = user message.
-  const effectiveSystemPrompt = assemblyPrompt.userPrompt
+  const baseSystemPrompt = assemblyPrompt.userPrompt
     ? assemblyPrompt.content
     : "";
+  const effectiveSystemPrompt = baseSystemPrompt
+    ? `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
+    : `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}`;
   const userContent = assemblyPrompt.userPrompt ?? assemblyPrompt.content;
 
   let content = applyPlaceholders(userContent, placeholders, undefined);
@@ -460,7 +583,9 @@ export async function generateChapterAssembly(
     systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: content,
     maxTokens: effectiveMaxTokens,
-    ...(useCache ? { cachedSystemPrompt: assemblyPrompt.content, cacheSystemPrompt: true } : {}),
+    ...(useCache
+      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });
@@ -506,12 +631,19 @@ export async function generateChapterCritique(
     projectTopic,
   } = params;
 
-  const effectiveSystemPrompt = critiquePrompt.userPrompt
+  const baseSystemPrompt = critiquePrompt.userPrompt
     ? critiquePrompt.content
     : "";
+  const effectiveSystemPrompt = baseSystemPrompt
+    ? `Eres un crítico editorial. Al evaluar el texto, usa estas reglas de estilo como criterio de calidad:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
+    : `Eres un crítico editorial. Al evaluar el texto, usa estas reglas de estilo como criterio de calidad:\n\n${STYLE_RULES}`;
   const userContent = critiquePrompt.userPrompt ?? critiquePrompt.content;
 
-  let processedUserContent = applyPlaceholders(userContent, placeholders, projectTopic);
+  let processedUserContent = applyPlaceholders(
+    userContent,
+    placeholders,
+    projectTopic,
+  );
 
   // Replace content placeholder with the actual chapter content
   processedUserContent = processedUserContent.replace(
@@ -523,7 +655,8 @@ export async function generateChapterCritique(
     chapterContent.replace(/\$/g, "$$$$"),
   );
 
-  const effectiveMaxTokens = maxTokens ?? critiqueMaxTokens(chapterContent.length);
+  const effectiveMaxTokens =
+    maxTokens ?? critiqueMaxTokens(chapterContent.length);
 
   // Anthropic ephemeral cache: when userPrompt is set, critiquePrompt.content
   // is the static system prompt — cache it across critique calls.
@@ -535,7 +668,9 @@ export async function generateChapterCritique(
     systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
-    ...(useCache ? { cachedSystemPrompt: critiquePrompt.content, cacheSystemPrompt: true } : {}),
+    ...(useCache
+      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });
@@ -578,12 +713,19 @@ export async function generateChapterCorrection(
     projectTopic,
   } = params;
 
-  const effectiveSystemPrompt = correctorPrompt.userPrompt
+  const baseSystemPrompt = correctorPrompt.userPrompt
     ? correctorPrompt.content
     : "";
+  const effectiveSystemPrompt = baseSystemPrompt
+    ? `Eres un corrector editorial. Al reescribir el texto, aplica estas reglas de estilo:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
+    : `Eres un corrector editorial. Al reescribir el texto, aplica estas reglas de estilo:\n\n${STYLE_RULES}`;
   const userContent = correctorPrompt.userPrompt ?? correctorPrompt.content;
 
-  let processedUserContent = applyPlaceholders(userContent, placeholders, projectTopic);
+  let processedUserContent = applyPlaceholders(
+    userContent,
+    placeholders,
+    projectTopic,
+  );
 
   // Replace content placeholders
   processedUserContent = processedUserContent.replace(
@@ -597,7 +739,8 @@ export async function generateChapterCorrection(
 
   // Correction output scales with input (chapter + critique)
   const inputLength = chapterContent.length + critiqueContent.length;
-  const effectiveMaxTokens = maxTokens ?? Math.max(8192, Math.ceil(inputLength / 4) + 8192);
+  const effectiveMaxTokens =
+    maxTokens ?? Math.max(8192, Math.ceil(inputLength / 4) + 8192);
 
   // Anthropic ephemeral cache
   const isAnthropic = getProviderForModel(model) === "anthropic";
@@ -608,7 +751,9 @@ export async function generateChapterCorrection(
     systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
-    ...(useCache ? { cachedSystemPrompt: correctorPrompt.content, cacheSystemPrompt: true } : {}),
+    ...(useCache
+      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
   });

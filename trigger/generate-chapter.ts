@@ -7,11 +7,10 @@ import {
   projects,
   chapters,
   assemblyPrompts,
-  chapterPlaceholders,
 } from "@/lib/db/schema";
 import { eq, asc, and, inArray } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
-import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
+import { getChapterPlaceholders, extractPlaceholders, syncChapterPlaceholders } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 
 export const generateChapter = task({
@@ -164,16 +163,14 @@ export const generateChapter = task({
           promptTitle: globalAp.name,
           promptSource: "library",
         };
-        // Sync placeholders from assembly prompt to chapterPlaceholders
+        // Sync placeholders from assembly prompt to chapterPlaceholders.
+        // Uses syncChapterPlaceholders for case-variant dedup, lowercasing,
+        // and auto-resolve of tema variants from project.topic.
         const apContents = [globalAp.content, globalAp.userPrompt].filter(
           (s): s is string => typeof s === "string" && s.length > 0,
         );
-        const apPlaceholders = extractPlaceholders(apContents);
-        if (apPlaceholders.length > 0) {
-          await db
-            .insert(chapterPlaceholders)
-            .values(apPlaceholders.map((name) => ({ chapterId: gen.chapterId, name })))
-            .onConflictDoNothing();
+        if (apContents.length > 0) {
+          await syncChapterPlaceholders(gen.chapterId, apContents, project.topic);
         }
       }
     }

@@ -13,6 +13,7 @@ import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillOnePlaceholder } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
+import { hashPromptContents } from "@/lib/placeholder-utils";
 
 export async function POST(
   req: NextRequest,
@@ -57,6 +58,11 @@ export async function POST(
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
+  const promptContents = promptRows.map((p) => p.content);
+
+  // Compute prompts hash for stale detection
+  const promptsHash = hashPromptContents(promptContents);
+
   const existingRows = await db
     .select()
     .from(chapterPlaceholders)
@@ -84,6 +90,7 @@ export async function POST(
         fillMetadata: buildPlaceholderFillMetadata({
           provider: "direct",
           model,
+          promptsHash,
         }),
       })
       .where(
@@ -109,10 +116,12 @@ export async function POST(
       phDef,
       project.topic ?? null,
       projectId,
-      promptRows.map((p) => p.content),
+      promptContents,
       existingDefinitions,
       model,
       effort,
+      undefined,
+      chapterId,
     );
 
     // Persist definition to DB
@@ -125,6 +134,7 @@ export async function POST(
           sources: result.sources,
           ragChunks: result.ragChunks,
           model,
+          promptsHash,
         }),
       })
       .where(

@@ -14,6 +14,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
+import { hashPromptContents } from "@/lib/placeholder-utils";
 
 export async function POST(
   req: NextRequest,
@@ -100,6 +101,9 @@ export async function POST(
 
   const promptContents = promptRows.map((p) => p.content);
 
+  // Compute prompts hash for stale detection
+  const promptsHash = hashPromptContents(promptContents);
+
   // Build placeholder defs for the sequential pipeline
   const placeholderDefs = placeholderRows.map((p) => ({
     name: p.name,
@@ -119,6 +123,8 @@ export async function POST(
           projectId,
           model,
           effort,
+          undefined,
+          chapterId,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));
@@ -134,6 +140,7 @@ export async function POST(
                   sources: event.sources,
                   ragChunks: event.ragChunks,
                   model,
+                  promptsHash,
                 }),
               })
               .where(

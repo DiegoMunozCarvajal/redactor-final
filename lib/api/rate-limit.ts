@@ -30,7 +30,7 @@ export async function withProjectLock<T>(
 
   try {
     const [row] = await reserved.unsafe(
-      `SELECT pg_try_advisory_lock($1, $2) AS acquired`,
+      `SELECT pg_try_advisory_lock($1::int4, $2::int4) AS acquired`,
       [key1, key2]
     );
 
@@ -43,8 +43,10 @@ export async function withProjectLock<T>(
       return { locked: true, result };
     } finally {
       await reserved
-        .unsafe(`SELECT pg_advisory_unlock($1, $2)`, [key1, key2])
-        .catch(() => {});
+        .unsafe(`SELECT pg_advisory_unlock($1::int4, $2::int4)`, [key1, key2])
+        .catch((err) => {
+          console.error("[withProjectLock] Failed to release advisory lock:", err);
+        });
     }
   } finally {
     reserved.release();

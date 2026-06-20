@@ -6,6 +6,7 @@ export interface PlaceholderFillMetadata {
   ragChunks?: number;
   model?: string;
   filledAt: string;
+  promptsHash?: string;
 }
 
 export function buildPlaceholderFillMetadata(params: {
@@ -14,6 +15,7 @@ export function buildPlaceholderFillMetadata(params: {
   ragChunks?: number;
   model?: string;
   filledAt?: string;
+  promptsHash?: string;
 }): PlaceholderFillMetadata {
   return {
     ...(params.provider ? { provider: params.provider } : {}),
@@ -21,5 +23,6 @@ export function buildPlaceholderFillMetadata(params: {
     ...(params.ragChunks ? { ragChunks: params.ragChunks } : {}),
     ...(params.model ? { model: params.model } : {}),
     filledAt: params.filledAt ?? new Date().toISOString(),
+    ...(params.promptsHash ? { promptsHash: params.promptsHash } : {}),
   };
 }

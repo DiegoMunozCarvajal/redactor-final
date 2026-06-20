@@ -43,6 +43,7 @@ interface Props {
   placeholders: ChapterPlaceholder[];
   onSaveDefinition: (name: string, definition: string) => Promise<void>;
   onFillComplete?: () => void | Promise<void>;
+  currentPromptsHash?: string;
 }
 
 type FillStatus = "pending" | "generating" | "filled" | "error";
@@ -61,6 +62,7 @@ export function PlaceholderFillSection({
   placeholders,
   onSaveDefinition,
   onFillComplete,
+  currentPromptsHash,
 }: Props) {
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [filling, setFilling] = useState(false);
@@ -81,7 +83,7 @@ export function PlaceholderFillSection({
       ragChunks: metadata?.ragChunks,
       provider: metadata?.provider ?? (
         placeholder
-          ? inferPlaceholderProvider(placeholder.name, placeholder.function, placeholder.notes)
+          ? inferPlaceholderProvider(placeholder.name, placeholder.function)
           : undefined
       ),
     };
@@ -101,7 +103,7 @@ export function PlaceholderFillSection({
         status: "pending",
         sources: metadata?.sources ?? [],
         ragChunks: metadata?.ragChunks,
-        provider: metadata?.provider ?? inferPlaceholderProvider(ph.name, ph.function, ph.notes),
+        provider: metadata?.provider ?? inferPlaceholderProvider(ph.name, ph.function),
       };
     }
     setStates(init);
@@ -342,6 +344,15 @@ export function PlaceholderFillSection({
             const isEditing = editingName === ph.name;
             const hasSources = state.sources.length > 0;
             const isExpanded = expandedSources[ph.name] ?? false;
+            const isStale = Boolean(
+              state.status === "filled"
+                && currentPromptsHash
+                && (() => {
+                  const placeholder = placeholders.find((p) => p.name === ph.name);
+                  const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
+                  return metadata?.promptsHash && metadata.promptsHash !== currentPromptsHash;
+                })()
+            );
 
             return (
               <div
@@ -360,6 +371,11 @@ export function PlaceholderFillSection({
                   <code className="text-[11px] font-semibold text-foreground/80 bg-muted/50 px-1.5 py-0.5 rounded">
                     {"{"}{ph.name}{"}"}
                   </code>
+                  {isStale && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex-shrink-0" title="Prompts changed since last fill — definition may be outdated">
+                      stale
+                    </span>
+                  )}
                   <div className="flex-1 min-w-0">
                     {ph.function && (
                       <span className="text-[10px] text-muted-foreground truncate block">

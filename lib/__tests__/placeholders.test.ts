@@ -7,12 +7,12 @@ import {
 } from "@/lib/placeholder-utils";
 
 describe("placeholders", () => {
-  it("ignores double-brace assembly markers", () => {
+  it("normalizes placeholder names to lowercase", () => {
     expect(
       extractPlaceholders([
         "{TEMA_DEL_LIBRO} {{SECCIONES_GENERADAS}} {TONO_DEL_LIBRO}",
       ]),
-    ).toEqual(["TEMA_DEL_LIBRO", "TONO_DEL_LIBRO"]);
+    ).toEqual(["tema_del_libro", "tono_del_libro"]);
   });
 
   it("keeps existing placeholder rows that carry user data", () => {
@@ -34,8 +34,8 @@ describe("placeholders", () => {
     expect(
       getMissingPlaceholderNames(
         ["{TEMA_DEL_LIBRO} {ESTUDIO_CLAVE} {{SECCIONES_GENERADAS}}"],
-        { TEMA_DEL_LIBRO: "Hábitos" },
+        { tema_del_libro: "Hábitos" },
       ),
-    ).toEqual(["ESTUDIO_CLAVE"]);
+    ).toEqual(["estudio_clave"]);
   });
 });

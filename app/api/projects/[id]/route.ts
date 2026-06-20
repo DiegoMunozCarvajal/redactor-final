@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and } from "drizzle-orm";
+import { eq, asc, desc, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -113,7 +113,8 @@ export async function PATCH(
       .where(eq(projects.id, id))
       .returning();
 
-    // Sync {tema} placeholder definition when topic changes
+    // Sync {tema} placeholder definition when topic changes.
+    // Also updates tema variants (tema_libro, tema_del_libro, topic, etc.)
     if (topic !== undefined && topic !== project.topic) {
       const projectChapterIds = await tx
         .select({ id: chapters.id })
@@ -121,15 +122,30 @@ export async function PATCH(
         .where(eq(chapters.projectId, id));
 
       for (const ch of projectChapterIds) {
-        await tx
-          .update(chapterPlaceholders)
-          .set({ definition: topic })
-          .where(
-            and(
-              eq(chapterPlaceholders.chapterId, ch.id),
-              eq(chapterPlaceholders.name, "tema"),
-            ),
-          );
+        // Fetch all placeholders for this chapter to find tema variants
+        const phRows = await tx
+          .select({ name: chapterPlaceholders.name })
+          .from(chapterPlaceholders)
+          .where(eq(chapterPlaceholders.chapterId, ch.id));
+
+        const temaVariantNames = phRows
+          .filter((ph) => {
+            const segments = ph.name.toLowerCase().split("_");
+            return segments.includes("tema") || segments.includes("topic");
+          })
+          .map((ph) => ph.name);
+
+        if (temaVariantNames.length > 0) {
+          await tx
+            .update(chapterPlaceholders)
+            .set({ definition: topic })
+            .where(
+              and(
+                eq(chapterPlaceholders.chapterId, ch.id),
+                inArray(chapterPlaceholders.name, temaVariantNames),
+              ),
+            );
+        }
       }
     }
 

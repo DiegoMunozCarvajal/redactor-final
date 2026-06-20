@@ -85,6 +85,7 @@ export async function PUT(
     await syncChapterPlaceholders(
       updated.chapterId,
       allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+      project.topic,
     );
   }
 
@@ -141,6 +142,7 @@ export async function DELETE(
   await syncChapterPlaceholders(
     existing.chapterId,
     remainingPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+    project.topic,
   );
 
   return NextResponse.json({ ok: true });

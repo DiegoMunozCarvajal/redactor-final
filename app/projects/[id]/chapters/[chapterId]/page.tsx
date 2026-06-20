@@ -195,6 +195,7 @@ export default function ChapterPage() {
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
+  const [currentPromptsHash, setCurrentPromptsHash] = useState<string | undefined>();
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
   const [newPrompt, setNewPrompt] = useState({
@@ -257,7 +258,9 @@ export default function ChapterPage() {
       );
       if (signal?.aborted) return;
       if (res.ok) {
-        setPlaceholders(await res.json());
+        const data = await res.json();
+        setPlaceholders(data.placeholders ?? data);
+        setCurrentPromptsHash(data.currentPromptsHash);
       }
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
@@ -451,7 +454,7 @@ export default function ChapterPage() {
       if (res.ok) {
         fetchChapter();
         fetchPlaceholders();
-        toast.success("Assembly completed");
+        toast.success("Assembly started");
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error ?? "Assembly error");
@@ -506,7 +509,9 @@ export default function ChapterPage() {
         },
       );
       if (res.ok) {
-        setPlaceholders(await res.json());
+        const data = await res.json();
+        setPlaceholders(data.placeholders ?? data);
+        if (data.currentPromptsHash) setCurrentPromptsHash(data.currentPromptsHash);
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error ?? "Error saving placeholder");
@@ -961,6 +966,7 @@ export default function ChapterPage() {
         placeholders={placeholders}
         onSaveDefinition={saveDefinition}
         onFillComplete={fetchPlaceholders}
+        currentPromptsHash={currentPromptsHash}
       />
 
       {/* No prompts */}

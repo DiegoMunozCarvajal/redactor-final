@@ -154,7 +154,7 @@ export function AddChapterDialog({
               <SelectTrigger>
                 <SelectValue placeholder="No template (start from scratch)" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-72">
                 <SelectItem value="__none__">No template (start from scratch)</SelectItem>
                 {templates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
@@ -182,7 +182,7 @@ export function AddChapterDialog({
                         : "Select a chapter"
                   } />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-72">
                   {templateChapters.map((ch) => (
                     <SelectItem key={ch.id} value={ch.id}>
                       {ch.title}

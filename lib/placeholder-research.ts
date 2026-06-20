@@ -1,68 +1,38 @@
+import { RAG_KEYWORDS, SEMANTIC_SCHOLAR_KEYWORDS, STYLISTIC_PATTERNS } from "./placeholder-constants";
+
 export type PlaceholderProvider = "rag" | "semantic-scholar" | "web" | "none" | "direct";
-
-const RAG_KEYWORDS = [
-  "ejemplo", "historia", "histórico", "historico", "anécdota",
-  "anecdota", "caso", "narrativa", "experiencia", "ilustración",
-  "ilustracion", "relato", "testimonio", "vivencia",
-];
-
-const SEMANTIC_SCHOLAR_KEYWORDS = [
-  "bibliografía", "bibliografia", "paper", "estudio", "investigación",
-  "investigacion", "académico", "academico", "artículo", "articulo",
-  "publicación", "publicacion", "autor", "evidence", "evidencia",
-  "fuente", "fuente principal", "referencia", "cita", "científico",
-  "cientifico", "journal", "revista", "paper", "metaanálisis",
-  "metanalisis", "revisión sistemática", "revision sistematica",
-  "ensayo clínico", "ensayo clinico", "doi",
-];
-
-const STYLISTIC_PATTERNS = [
-  "lector", "audiencia", "audience", "tono", "tone", "estilo", "style",
-  "enfoque", "approach", "perspectiva", "angulo", "ángulo", "nivel",
-  "formato", "extensión", "extension",
-  // Spanish conceptual placeholders — short phrases, no research needed
-  "concepto", "creencia", "principio", "resultado", "pregunta",
-  "objecion", "objeción", "cierre", "idea", "sintesis", "síntesis",
-];
-
-function placeholderText(
-  name: string,
-  functionStr?: string | null,
-  _notes?: string | null,
-): string {
-  // Notes are template-level instructions for the LLM (e.g. "Ejemplo: '...'").
-  // They often contain the word "ejemplo" as a meta-prefix, which would
-  // incorrectly trigger RAG classification. Only name + function carry the
-  // semantic signal about what kind of research this placeholder needs.
-  return `${name} ${functionStr ?? ""}`.toLowerCase();
-}
 
 export function inferPlaceholderProvider(
   name: string,
   functionStr?: string | null,
-  notes?: string | null,
 ): PlaceholderProvider {
   const lower = name.toLowerCase();
-  const segments = lower.split("_");
+  const nameSegments = lower.split("_");
 
-  if (segments.includes("tema") || segments.includes("topic")) {
+  if (nameSegments.includes("tema") || nameSegments.includes("topic")) {
     return "direct";
   }
 
-  const text = placeholderText(name, functionStr, notes);
+  // Include function words in classification (notes excluded — they contain
+  // meta-prefixes like "Ejemplo:" that would incorrectly trigger RAG).
+  const fnWords = (functionStr ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const allSegments = [...nameSegments, ...fnWords];
+
   const needsResearch =
     functionStr?.toLowerCase().includes("investigación") ||
     functionStr?.toLowerCase().includes("búsqueda");
 
-  if (!needsResearch && STYLISTIC_PATTERNS.some((pattern) => lower.includes(pattern))) {
+  // Segment-based matching: check if any keyword matches a whole segment.
+  // Uses both name segments and function words for precise matching.
+  if (!needsResearch && STYLISTIC_PATTERNS.some((pattern) => nameSegments.some((s) => s === pattern))) {
     return "none";
   }
 
-  if (RAG_KEYWORDS.some((keyword) => text.includes(keyword))) {
+  if (RAG_KEYWORDS.some((keyword) => allSegments.some((s) => s === keyword))) {
     return "rag";
   }
 
-  if (SEMANTIC_SCHOLAR_KEYWORDS.some((keyword) => text.includes(keyword))) {
+  if (SEMANTIC_SCHOLAR_KEYWORDS.some((keyword) => allSegments.some((s) => s === keyword))) {
     return "semantic-scholar";
   }
 

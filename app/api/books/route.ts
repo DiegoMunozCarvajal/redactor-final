@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { bookTemplates, chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { sql, asc } from "drizzle-orm";
+import { sql, desc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -22,7 +22,7 @@ export async function GET() {
     .from(bookTemplates)
     .leftJoin(chapters, sql`${bookTemplates.id} = ${chapters.bookTemplateId} AND ${chapters.projectId} IS NULL`)
     .groupBy(bookTemplates.id)
-    .orderBy(asc(bookTemplates.createdAt));
+    .orderBy(desc(bookTemplates.createdAt));
 
   return NextResponse.json(templates);
 }

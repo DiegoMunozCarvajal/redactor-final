@@ -3,6 +3,9 @@ import { DEFAULT_GENERATION_MODEL } from "./providers";
 import { webSearch, searchSemanticScholar, type SearchResult } from "./web-search";
 import { retrieveContext } from "./rag";
 import { inferPlaceholderProvider } from "@/lib/placeholder-research";
+import { db } from "@/lib/db";
+import { chapterPlaceholders, chapters } from "@/lib/db/schema";
+import { eq, and, not, isNotNull } from "drizzle-orm";
 
 export type { SearchResult };
 
@@ -12,7 +15,7 @@ export interface PlaceholderFillEvent {
   definition?: string;
   sources?: SearchResult[];
   ragChunks?: number;
-  /** Research provider used: "rag" | "semantic-scholar" | "web" | "direct" */
+  /** Research provider used: "rag" | "semantic-scholar" | "web" | "direct" | "reused" | "none" */
   provider?: string;
   error?: string;
   /** Index of current placeholder being filled (0-based) */
@@ -179,8 +182,8 @@ export interface FillOneResult {
 
 /**
  * Fill a single placeholder with the full research pipeline:
- * direct resolution → provider classification → research (RAG/Semantic Scholar/web) →
- * prompt construction → LLM generation.
+ * direct resolution → cross-chapter reuse (if eligible) → provider classification →
+ * research (RAG/Semantic Scholar/web) → prompt construction → LLM generation.
  *
  * Used by both the sequential batch fill and the single-placeholder API endpoint.
  */
@@ -193,6 +196,7 @@ export async function fillOnePlaceholder(
   model: string = DEFAULT_MODEL,
   effort?: ReasoningEffort,
   temperature?: number,
+  currentChapterId?: string,
 ): Promise<FillOneResult> {
   // Phase 0: Direct resolution
   const direct = resolveDirectly(ph.name, projectTopic);
@@ -200,46 +204,72 @@ export async function fillOnePlaceholder(
     return { name: ph.name, definition: direct, sources: [], provider: "direct" };
   }
 
+  // Classify once for Phase 0.5 + Phase 1
+  const provider = inferPlaceholderProvider(ph.name, ph.function);
+
+  // Phase 0.5: Cross-chapter reuse
+  // Only for non-RAG, non-direct placeholders — examples/anecdotes are chapter-specific
+  if (currentChapterId) {
+    if (provider !== "rag" && provider !== "direct") {
+      const otherDefs = await db
+        .select({ definition: chapterPlaceholders.definition })
+        .from(chapterPlaceholders)
+        .innerJoin(chapters, eq(chapters.id, chapterPlaceholders.chapterId))
+        .where(
+          and(
+            eq(chapters.projectId, projectId),
+            eq(chapterPlaceholders.name, ph.name),
+            isNotNull(chapterPlaceholders.definition),
+            not(eq(chapterPlaceholders.chapterId, currentChapterId)),
+          ),
+        )
+        .limit(1);
+
+      if (otherDefs.length > 0 && otherDefs[0].definition) {
+        return {
+          name: ph.name,
+          definition: otherDefs[0].definition,
+          sources: [],
+          provider: "reused",
+        };
+      }
+    }
+  }
+
   const promptContext = promptContents
-    .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 300)}${c.length > 300 ? "..." : ""}`)
+    .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 1500)}${c.length > 1500 ? "..." : ""}`)
     .join("\n\n");
 
   // Phase 1: Research — ternary decision: RAG | Semantic Scholar | Web search
   let sources: SearchResult[] = [];
   let ragContext = "";
   let ragChunks = 0;
-  let researchProvider = "";
 
-  researchProvider = inferPlaceholderProvider(ph.name, ph.function, ph.notes);
-  const skipResearch = researchProvider === "none" || researchProvider === "direct";
+  const skipResearch = provider === "none" || provider === "direct";
 
   if (!skipResearch) {
     const query = `${ph.name.replace(/_/g, " ")} ${projectTopic ?? ""}`.trim();
 
-    if (researchProvider === "rag") {
-      try {
-        const result = await retrieveContext(query, projectId, {
-          topK: 5,
-          tokenBudget: 3000,
-        });
-        if (result.contextText) {
-          ragContext = result.contextText;
-          ragChunks = result.chunks.length;
-        }
-      } catch (err) {
-        console.warn(`[placeholder-fill] RAG failed for {${ph.name}}:`, (err as Error).message);
+    if (provider === "rag") {
+      const result = await retrieveContext(query, projectId, {
+        topK: 5,
+        tokenBudget: 3000,
+      });
+      if (result.contextText) {
+        ragContext = result.contextText;
+        ragChunks = result.chunks.length;
+      } else {
+        throw new Error(`RAG retrieval returned no results for {${ph.name}}`);
       }
-    } else if (researchProvider === "semantic-scholar") {
-      try {
-        sources = await searchSemanticScholar(query);
-      } catch (err) {
-        console.warn(`[placeholder-fill] Semantic Scholar failed for {${ph.name}}:`, (err as Error).message);
+    } else if (provider === "semantic-scholar") {
+      sources = await searchSemanticScholar(query);
+      if (sources.length === 0) {
+        throw new Error(`Semantic Scholar returned no results for {${ph.name}}`);
       }
     } else {
-      try {
-        sources = await webSearch(query);
-      } catch (err) {
-        console.warn(`[placeholder-fill] Web search failed for {${ph.name}}:`, (err as Error).message);
+      sources = await webSearch(query);
+      if (sources.length === 0) {
+        throw new Error(`Web search returned no results for {${ph.name}}`);
       }
     }
   }
@@ -250,10 +280,10 @@ export async function fillOnePlaceholder(
     const strippedRag = ragContext.replace(/^## (?:Source Material|Documentos subidos)\n?\n?/, "");
     researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${strippedRag}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
   } else if (sources.length > 0) {
-    const sourceLabel = researchProvider === "semantic-scholar"
+    const sourceLabel = provider === "semantic-scholar"
       ? "Semantic Scholar · papers académicos (evalúa y cita)"
       : "Web search (evalúa relevancia y confiabilidad)";
-    researchSection = `\n## Research Results (${sourceLabel})\n\n<research_results source="${researchProvider}">`;
+    researchSection = `\n## Research Results (${sourceLabel})\n\n<research_results source="${provider}">`;
     for (let idx = 0; idx < sources.length; idx++) {
       const s = sources[idx];
       researchSection += `\n<result id="${idx + 1}">\n<content>${s.title}\n${s.snippet}</content>`;
@@ -266,7 +296,7 @@ export async function fillOnePlaceholder(
   } else if (skipResearch) {
     researchSection = "\n## Nota\n\nEste placeholder es estilístico/creativo. No requiere búsqueda externa. Usa tu conocimiento para dar una definición pertinente y específica.";
   } else {
-    researchSection = `\n## Nota\n\nNo se encontraron resultados de búsqueda (${researchProvider || "sin búsqueda"}). Usa tu mejor conocimiento.`;
+    researchSection = `\n## Nota\n\nNo se encontraron resultados de búsqueda (${provider || "sin búsqueda"}). Usa tu mejor conocimiento.`;
   }
 
   // Phase 3: Build individual prompt
@@ -328,7 +358,7 @@ Responde ÚNICAMENTE con JSON: {"definition": "tu definición concisa de 1-3 ora
     definition,
     sources,
     ragChunks: ragChunks || undefined,
-    provider: skipResearch ? "none" : (researchProvider || "web"),
+    provider: skipResearch ? "none" : (provider || "web"),
   };
 }
 export async function* fillPlaceholdersSequential(
@@ -339,6 +369,7 @@ export async function* fillPlaceholdersSequential(
   model: string = DEFAULT_MODEL,
   effort?: ReasoningEffort,
   temperature?: number,
+  currentChapterId?: string,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const total = placeholders.length;
   const existingDefs: Record<string, string> = {};
@@ -356,6 +387,7 @@ export async function* fillPlaceholdersSequential(
         model,
         effort,
         temperature,
+        currentChapterId,
       );
 
       if (result.definition) {
@@ -510,7 +542,7 @@ export async function researchPlaceholdersWithRag(
 
   for (const name of placeholderNames) {
     const func = placeholderFunctions[name];
-    if (inferPlaceholderProvider(name, func?.function, func?.notes) === "rag") {
+    if (inferPlaceholderProvider(name, func?.function) === "rag") {
       ragNames.push(name);
     } else {
       webNames.push(name);

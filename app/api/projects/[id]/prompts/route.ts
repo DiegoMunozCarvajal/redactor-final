@@ -109,6 +109,7 @@ export async function POST(
   await syncChapterPlaceholders(
     chapterId,
     allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+    project.topic,
   );
 
   return NextResponse.json(prompt);

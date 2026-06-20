@@ -123,7 +123,8 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Copy template chapter placeholders to project chapters (names only, no definitions)
+        // Copy template chapter placeholders to project chapters (names only, no definitions).
+        // Lowercase names to canonical form and deduplicate by (chapterId, lowerName).
         const allTemplateChapterIds = templateChapters.map((tc) => tc.id);
         if (allTemplateChapterIds.length > 0) {
           const templatePlaceholders = await tx
@@ -131,19 +132,27 @@ export async function POST(req: NextRequest) {
             .from(chapterPlaceholders)
             .where(inArray(chapterPlaceholders.chapterId, allTemplateChapterIds));
 
+          // Group by (projectChapterId, lowerName) — first function/notes wins
+          const grouped = new Map<string, { chapterId: string; name: string; function: string | null; notes: string | null }>();
           for (const ph of templatePlaceholders) {
             const projectChapterId = chapterIdMap.get(ph.chapterId);
-            if (projectChapterId) {
-              await tx
-                .insert(chapterPlaceholders)
-                .values({
-                  chapterId: projectChapterId,
-                  name: ph.name,
-                  function: ph.function,
-                  notes: ph.notes,
-                })
-                .onConflictDoNothing();
+            if (!projectChapterId) continue;
+            const key = `${projectChapterId}:${ph.name.toLowerCase()}`;
+            if (!grouped.has(key)) {
+              grouped.set(key, {
+                chapterId: projectChapterId,
+                name: ph.name.toLowerCase(),
+                function: ph.function,
+                notes: ph.notes,
+              });
             }
+          }
+
+          if (grouped.size > 0) {
+            await tx
+              .insert(chapterPlaceholders)
+              .values([...grouped.values()])
+              .onConflictDoNothing();
           }
         }
 
@@ -164,10 +173,38 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Backfill {tema} placeholder from project topic for all new project chapters
+        // Backfill {tema} placeholder from project topic for all new project chapters.
+        // Also handles tema variants (tema_libro, tema_del_libro, topic, etc.)
         if (p.topic) {
           const projectChapterIds = [...chapterIdMap.values()];
           for (const projectChapterId of projectChapterIds) {
+            // Fetch any placeholders that are tema variants
+            const phRows = await tx
+              .select({ name: chapterPlaceholders.name })
+              .from(chapterPlaceholders)
+              .where(eq(chapterPlaceholders.chapterId, projectChapterId));
+
+            const temaVariantNames = phRows
+              .filter((ph) => {
+                const segments = ph.name.toLowerCase().split("_");
+                return segments.includes("tema") || segments.includes("topic");
+              })
+              .map((ph) => ph.name);
+
+            // Ensure all tema variants have definitions (single UPDATE with inArray)
+            if (temaVariantNames.length > 0) {
+              await tx
+                .update(chapterPlaceholders)
+                .set({ definition: p.topic })
+                .where(
+                  and(
+                    eq(chapterPlaceholders.chapterId, projectChapterId),
+                    inArray(chapterPlaceholders.name, temaVariantNames),
+                  ),
+                );
+            }
+
+            // Also ensure a canonical {tema} row exists for prompts that reference it
             await tx
               .insert(chapterPlaceholders)
               .values({ chapterId: projectChapterId, name: "tema", definition: p.topic })

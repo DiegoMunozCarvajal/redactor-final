@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { metaPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { asc } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -14,7 +14,7 @@ export async function GET() {
   const rows = await db
     .select()
     .from(metaPrompts)
-    .orderBy(asc(metaPrompts.createdAt));
+    .orderBy(desc(metaPrompts.createdAt));
 
   return NextResponse.json(rows);
 }
