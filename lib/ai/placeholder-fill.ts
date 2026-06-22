@@ -28,21 +28,81 @@ export interface PlaceholderFillEvent {
 const DEFAULT_MODEL = DEFAULT_GENERATION_MODEL;
 
 function extractJson(text: string): unknown {
+  // Phase 1: Direct parse — works for well-formed JSON
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.trim());
   } catch {}
-  const match = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (match) {
+
+  // Phase 2: JSON in fenced code blocks (```json ... ``` or ``` ... ```)
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenced) {
     try {
-      return JSON.parse(match[1]);
+      return JSON.parse(fenced[1].trim());
     } catch {}
   }
-  const objMatch = text.match(/\{[\s\S]*\}/);
+
+  // Phase 3: Find the outermost JSON object with string-aware brace counting.
+  // Handles nested braces, text before/after JSON, and concatenated JSON objects
+  // (takes the first valid one). Skips braces inside JSON strings to avoid
+  // false depth from string content like "use {placeholder} here".
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") { escapeNext = true; }
+      else if (ch === "\"") { inString = false; }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const candidate = text.slice(start, i + 1);
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          // Try to salvage: fix common JSON issues in the extracted block
+          const salvaged = candidate
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*\]/g, "]");
+          try {
+            return JSON.parse(salvaged);
+          } catch {
+            // Continue searching for another JSON block
+            start = -1;
+            continue;
+          }
+        }
+      }
+    }
+  }
+
+  // Phase 4: Last resort — fix common issues globally, then try lazy match
+  // (first complete JSON object, not greedy which would span multiple objects)
+  const cleaned = text
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*\]/g, "]")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  const objMatch = cleaned.match(/\{[\s\S]*?\}/);
   if (objMatch) {
     try {
       return JSON.parse(objMatch[0]);
     } catch {}
   }
+
   throw new Error("Could not parse JSON from response");
 }
 
@@ -59,6 +119,26 @@ function resolveDirectly(
   }
 
   return null;
+}
+
+/** Build a search query from placeholder metadata, not just the placeholder name.
+ *  Uses `function` as primary intent descriptor — it explains what content the
+ *  placeholder needs, which yields better search results than underscore_names. */
+function buildSearchQuery(ph: PlaceholderDef, projectTopic: string | null): string {
+  const topic = projectTopic ?? "";
+
+  if (ph.function && ph.function.length > 0) {
+    // Function describes intent: "El esfuerzo para eliminar un mal hábito"
+    // Strip leading articles for a cleaner query
+    const funcClean = ph.function
+      .replace(/^(El |La |Los |Las |Un |Una |Unos |Unas )/, "")
+      .trim();
+    return `${funcClean} ${topic}`.trim();
+  }
+
+  // Fallback: use placeholder name with underscores replaced
+  const nameReadable = ph.name.replace(/_/g, " ");
+  return `${nameReadable} ${topic}`.trim();
 }
 
 const INDIVIDUAL_FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu tarea es definir UN placeholder para el capítulo de un libro.
@@ -80,6 +160,17 @@ En el prompt del usuario verás varias secciones. Es crítico que distingas su f
 - Si hay tensión entre las NOTAS y los PROMPTS DEL CAPÍTULO → las NOTAS tienen prioridad.
 - Si hay tensión entre las NOTAS y los DOCUMENTOS SUBIDOS (RAG) → el RAG tiene prioridad. Las notas solo guían CÓMO adaptar el material, no si debes usarlo.
 - Si hay tensión entre las NOTAS y la BÚSQUEDA WEB/Semantic Scholar → las NOTAS tienen prioridad (la búsqueda externa es complementaria).
+
+## 🚫 Prohibición de propiedad intelectual
+
+No reproduzcas elementos creativos distintivos de libros conocidos. Esto incluye:
+
+- **Metáforas insignia**: el bambú de James Clear, el hielo que se derrite, la acumulación de pequeñas mejoras del 1%, el avión que se desvía 1 grado — cualquier metáfora que un lector reconocería como "la metáfora de [autor]".
+- **Historias y anécdotas célebres**: el equipo de ciclismo británico, los médicos que se lavan las manos, el malvavisco de Stanford — cualquier historia que esté indisolublemente asociada a un libro o autor específico.
+- **Marcos conceptuales con nombre propio**: "las 4 leyes del cambio de conducta", "el círculo dorado", "los 7 hábitos" — cualquier framework que un autor haya bautizado y publicado.
+- **Ejemplos que son la firma de un autor**: el experimento de los monos y la escalera, el pez que no descubre el agua, el elefante y el jinete — cualquier ejemplo que identifiques como proveniente de un libro best-seller.
+
+Si detectas que un resultado de búsqueda está parafraseando un libro famoso, NO uses ese material. Crea una ilustración original que comunique la misma idea sin tomar prestada la propiedad creativa de otro autor. Si no se te ocurre una alternativa original, usa una descripción conceptual directa sin metáforas.
 
 ## Instrucciones
 
@@ -117,9 +208,19 @@ Usa el siguiente formato:
 
 3. **Si ningún resultado pasa los criterios** (para búsqueda web/Semantic Scholar), usa tu mejor conocimiento para responder, pero incluye solo información que puedas verificar. Es preferible una definición precisa sin fuente explícita que una definición con fuentes inventadas. Para placeholders estilísticos o creativos (los que la nota indique que no requieren búsqueda), usa directamente tu conocimiento.
 
-4. **Redacta la definición**: 1-3 oraciones, directamente usable en un párrafo del libro (no escribas una meta-descripción tipo "este placeholder contiene..."). La definición debe poder insertarse tal cual en el flujo del texto sin edición adicional.
+4. **Redacta la definición**: consulta las Notas del placeholder para la extensión esperada. Si las notas especifican un número de párrafos u oraciones, adhiérete a esa indicación. Si no hay guidance de extensión, evalúa el propósito: placeholders narrativos (fábulas, historias, anécdotas, casos de estudio) requieren desarrollo completo con inicio, desarrollo y cierre; placeholders factuales (estudios, papers, referencias) requieren descripción con metodología, resultados y fuente; placeholders estilísticos (tono, enfoque) pueden resolverse en 1-2 oraciones. La definición debe poder insertarse tal cual en el flujo del texto sin edición adicional (no escribas una meta-descripción tipo "este placeholder contiene...").
 
-5. **Entrega el resultado**: responde ÚNICAMENTE con JSON válido en este formato: {"definition": "tu definición concisa"}
+**🚫 La definición NUNCA debe contener el nombre del placeholder como texto.** Por ejemplo, para {exito_notable}, no escribas "un éxito notable: ..." — eso es name bleeding. La definición debe ser el contenido en sí, no una frase que repita el nombre.
+
+**🚫 No inventes anécdotas, casos de estudio ni estadísticas.** Si los resultados de búsqueda no contienen un caso real y documentado, no fabriques uno. Es preferible una definición conceptual concisa (2-3 oraciones) que una historia falsa presentada como real. Las anécdotas de "un grupo de hombres que se reunían cada martes..." o "un profesional que tras años de evitar..." sin fuente son FABRICACIONES. Si necesitas ilustrar un concepto, usa una descripción abstracta del patrón, no una narrativa con detalles concretos falsos.
+
+**Extensión máxima por tipo:**
+- Placeholders factuales (definiciones, conceptos, descripciones): **máximo 250 palabras** (~4-5 oraciones). Sé denso, no expansivo.
+- Placeholders narrativos (historias, anécdotas, casos): **máximo 400 palabras** (~8-10 oraciones). Solo si hay fuente real que lo respalde.
+- Placeholders estilísticos (tono, perfil): **máximo 100 palabras** (~2-3 oraciones).
+- Si las Notas del placeholder especifican una extensión diferente, obedécelas.
+
+5. **Entrega el resultado**: responde ÚNICAMENTE con JSON válido en este formato: {"definition": "tu definición"}
 
 ## Ejemplos
 
@@ -165,6 +266,131 @@ Notas: "Especificar rol profesional, contexto organizacional y nivel de conocimi
 </evaluacion>
 
 {"definition": "Profesionales de comunicación en salud pública y funcionarios de ministerios de salud que diseñan campañas de prevención dirigidas a poblaciones diversas, con experiencia limitada en psicología del comportamiento"}`;
+
+// ── Post-generation validation ──
+
+interface ValidationResult {
+  ok: boolean;
+  reason?: string;
+}
+
+const MIN_DEFINITION_LENGTH = 30;   // catch "arrancar un roble" cases
+const MAX_WORDS_FACTUAL = 250;
+const MAX_WORDS_NARRATIVE = 400;
+const MAX_WORDS_STYLISTIC = 100;
+
+function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
+  // Match whole-word/phrase patterns to avoid false positives.
+  // "caso" alone is excluded — too broad (appears in "en caso de", "hacer caso", etc.).
+  // Use specific phrases: "caso de estudio", "caso real", "caso concreto", etc.
+  const narrativePatterns = [
+    /\bhistoria\b/,
+    /\ban[ée]cdota\b/,
+    /\bf[áa]bula\b/,
+    /\bnarrativa\b/,
+    /\brelato\b/,
+    /\bescena\b/,
+    /caso\s+(de\s+estudio|real|concreto|documentado|espec[ií]fico|ilustrativo)/,
+    /ejemplo\s+concreto/,
+    /ilustraci[óo]n/,
+  ];
+  const text = `${ph.function ?? ""} ${ph.notes ?? ""}`.toLowerCase();
+  return narrativePatterns.some((pattern) => pattern.test(text));
+}
+
+function validateDefinition(
+  definition: string,
+  placeholderName: string,
+  ph: PlaceholderDef,
+): ValidationResult {
+  // 1. Minimum length — catch truncated extractions
+  if (definition.length < MIN_DEFINITION_LENGTH) {
+    return { ok: false, reason: `Definition too short (${definition.length} chars, min ${MIN_DEFINITION_LENGTH})` };
+  }
+
+  // 2. Name bleeding — definition should not contain the placeholder name verbatim.
+  //    Uses Unicode-aware word boundaries (u flag) to handle accented characters.
+  const escaped = placeholderName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namePattern = new RegExp(
+    `\\b${escaped.replace(/_/g, "[_\\\\s]+")}\\b`,
+    "iu",
+  );
+  if (namePattern.test(definition)) {
+    return { ok: false, reason: `Definition contains placeholder name "${placeholderName}" — name bleeding detected` };
+  }
+
+  // 3. Maximum length — prevent bloated definitions
+  const wordCount = definition.split(/\s+/).length;
+  if (isNarrativePlaceholder(ph)) {
+    if (wordCount > MAX_WORDS_NARRATIVE) {
+      return { ok: false, reason: `Definition too long (${wordCount} words, max ${MAX_WORDS_NARRATIVE} for narrative)` };
+    }
+  } else {
+    if (wordCount > MAX_WORDS_FACTUAL) {
+      return { ok: false, reason: `Definition too long (${wordCount} words, max ${MAX_WORDS_FACTUAL} for factual/stylistic)` };
+    }
+  }
+
+  return { ok: true };
+}
+
+async function generateAndValidate(
+  model: string,
+  userPrompt: string,
+  ph: PlaceholderDef,
+  effort?: ReasoningEffort,
+  temperature?: number,
+): Promise<string> {
+  // First attempt
+  const result = await generateCompletion({
+    model,
+    systemPrompt: INDIVIDUAL_FILL_SYSTEM_PROMPT,
+    userPrompt,
+    ...(effort !== undefined ? { effort } : {}),
+    ...(temperature !== undefined ? { temperature } : {}),
+  });
+
+  const parsed = extractJson(result.data as string) as Record<string, unknown>;
+  const definition = (parsed.definition as string) ?? "";
+
+  if (!definition) {
+    throw new Error(`No definition generated for {${ph.name}}`);
+  }
+
+  const validation = validateDefinition(definition, ph.name, ph);
+
+  if (validation.ok) return definition;
+
+  // Retry once with stricter prompt
+  console.warn(
+    `[placeholder-fill] Validation failed for {${ph.name}}: ${validation.reason}. Retrying with stricter prompt.`,
+  );
+
+  const retryUserPrompt = userPrompt +
+    `\n\n⚠️ TU RESPUESTA ANTERIOR FUE RECHAZADA. Razón: ${validation.reason}. ` +
+    `Corrige el problema y responde de nuevo ÚNICAMENTE con JSON: {"definition": "..."}`;
+
+  const retryResult = await generateCompletion({
+    model,
+    systemPrompt: INDIVIDUAL_FILL_SYSTEM_PROMPT,
+    userPrompt: retryUserPrompt,
+    ...(effort !== undefined ? { effort } : {}),
+    temperature: 0.2,  // always lower temp on retry for stricter adherence
+  });
+
+  const retryParsed = extractJson(retryResult.data as string) as Record<string, unknown>;
+  const retryDefinition = (retryParsed.definition as string) ?? definition;
+
+  // On retry failure, log but don't throw — partial definition better than none
+  const retryValidation = validateDefinition(retryDefinition, ph.name, ph);
+  if (!retryValidation.ok) {
+    console.warn(
+      `[placeholder-fill] Retry also failed validation for {${ph.name}}: ${retryValidation.reason}. Using definition anyway.`,
+    );
+  }
+
+  return retryDefinition;
+}
 
 export interface PlaceholderDef {
   name: string;
@@ -237,7 +463,7 @@ export async function fillOnePlaceholder(
   }
 
   const promptContext = promptContents
-    .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 1500)}${c.length > 1500 ? "..." : ""}`)
+    .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 10000)}${c.length > 10000 ? "..." : ""}`)
     .join("\n\n");
 
   // Phase 1: Research — ternary decision: RAG | Semantic Scholar | Web search
@@ -248,12 +474,12 @@ export async function fillOnePlaceholder(
   const skipResearch = provider === "none" || provider === "direct";
 
   if (!skipResearch) {
-    const query = `${ph.name.replace(/_/g, " ")} ${projectTopic ?? ""}`.trim();
+    const query = buildSearchQuery(ph, projectTopic);
 
     if (provider === "rag") {
       const result = await retrieveContext(query, projectId, {
         topK: 5,
-        tokenBudget: 3000,
+        tokenBudget: 15000,
       });
       if (result.contextText) {
         ragContext = result.contextText;
@@ -267,7 +493,9 @@ export async function fillOnePlaceholder(
         throw new Error(`Semantic Scholar returned no results for {${ph.name}}`);
       }
     } else {
-      sources = await webSearch(query);
+      // Exclude Semantic Scholar for web provider — irrelevant academic papers
+      // (e.g. "Mal de Parkinson" mixed with "cómo conquistar mujeres") contaminate the context.
+      sources = await webSearch(query, { semanticScholar: false });
       if (sources.length === 0) {
         throw new Error(`Web search returned no results for {${ph.name}}`);
       }
@@ -335,23 +563,16 @@ ${promptContext}
 ${existingDefsSection}
 ${researchSection}
 
-Responde ÚNICAMENTE con JSON: {"definition": "tu definición concisa de 1-3 oraciones"}`;
+Responde ÚNICAMENTE con JSON: {"definition": "tu definición (extensión según las notas del placeholder)"}`;
 
-  // Phase 4: Generate
-  const result = await generateCompletion({
+  // Phase 4: Generate (with single retry on validation failure)
+  const definition = await generateAndValidate(
     model,
-    systemPrompt: INDIVIDUAL_FILL_SYSTEM_PROMPT,
     userPrompt,
-    ...(effort !== undefined ? { effort } : {}),
-    ...(temperature !== undefined ? { temperature } : {}),
-  });
-
-  const parsed = extractJson(result.data as string) as Record<string, unknown>;
-  const definition = (parsed.definition as string) ?? "";
-
-  if (!definition) {
-    throw new Error(`No definition generated for {${ph.name}}`);
-  }
+    ph,
+    effort,
+    temperature,
+  );
 
   return {
     name: ph.name,
@@ -448,6 +669,10 @@ const FILL_SYSTEM_PROMPT = `Eres un investigador experto y escritor fantasma. Tu
 - Resultados de búsqueda: hallazgos de búsqueda web (si los hay)
 - Documentos subidos (RAG): fragmentos de tus documentos subidos que coinciden con este placeholder (si los hay)
 
+## 🚫 Prohibición de propiedad intelectual
+
+No reproduzcas elementos creativos distintivos de libros conocidos: metáforas insignia (el bambú de James Clear, el hielo que se derrite, el avión que se desvía 1 grado), historias célebres (el equipo de ciclismo británico, el malvavisco de Stanford), frameworks con nombre propio ("las 4 leyes del cambio de conducta", "el círculo dorado"), ni ejemplos que sean la firma de un autor best-seller. Si detectas que un resultado de búsqueda parafrasea un libro famoso, NO uses ese material. Crea una ilustración original o usa una descripción conceptual directa sin metáforas.
+
 ## Instrucciones
 
 ### Material de documentos subidos (RAG)
@@ -468,9 +693,11 @@ Si ningún resultado pasa estos criterios, NO uses los resultados. Responde con 
 1. Para placeholders CON RAG: adapta el material subido a ejemplos genéricos y transferibles
 2. Para placeholders CON fuentes de calidad (web/Semantic Scholar): extrae y cita nombres, fechas, instituciones o datos de las fuentes
 3. Para placeholders SIN fuentes de calidad: elige el ejemplo, caso o referencia más pertinente y específico que se ajuste al tema. No inventes citas
-4. Cada definición: 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
-5. Alinea cada definición con el tema del proyecto y los content prompts
-6. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
+4. Cada definición: extensión según el tipo de placeholder — narrativos (fábulas, historias, anécdotas) requieren desarrollo completo; factuales (estudios, papers) requieren descripción con metodología y resultados; estilísticos pueden ser 1-2 oraciones. La definición debe insertarse directamente en el flujo del texto (no una meta-descripción). **Máximo 250 palabras para factuales, 400 para narrativos, 100 para estilísticos.**
+5. 🚫 **No inventes anécdotas ni casos de estudio.** Si no tienes una fuente real que documente un caso concreto, no fabriques uno. Una definición conceptual concisa es preferible a una historia falsa.
+6. 🚫 **No repitas el nombre del placeholder en la definición.** Para {exito_notable}, no escribas "un éxito notable:...". Eso es name bleeding. La definición ES el contenido, no una frase que mencione el placeholder.
+7. Alinea cada definición con el tema del proyecto y los content prompts
+8. Responde ÚNICAMENTE con JSON válido: {"placeholders": {"NOMBRE": "definición", ...}}
 
 ## Ejemplo
 Placeholders: ["FUENTE_PRINCIPAL", "ESTUDIO_CLAVE"]
@@ -555,7 +782,7 @@ export async function researchPlaceholdersWithRag(
       const query = `${name.replace(/_/g, " ")} ${projectTopic ?? ""}`;
       const { contextText } = await retrieveContext(query, projectId, {
         topK: 5,
-        tokenBudget: 3000,
+        tokenBudget: 15000,
       });
       if (contextText) {
         ragContexts[name] = contextText;
@@ -701,8 +928,13 @@ Calidad de fuentes:
 - Si los resultados son relevantes y específicos, extrae datos, nombres, fechas e instituciones de ellos
 - Si ningún resultado es útil, descártalos y responde con tu mejor conocimiento sin inventar fuentes ni cifras
 
+🚫 No reproduzcas metáforas, historias ni ejemplos distintivos de libros conocidos (el bambú de James Clear, el equipo de ciclismo británico, etc.). Si detectas que una fuente parafrasea un libro famoso, no uses ese material.
+🚫 No inventes anécdotas ni casos de estudio. Si no tienes fuente real, usa una descripción conceptual directa.
+🚫 La definición NUNCA debe contener el nombre del placeholder como texto (name bleeding).
+🚫 No uses adjetivos huecos ("profundo", "innovador", "fascinante") ni muletillas ("realmente", "simplemente").
+
 Reglas:
-- La definición debe ser de 1-3 oraciones, directamente usable en un párrafo del libro (no una meta-descripción)
+- La definición: extensión según el tipo de placeholder — narrativos (fábulas, historias, anécdotas, casos) requieren desarrollo completo con inicio, desarrollo y cierre (máx. 400 palabras); factuales (estudios, papers, referencias) requieren descripción con metodología, resultados y fuente (máx. 250 palabras); estilísticos pueden ser 1-2 oraciones (máx. 100 palabras). Debe insertarse directamente en el flujo del texto (no una meta-descripción)
 - Alinea la definición con el tema del proyecto y los content prompts del capítulo
 - Responde ÚNICAMENTE: {"definition": "..."}
 
