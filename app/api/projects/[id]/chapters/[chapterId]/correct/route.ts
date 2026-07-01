@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, correctorPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { generateChapterCorrection } from "@/lib/generate";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
@@ -89,6 +89,12 @@ export async function POST(
   // Determine what content to correct: use provided content or fetch latest assembly
   let contentToCorrect: string;
   if (body.content && typeof body.content === "string") {
+    if (body.content.length > 200_000) {
+      return NextResponse.json(
+        { error: "content too large, max 200KB" },
+        { status: 400 },
+      );
+    }
     contentToCorrect = body.content;
   } else {
     // Fetch the latest content to correct: prefer the most recent correction,
@@ -160,6 +166,28 @@ export async function POST(
   }
 
   const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
+
+  // Clean up stale correction rows before creating a new one
+  const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
+  const [staleRunning] = await db
+    .select({ id: chapterGenerations.id })
+    .from(chapterGenerations)
+    .where(
+      and(
+        eq(chapterGenerations.projectId, projectId),
+        eq(chapterGenerations.chapterId, chapterId),
+        eq(chapterGenerations.status, "generating"),
+        sql`${chapterGenerations.generationMetadata}->>'type' = 'correction'`,
+        lt(chapterGenerations.createdAt, staleCutoff),
+      ),
+    )
+    .limit(1);
+  if (staleRunning) {
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "Stale generation (timed out after 30 minutes)" })
+      .where(eq(chapterGenerations.id, staleRunning.id));
+  }
 
   let generationId: string | undefined;
 

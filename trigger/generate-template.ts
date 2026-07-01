@@ -152,9 +152,9 @@ export const generateTemplate = task({
         );
       }
 
-      // Update template status: ready if at least one chapter succeeded, failed if all failed.
+      // Update template status: ready only if ALL chapters succeeded, failed otherwise.
       const succeededCount = results.filter((r) => r.status === "fulfilled").length;
-      const newStatus = succeededCount > 0 ? "ready" : "failed";
+      const newStatus = succeededCount === chapters.length ? "ready" : "failed";
       await db
         .update(bookTemplates)
         .set({ status: newStatus })

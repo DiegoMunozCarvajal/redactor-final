@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts, chapterPlaceholders, assemblyPrompts } from "@/lib/db/schema";
+import { projects, chapters, prompts, projectPrompts, chapterPlaceholders, assemblyPrompts, bookTemplates } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
@@ -63,6 +63,21 @@ export async function POST(req: NextRequest) {
   }
   if (assemblyPromptId !== undefined && typeof assemblyPromptId !== "string") {
     return NextResponse.json({ error: "assemblyPromptId must be a string" }, { status: 400 });
+  }
+
+  // Validate template availability
+  if (bookTemplateId) {
+    const [template] = await db
+      .select({ id: bookTemplates.id, status: bookTemplates.status })
+      .from(bookTemplates)
+      .where(eq(bookTemplates.id, bookTemplateId))
+      .limit(1);
+    if (!template) {
+      return NextResponse.json({ error: "template not found" }, { status: 400 });
+    }
+    if (template.status !== "ready") {
+      return NextResponse.json({ error: "template is not available" }, { status: 400 });
+    }
   }
 
   let project: typeof projects.$inferSelect;

@@ -2,7 +2,7 @@ import { db, client } from "@/lib/db/drizzle";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
-const WINDOW_SECONDS = 60;
+export const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_GENERATIONS_PER_WINDOW = 1;
 
 function projectIdToLockKey(projectId: string): [number, number] {
@@ -56,7 +56,7 @@ export async function withProjectLock<T>(
 export async function checkProjectRateLimit(
   projectId: string
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
-  const windowStart = new Date(Date.now() - WINDOW_SECONDS * 1000);
+  const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
 
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -64,7 +64,7 @@ export async function checkProjectRateLimit(
     .where(
       and(
         eq(chapterGenerations.projectId, projectId),
-        gte(chapterGenerations.createdAt, windowStart),
+        gte(chapterGenerations.createdAt, staleCutoff),
         inArray(chapterGenerations.status, ["pending", "generating", "assembling"])
       )
     );
@@ -72,7 +72,7 @@ export async function checkProjectRateLimit(
   const recentGenerations = row?.count ?? 0;
 
   if (recentGenerations >= MAX_GENERATIONS_PER_WINDOW) {
-    return { allowed: false, retryAfter: WINDOW_SECONDS };
+    return { allowed: false, retryAfter: 15 };
   }
 
   return { allowed: true };

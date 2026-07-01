@@ -10,7 +10,7 @@ import { eq, and, not, isNotNull } from "drizzle-orm";
 export type { SearchResult };
 
 export interface PlaceholderFillEvent {
-  type: "placeholder" | "done" | "error";
+  type: "placeholder" | "done" | "error" | "cancelled";
   name?: string;
   definition?: string;
   sources?: SearchResult[];
@@ -613,11 +613,17 @@ export async function* fillPlaceholdersSequential(
   temperature?: number,
   currentChapterId?: string,
   sourceContexts?: (string | null)[],
+  signal?: AbortSignal,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const total = placeholders.length;
   const existingDefs: Record<string, string> = {};
 
   for (let i = 0; i < placeholders.length; i++) {
+    if (signal?.aborted) {
+      yield { type: "cancelled" as const, current: i, total };
+      return;
+    }
+
     const ph = placeholders[i];
 
     try {

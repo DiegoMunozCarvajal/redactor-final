@@ -220,6 +220,9 @@ export default function ChapterPage() {
       if (signal?.aborted) return;
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       setData(await res.json());
+      // Reset selected versions so the latest is shown by default
+      setSelectedAssemblyGenerationId(undefined);
+      setSelectedCritiqueGenerationId(undefined);
       setError(null);
       pollErrorCount.current = 0;
     } catch (err) {

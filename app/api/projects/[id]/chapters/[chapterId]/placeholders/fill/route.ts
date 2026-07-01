@@ -127,6 +127,7 @@ export async function POST(
           undefined,
           chapterId,
           sourceContexts,
+          req.signal,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));

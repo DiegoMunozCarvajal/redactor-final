@@ -11,6 +11,7 @@ import {
 import { eq, asc, and, inArray } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders, syncChapterPlaceholders } from "@/lib/placeholders";
+import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 
 export const generateChapter = task({
@@ -46,10 +47,19 @@ export const generateChapter = task({
     if (terminalStatuses.includes(gen.status)) {
       return;
     }
-    // Abort if already in-flight — retry racing with first attempt.
-    // Return (don't throw) to avoid the catch block overwriting status to "failed".
+    // If stale (worker likely died), recover. If fresh, guard against retry race.
     if (gen.status === "generating" || gen.status === "assembling") {
-      return;
+      const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
+      if (gen.createdAt && new Date(gen.createdAt) > staleCutoff) {
+        // Fresh — likely a retry racing with the first attempt
+        return;
+      }
+      // Stale — previous attempt died; reset to pending and recover below
+      await db
+        .update(chapterGenerations)
+        .set({ status: "pending" })
+        .where(eq(chapterGenerations.id, generationId));
+      gen.status = "pending";
     }
 
     // The generation_status enum has exactly 6 values. All are handled above.
