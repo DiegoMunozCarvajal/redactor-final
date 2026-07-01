@@ -47,9 +47,9 @@ export async function POST(
     }
   }
 
-  // Get next position inside a transaction with FOR UPDATE to prevent races.
-  // Lock the project row first so we always have a contention point (handles
-  // the empty-table case where FOR UPDATE on chapters would lock nothing).
+  // Insert chapter, copy template prompts, and sync placeholders atomically.
+  // Doing prompt/placeholder copy outside the transaction leaves orphaned state
+  // on partial failure and skips placeholder initialization.
   const chapter = await db.transaction(async (tx) => {
     await tx
       .select({ id: projects.id })
@@ -75,36 +75,55 @@ export async function POST(
       })
       .returning();
 
+    // Copy prompts from template chapter if selected
+    if (templateChapterId) {
+      const templatePrompts = await tx
+        .select()
+        .from(prompts)
+        .where(eq(prompts.chapterId, templateChapterId))
+        .orderBy(asc(prompts.position));
+
+      if (templatePrompts.length > 0) {
+        await tx.insert(projectPrompts).values(
+          templatePrompts.map((p) => ({
+            projectId,
+            chapterId: ch.id,
+            position: p.position,
+            isAssembly: p.isAssembly,
+            isCritique: p.isCritique,
+            isCorrector: p.isCorrector,
+            title: p.title,
+            content: p.content,
+            userPrompt: p.userPrompt,
+            function: p.function,
+            notes: p.notes,
+            sourceContext: p.sourceContext,
+          })),
+        );
+
+        // Copy template chapter placeholders to the new chapter
+        const { chapterPlaceholders } = await import("@/lib/db/schema");
+        const templatePlaceholders = await tx
+          .select()
+          .from(chapterPlaceholders)
+          .where(eq(chapterPlaceholders.chapterId, templateChapterId));
+
+        if (templatePlaceholders.length > 0) {
+          await tx.insert(chapterPlaceholders).values(
+            templatePlaceholders.map((ph) => ({
+              chapterId: ch.id,
+              name: ph.name,
+              function: ph.function,
+              notes: ph.notes,
+              definition: null, // fresh project, no pre-filled definitions
+            })),
+          );
+        }
+      }
+    }
+
     return ch;
   });
-
-  // Copy prompts from template chapter if selected
-  if (templateChapterId) {
-    const templatePrompts = await db
-      .select()
-      .from(prompts)
-      .where(eq(prompts.chapterId, templateChapterId))
-      .orderBy(asc(prompts.position));
-
-    if (templatePrompts.length > 0) {
-      await db.insert(projectPrompts).values(
-        templatePrompts.map((p) => ({
-          projectId,
-          chapterId: chapter.id,
-          position: p.position,
-          isAssembly: p.isAssembly,
-          isCritique: p.isCritique,
-          isCorrector: p.isCorrector,
-          title: p.title,
-          content: p.content,
-          userPrompt: p.userPrompt,
-          function: p.function,
-          notes: p.notes,
-          sourceContext: p.sourceContext,
-        })),
-      );
-    }
-  }
 
   return NextResponse.json(chapter);
 }

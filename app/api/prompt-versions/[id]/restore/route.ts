@@ -41,11 +41,12 @@ export async function POST(
       promptId: templatePrompt.id,
       title: templatePrompt.title,
       content: templatePrompt.content,
+      userPrompt: templatePrompt.userPrompt,
     });
 
     const [restored] = await db
       .update(prompts)
-      .set({ title: version.title, content: version.content })
+      .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
       .where(eq(prompts.id, version.promptId))
       .returning();
 
@@ -59,6 +60,7 @@ export async function POST(
       id: projectPrompts.id,
       title: projectPrompts.title,
       content: projectPrompts.content,
+      userPrompt: projectPrompts.userPrompt,
       projectId: projectPrompts.projectId,
     })
     .from(projectPrompts)
@@ -83,11 +85,12 @@ export async function POST(
       promptId: projectPrompt.id,
       title: projectPrompt.title,
       content: projectPrompt.content,
+      userPrompt: projectPrompt.userPrompt,
     });
 
     const [restored] = await db
       .update(projectPrompts)
-      .set({ title: version.title, content: version.content })
+      .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
       .where(eq(projectPrompts.id, version.promptId))
       .returning();
 

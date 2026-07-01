@@ -81,6 +81,25 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const { chapterId, title, content, userPrompt, isAssembly, isCritique, isCorrector } = body;
 
+  // Validate required fields before any DB query
+  if (!chapterId || !title || !content) {
+    return NextResponse.json(
+      { error: "chapterId, title, and content are required" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof title !== "string" || title.length > 500 ||
+    typeof content !== "string" || content.length > 100_000 ||
+    (userPrompt !== undefined && userPrompt !== null && (typeof userPrompt !== "string" || userPrompt.length > 100_000))
+  ) {
+    return NextResponse.json(
+      { error: "title max 500 chars, content/userPrompt max 100KB each" },
+      { status: 400 },
+    );
+  }
+
   // Verify chapter belongs to project
   const [chapter] = await db
     .select({ id: chapters.id })
@@ -88,13 +107,6 @@ export async function POST(
     .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
     .limit(1);
   if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
-
-  if (!chapterId || !title || !content) {
-    return NextResponse.json(
-      { error: "chapterId, title, and content are required" },
-      { status: 400 },
-    );
-  }
 
   // Get max position for this chapter
   const existing = await db

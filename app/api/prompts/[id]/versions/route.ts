@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { promptVersions, projectPrompts, projects } from "@/lib/db/schema";
+import { promptVersions, projectPrompts, projects, prompts } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 
 export async function GET(
   _req: NextRequest,
@@ -14,7 +15,33 @@ export async function GET(
 
   const { id } = await params;
 
-  // Verify prompt belongs to user's project
+  // promptVersions.promptId can reference either prompts.id (template) or
+  // projectPrompts.id (project). Try template first, then project.
+  const [templatePrompt] = await db
+    .select({ id: prompts.id })
+    .from(prompts)
+    .where(eq(prompts.id, id))
+    .limit(1);
+
+  if (templatePrompt) {
+    // Template prompt — admin only
+    const admin = await requireAdmin();
+    if (!admin.authorized) return admin.response;
+
+    const versions = await db
+      .select({
+        id: promptVersions.id,
+        title: promptVersions.title,
+        createdAt: promptVersions.createdAt,
+      })
+      .from(promptVersions)
+      .where(eq(promptVersions.promptId, id))
+      .orderBy(desc(promptVersions.createdAt));
+
+    return NextResponse.json(versions);
+  }
+
+  // Try project-scoped prompt — verify ownership
   const [owned] = await db
     .select({ id: projectPrompts.id })
     .from(projectPrompts)

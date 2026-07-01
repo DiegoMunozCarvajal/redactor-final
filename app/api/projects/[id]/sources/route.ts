@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, sources, sourceChunks } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
 import { generateEmbeddings } from "@/lib/ai/embeddings";
 import { csrfCheck } from "@/lib/api/csrf";
 
@@ -114,6 +114,22 @@ export async function POST(
     return NextResponse.json({ error: "file is empty" }, { status: 400 });
   }
 
+  // Guard against excessive uploads: cap chunks and total sources per project
+  const MAX_CHUNKS = 200;
+  const MAX_SOURCES_PER_PROJECT = 50;
+
+  const [{ count: sourceCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sources)
+    .where(eq(sources.projectId, projectId));
+
+  if (sourceCount >= MAX_SOURCES_PER_PROJECT) {
+    return NextResponse.json(
+      { error: `max ${MAX_SOURCES_PER_PROJECT} sources per project` },
+      { status: 400 },
+    );
+  }
+
   const fileType = ext === "md" ? "markdown" : "text";
 
   // Accept explicit sourceKind from form data, else auto-detect from filename
@@ -140,6 +156,12 @@ export async function POST(
   const chunks = chunkText(text);
   if (chunks.length === 0) {
     return NextResponse.json({ error: "file has no content to chunk" }, { status: 400 });
+  }
+  if (chunks.length > MAX_CHUNKS) {
+    return NextResponse.json(
+      { error: `file produces ${chunks.length} chunks, max ${MAX_CHUNKS}` },
+      { status: 400 },
+    );
   }
 
   let embeddings: number[][];

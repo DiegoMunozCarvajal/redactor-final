@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { chapterGenerations, fragments, projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -85,6 +85,13 @@ export async function PATCH(
     return NextResponse.json({ error: "invalid status" }, { status: 400 });
   }
 
+  // Only allow transitioning from active states to failed. Completed generations
+  // stay completed — manual override would hide valid content from assembly views.
+  const whereConditions = [eq(chapterGenerations.id, id)];
+  if (status === "failed") {
+    whereConditions.push(inArray(chapterGenerations.status, ["pending", "generating", "assembling"]));
+  }
+
   const [updated] = await db
     .update(chapterGenerations)
     .set({
@@ -92,7 +99,7 @@ export async function PATCH(
       ...(error !== undefined && { error }),
       ...(status === "failed" ? { completedAt: new Date() } : {}),
     })
-    .where(eq(chapterGenerations.id, id))
+    .where(and(...whereConditions))
     .returning();
 
   return NextResponse.json(updated);

@@ -39,55 +39,15 @@ export async function POST(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // Serialize rate limit check and generation under advisory lock
-  // to close the TOCTOU window between rate check and dispatch.
+  // Serialize rate limit check under advisory lock to close the TOCTOU
+  // window. LLM call runs outside the lock — never hold advisory lock
+  // during external API work.
   const lockResult = await withProjectLock(projectId, async () => {
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
-
-    // Load placeholders from first chapter
-    const [firstChapter] = await db
-      .select({ id: chapters.id })
-      .from(chapters)
-      .where(eq(chapters.projectId, projectId))
-      .orderBy(asc(chapters.position))
-      .limit(1);
-
-    const placeholders = firstChapter
-      ? await getChapterPlaceholders(firstChapter.id, project.topic)
-      : {};
-
-    const result = await generatePromptContent({
-      prompt: {
-        content:
-          'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
-      },
-      placeholders,
-      projectTopic: project.topic,
-    });
-
-    let title = "";
-    let subtitle = "";
-    try {
-      const parsed = titleResponseSchema.parse(JSON.parse(result.text));
-      title = parsed.title;
-      subtitle = parsed.subtitle ?? "";
-    } catch (err) {
-      console.error(
-        "[generate-title] Failed to parse title JSON:",
-        err instanceof Error ? err.message : "Unknown error",
-      );
-      return { error: "Failed to parse title from model response", status: 500 };
-    }
-
-    await db
-      .update(projects)
-      .set({ title, subtitle: subtitle || null })
-      .where(eq(projects.id, projectId));
-
-    return { title, subtitle };
+    return { rateLimited: false as const };
   });
 
   if (!lockResult.locked) {
@@ -97,19 +57,56 @@ export async function POST(
     );
   }
 
-  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+  if (lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
       { status: 429 },
     );
   }
 
-  if ("error" in lockResult.result) {
+  // LLM call outside the lock
+  const [firstChapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(eq(chapters.projectId, projectId))
+    .orderBy(asc(chapters.position))
+    .limit(1);
+
+  const placeholders = firstChapter
+    ? await getChapterPlaceholders(firstChapter.id, project.topic)
+    : {};
+
+  const result = await generatePromptContent({
+    prompt: {
+      content:
+        'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
+    },
+    placeholders,
+    projectTopic: project.topic,
+  });
+
+  let title = "";
+  let subtitle = "";
+  try {
+    const parsed = titleResponseSchema.parse(JSON.parse(result.text));
+    title = parsed.title;
+    subtitle = parsed.subtitle ?? "";
+  } catch (err) {
+    console.error(
+      "[generate-title] Failed to parse title JSON:",
+      err instanceof Error ? err.message : "Unknown error",
+    );
     return NextResponse.json(
-      { error: lockResult.result.error },
-      { status: lockResult.result.status },
+      { error: "Failed to parse title from model response" },
+      { status: 500 },
     );
   }
 
-  return NextResponse.json(lockResult.result);
+  await db
+    .update(projects)
+    .set({ title, subtitle: subtitle || null })
+    .where(eq(projects.id, projectId));
+
+  return NextResponse.json({ title, subtitle });
+
 }

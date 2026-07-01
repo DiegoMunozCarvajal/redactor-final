@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { chapters } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/admin";
+import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql, and, isNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
 

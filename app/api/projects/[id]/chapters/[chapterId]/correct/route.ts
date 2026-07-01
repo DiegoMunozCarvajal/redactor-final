@@ -67,7 +67,7 @@ export async function POST(
     );
   }
 
-  // Load the critique generation to get its content
+  // Load the critique generation — must be a completed critique output
   const [critiqueGen] = await db
     .select()
     .from(chapterGenerations)
@@ -76,13 +76,15 @@ export async function POST(
         eq(chapterGenerations.id, critiqueGenerationId),
         eq(chapterGenerations.projectId, projectId),
         eq(chapterGenerations.chapterId, chapterId),
+        eq(chapterGenerations.status, "completed"),
+        sql`${chapterGenerations.generationMetadata}->>'type' = 'critique'`,
       ),
     )
     .limit(1);
 
   if (!critiqueGen?.assembledContent) {
     return NextResponse.json(
-      { error: "critique generation not found or has no content" },
+      { error: "critique generation not found, not completed, or has no content" },
       { status: 400 },
     );
   }
