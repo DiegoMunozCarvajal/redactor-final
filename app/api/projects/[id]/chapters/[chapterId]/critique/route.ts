@@ -59,6 +59,12 @@ export async function POST(
   }
 
   if (critiquePrompt) {
+    if (typeof critiquePrompt.content !== "string" || critiquePrompt.content.length === 0) {
+      return NextResponse.json(
+        { error: "critiquePrompt.content must be a non-empty string" },
+        { status: 400 },
+      );
+    }
     if (critiquePrompt.content.length > 100_000) {
       return NextResponse.json(
         { error: "critiquePrompt.content too large, max 100KB" },

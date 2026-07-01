@@ -84,7 +84,9 @@ export async function POST(
     );
   }
 
-  // Update all positions in a single transaction
+  // Two-phase update to avoid unique index conflicts on (projectId, position):
+  // Phase 1: shift all affected chapters to unique negative positions (no conflicts possible)
+  // Phase 2: set to final target positions
   await db.transaction(async (tx) => {
     // Lock target chapter rows to serialize concurrent reorders
     await tx
@@ -92,6 +94,13 @@ export async function POST(
       .from(chapters)
       .where(inArray(chapters.id, reordered.map((c) => c.id)))
       .for("update");
+
+    for (let i = 0; i < reordered.length; i++) {
+      await tx
+        .update(chapters)
+        .set({ position: -(i + 1) })
+        .where(eq(chapters.id, reordered[i].id));
+    }
 
     for (const ch of reordered) {
       await tx

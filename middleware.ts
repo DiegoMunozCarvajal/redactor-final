@@ -151,7 +151,7 @@ export async function middleware(request: NextRequest) {
   ].join(" ");
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'" + (isProduction ? "" : " 'unsafe-eval'"),
+    "script-src 'self'" + (isProduction ? "" : " 'unsafe-eval'"),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self'",

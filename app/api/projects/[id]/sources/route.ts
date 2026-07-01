@@ -119,6 +119,31 @@ export async function POST(
   const MAX_CHUNKS = 200;
   const MAX_SOURCES_PER_PROJECT = 50;
 
+  // Lock project and check source quota BEFORE chunking/embedding (expensive API calls)
+  // so over-quota users don't waste paid embeddings.  The insert transaction below has
+  // its own check as defense-in-depth against the TOCTOU window between here and insert.
+  const quotaResult = await db.transaction(async (tx) => {
+    await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .for("update");
+
+    const [{ count: sourceCount }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sources)
+      .where(eq(sources.projectId, projectId));
+
+    return { overQuota: sourceCount >= MAX_SOURCES_PER_PROJECT };
+  });
+
+  if (quotaResult.overQuota) {
+    return NextResponse.json(
+      { error: `max ${MAX_SOURCES_PER_PROJECT} sources per project` },
+      { status: 400 },
+    );
+  }
+
   const fileType = ext === "md" ? "markdown" : "text";
 
   // Accept explicit sourceKind from form data, else auto-detect from filename

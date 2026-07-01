@@ -1,4 +1,4 @@
-import { task } from "@trigger.dev/sdk";
+import { task, type Context } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 import {
   chapterGenerations,
@@ -33,7 +33,7 @@ export const generateChapter = task({
       assemblyAlgorithm?: AssemblyAlgorithm;
       fragmentIds?: string[];
       assemblyPromptId?: string;
-    }) => {
+    }, { ctx }: { ctx: Context }) => {
     const { generationId, projectId, model, effort, skipAssembly, assemblyAlgorithm, fragmentIds, assemblyPromptId: payloadAssemblyPromptId } = payload;
 
     // Load generation
@@ -44,10 +44,27 @@ export const generateChapter = task({
       .limit(1);
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
 
-    // Idempotency guard — skip if already in a terminal state
-    const terminalStatuses = ["completed", "failed", "awaiting_assembly"];
+    // Idempotency guard — skip if already in a terminal state.
+    // "failed" is NOT terminal — retries recover from transient LLM errors.
+    // Blocking on "failed" would defeat Trigger.dev retries entirely
+    // (catch sets failed → next retry sees failed → returns).
+    const terminalStatuses = ["completed", "awaiting_assembly"];
     if (terminalStatuses.includes(gen.status)) {
       return;
+    }
+
+    // Handle "failed" status on retry — if we still have attempts remaining,
+    // reset to pending so the task can retry. On final attempt, skip.
+    if (gen.status === "failed") {
+      const maxAttempts = ctx.run.maxAttempts ?? 3;
+      if (ctx.attempt.number >= maxAttempts) {
+        return; // Final attempt already failed — skip
+      }
+      await db
+        .update(chapterGenerations)
+        .set({ status: "pending" })
+        .where(eq(chapterGenerations.id, generationId));
+      gen.status = "pending";
     }
     // If stale (worker likely died), recover. If fresh, guard against retry race.
     if (gen.status === "generating" || gen.status === "assembling") {
@@ -68,8 +85,8 @@ export const generateChapter = task({
     // If execution reaches here, the DB enum acquired a new value without a
     // corresponding code update — fail loudly rather than proceeding blindly.
     // Must set failed BEFORE throwing: this code is outside the try/catch below
-    // so the catch block won't fire. The idempotency guard above will skip
-    // retries once status is set to "failed".
+    // so the catch block won't fire. On retry, the "failed" handler above
+    // will reset to "pending" if attempts remain, or return if final attempt.
     if (gen.status !== "pending") {
       const msg =
         `Unrecognized generation status "${gen.status}" for ${generationId} — ` +
@@ -372,9 +389,22 @@ export const generateChapter = task({
 
     } catch (err) {
       const message = sanitizeError(err);
+      const maxAttempts = ctx.run.maxAttempts ?? 3;
+      const isLastAttempt = ctx.attempt.number >= maxAttempts;
+
+      // Prevent orphaned fragments from partial runs (Finding 6).
+      // Best-effort — don't mask the original error if deletion fails.
+      await db
+        .delete(fragments)
+        .where(eq(fragments.chapterGenerationId, generationId))
+        .catch(() => {});
+
+      // Mark terminal only on last attempt (Finding 10).
+      // Non-final attempts reset to "pending" so Trigger.dev retry
+      // picks up from a clean state rather than seeing "failed".
       await db
         .update(chapterGenerations)
-        .set({ status: "failed", error: message })
+        .set({ status: isLastAttempt ? "failed" : "pending", error: message })
         .where(eq(chapterGenerations.id, generationId));
       throw err;
     }

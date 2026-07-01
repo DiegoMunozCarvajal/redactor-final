@@ -18,7 +18,9 @@ export const chapters = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("idx_chapters_template").on(table.bookTemplateId, table.position),
+    uniqueIndex("uq_chapters_template_position")
+      .on(table.bookTemplateId, table.position)
+      .where(sql`book_template_id IS NOT NULL`),
     index("idx_chapters_project").on(table.projectId),
     uniqueIndex("uq_chapters_project_position").on(table.projectId, table.position),
     check("chk_chapter_parent", sql`book_template_id IS NOT NULL OR project_id IS NOT NULL`),

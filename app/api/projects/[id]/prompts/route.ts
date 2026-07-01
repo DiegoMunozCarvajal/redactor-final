@@ -127,42 +127,68 @@ export async function POST(
   // Insert prompt + sync placeholders atomically.
   // Doing sync outside the transaction leaves a window where prompt and
   // placeholders diverge on partial failure.
-  const prompt = await db.transaction(async (tx) => {
-    const existing = await tx
-      .select()
-      .from(prompts)
-      .where(eq(prompts.chapterId, chapterId))
-      .orderBy(asc(prompts.position));
-    const maxPos = existing.reduce((max, p) => Math.max(max, p.position), -1);
+  try {
+    const prompt = await db.transaction(async (tx) => {
+      // Lock the chapter row to serialize concurrent prompt creates for the
+      // same chapter. Without this lock, two parallel requests could compute
+      // the same max+1 position and collide on (chapterId, position) unique.
+      await tx
+        .select({ id: chapters.id })
+        .from(chapters)
+        .where(eq(chapters.id, chapterId))
+        .limit(1)
+        .for("update");
 
-    const [p] = await tx
-      .insert(prompts)
-      .values({
-        projectId,
+      const existing = await tx
+        .select()
+        .from(prompts)
+        .where(eq(prompts.chapterId, chapterId))
+        .orderBy(asc(prompts.position));
+      const maxPos = existing.reduce((max, p) => Math.max(max, p.position), -1);
+
+      const [p] = await tx
+        .insert(prompts)
+        .values({
+          projectId,
+          chapterId,
+          title,
+          content,
+          userPrompt,
+          position: maxPos + 1,
+          isAssembly: isAssembly ?? false,
+          isCritique: isCritique ?? false,
+          isCorrector: isCorrector ?? false,
+        })
+        .returning();
+
+      const allPrompts = await tx
+        .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+        .from(prompts)
+        .where(eq(prompts.chapterId, chapterId));
+      await syncChapterPlaceholders(
         chapterId,
-        title,
-        content,
-        userPrompt,
-        position: maxPos + 1,
-        isAssembly: isAssembly ?? false,
-        isCritique: isCritique ?? false,
-        isCorrector: isCorrector ?? false,
-      })
-      .returning();
+        allPrompts.flatMap((pp) => [pp.content, pp.userPrompt].filter(Boolean) as string[]),
+        project.topic,
+        tx,
+      );
 
-    const allPrompts = await tx
-      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
-      .from(prompts)
-      .where(eq(prompts.chapterId, chapterId));
-    await syncChapterPlaceholders(
-      chapterId,
-      allPrompts.flatMap((pp) => [pp.content, pp.userPrompt].filter(Boolean) as string[]),
-      project.topic,
-      tx,
-    );
+      return p;
+    });
 
-    return p;
-  });
-
-  return NextResponse.json(prompt);
+    return NextResponse.json(prompt);
+  } catch (err) {
+    // Defense-in-depth: if the FOR UPDATE lock still loses a race, map
+    // unique_violation to a client-friendly 409 with retry hint.
+    const code = (err as { code?: string }).code;
+    if (code === "23505") {
+      return NextResponse.json(
+        {
+          error: "A prompt at this position already exists. Please retry.",
+          retryHint: true,
+        },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 }

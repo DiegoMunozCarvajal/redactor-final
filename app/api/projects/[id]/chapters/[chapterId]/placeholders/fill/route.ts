@@ -140,6 +140,7 @@ export async function POST(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let hadError = false;
       let terminalEvent: "done" | "cancelled" | "error" | null = null;
 
       try {
@@ -180,31 +181,37 @@ export async function POST(
               );
           }
 
-          // Track terminal events from the generator
+          // Track terminal events from the generator.
+          // Individual placeholder errors are not terminal — the generator
+          // continues to the next placeholder and eventually emits "done".
+          // Track hadError separately so a late "done" doesn't overwrite it.
           if (event.type === "cancelled") {
             terminalEvent = "cancelled";
           } else if (event.type === "error") {
+            hadError = true;
             terminalEvent = "error";
           } else if (event.type === "done") {
             terminalEvent = "done";
           }
         }
 
-        // Set appropriate DB status based on terminal event
-        if (terminalEvent === "done") {
-          await db
-            .update(chapterGenerations)
-            .set({ status: "completed", completedAt: new Date() })
-            .where(eq(chapterGenerations.id, fillGen.id));
-        } else if (terminalEvent === "cancelled") {
+        // Set appropriate DB status based on terminal event.
+        // hadError takes precedence over "done" — some placeholders may have
+        // failed even though the generator completed all iterations.
+        if (terminalEvent === "cancelled") {
           await db
             .update(chapterGenerations)
             .set({ status: "failed", error: "Fill cancelled by user" })
             .where(eq(chapterGenerations.id, fillGen.id));
-        } else if (terminalEvent === "error") {
+        } else if (hadError || terminalEvent === "error") {
           await db
             .update(chapterGenerations)
             .set({ status: "failed", error: "Fill encountered errors" })
+            .where(eq(chapterGenerations.id, fillGen.id));
+        } else if (terminalEvent === "done") {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "completed", completedAt: new Date() })
             .where(eq(chapterGenerations.id, fillGen.id));
         }
       } catch (err) {

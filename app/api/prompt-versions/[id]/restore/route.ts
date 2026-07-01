@@ -7,6 +7,18 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 
+function getRoleFlags(p: {
+  isAssembly: boolean;
+  isCritique: boolean;
+  isCorrector: boolean;
+}): string[] {
+  const flags: string[] = [];
+  if (p.isAssembly) flags.push("isAssembly");
+  if (p.isCritique) flags.push("isCritique");
+  if (p.isCorrector) flags.push("isCorrector");
+  return flags;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -33,6 +45,9 @@ export async function POST(
       content: prompts.content,
       userPrompt: prompts.userPrompt,
       chapterId: prompts.chapterId,
+      isAssembly: prompts.isAssembly,
+      isCritique: prompts.isCritique,
+      isCorrector: prompts.isCorrector,
     })
     .from(prompts)
     .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
@@ -42,9 +57,13 @@ export async function POST(
     const admin = await requireAdmin();
     if (!admin.authorized) return admin.response;
 
-    // Restore prompt in a transaction and sync placeholders.
-    // Restoring may add/remove {placeholder} tokens; stale chapterPlaceholders
-    // cause missing or orphaned tokens on the next template usage.
+    // NOTE: Restore explicitly only restores title, content, and userPrompt.
+    // Role flags (isAssembly, isCritique, isCorrector) and metadata (function,
+    // notes, sourceContext) are NOT restored — promptVersions does not version
+    // these fields, and restoring content with mismatched role flags would cause
+    // content to run in the wrong pipeline stage (e.g., assembly content running
+    // as a content prompt, or vice versa).
+
     const restored = await db.transaction(async (tx) => {
       await tx.insert(promptVersions).values({
         promptId: templatePrompt.id,
@@ -76,7 +95,13 @@ export async function POST(
       return r;
     });
 
-    return NextResponse.json(restored);
+    const roleFlags = getRoleFlags(templatePrompt);
+    const response: Record<string, unknown> = { ...restored };
+    if (roleFlags.length > 0) {
+      response.warning = `Content restored, role flags preserved (${roleFlags.join(", ")}). To change role flags, edit the prompt directly.`;
+    }
+
+    return NextResponse.json(response);
   }
 
   // Try project-scoped prompt — verify project ownership
@@ -88,6 +113,9 @@ export async function POST(
       userPrompt: prompts.userPrompt,
       chapterId: prompts.chapterId,
       projectId: prompts.projectId,
+      isAssembly: prompts.isAssembly,
+      isCritique: prompts.isCritique,
+      isCorrector: prompts.isCorrector,
     })
     .from(prompts)
     .where(and(eq(prompts.id, version.promptId), isNotNull(prompts.projectId)))
@@ -107,9 +135,12 @@ export async function POST(
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
 
-    // Restore prompt + sync chapter placeholders in a transaction.
-    // Restoring may add/remove {placeholder} tokens in prompt content;
-    // stale chapterPlaceholders cause missing or orphaned tokens on next generation.
+    // NOTE: Restore explicitly only restores title, content, and userPrompt.
+    // Role flags (isAssembly, isCritique, isCorrector) and metadata (function,
+    // notes, sourceContext) are NOT restored — promptVersions does not version
+    // these fields, and restoring content with mismatched role flags would cause
+    // content to run in the wrong pipeline stage.
+
     const restored = await db.transaction(async (tx) => {
       // Save current state as a new version before overwriting
       await tx.insert(promptVersions).values({
@@ -147,7 +178,13 @@ export async function POST(
       return r;
     });
 
-    return NextResponse.json(restored);
+    const roleFlags = getRoleFlags(projectPrompt);
+    const response: Record<string, unknown> = { ...restored };
+    if (roleFlags.length > 0) {
+      response.warning = `Content restored, role flags preserved (${roleFlags.join(", ")}). To change role flags, edit the prompt directly.`;
+    }
+
+    return NextResponse.json(response);
   }
 
   return NextResponse.json({ error: "prompt not found" }, { status: 404 });

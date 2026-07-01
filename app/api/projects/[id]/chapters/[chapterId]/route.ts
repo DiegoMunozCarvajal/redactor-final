@@ -4,6 +4,7 @@ import { projects, chapters, chapterGenerations, fragments, prompts } from "@/li
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, sql, inArray, isNotNull, ne } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { z } from "zod";
 
 export async function GET(
   _req: NextRequest,
@@ -144,10 +145,21 @@ export async function PATCH(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, position } = body;
 
-  if (position !== undefined && (position < 0 || position > 1000))
-    return NextResponse.json({ error: "position must be 0-1000" }, { status: 400 });
+  const patchSchema = z.object({
+    title: z.string().min(1).max(500).optional(),
+    position: z.number().int().positive().optional(),
+  });
+
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.flatten().fieldErrors },
+      { status: 400 },
+    );
+  }
+
+  const { title, position } = parsed.data;
 
   if (position !== undefined) {
     const [conflict] = await db
