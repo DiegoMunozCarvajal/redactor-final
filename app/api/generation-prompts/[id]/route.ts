@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generationSystemPrompts } from "@/lib/db/schema";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 import { csrfCheck } from "@/lib/api/csrf";
 import { eq } from "drizzle-orm";
 
@@ -9,9 +9,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   const [row] = await db
@@ -31,9 +30,8 @@ export async function PATCH(
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -131,9 +129,8 @@ export async function DELETE(
   const csrfErr = csrfCheck(req);
   if (csrfErr) return csrfErr;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   await db.delete(generationSystemPrompts).where(eq(generationSystemPrompts.id, id));

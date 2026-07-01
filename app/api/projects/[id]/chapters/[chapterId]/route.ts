@@ -189,6 +189,14 @@ export async function DELETE(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .limit(1);
+  if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
+
   // Delete associated records in a transaction so partial failure doesn't
   // leave orphaned generations or prompts without a chapter.
   await db.transaction(async (tx) => {

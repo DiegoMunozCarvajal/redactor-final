@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 import { csrfCheck } from "@/lib/api/csrf";
 
@@ -29,6 +29,16 @@ export async function GET(
   }
 
   const chapterId = req.nextUrl.searchParams.get("chapterId");
+
+  // If filtering by chapter, verify chapter belongs to project
+  if (chapterId) {
+    const [chapter] = await db
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+      .limit(1);
+    if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
+  }
 
   const promptList = await db
     .select()
@@ -70,6 +80,14 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const { chapterId, title, content, userPrompt, isAssembly, isCritique, isCorrector } = body;
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .limit(1);
+  if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   if (!chapterId || !title || !content) {
     return NextResponse.json(

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { prompts, promptVersions, chapters, projects } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 
@@ -13,30 +13,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
-  // Ownership check: if the prompt's chapter belongs to a project, verify ownership
-  const [existing] = await db
-    .select({ chapterProjectId: chapters.projectId })
-    .from(prompts)
-    .innerJoin(chapters, eq(chapters.id, prompts.chapterId))
-    .where(eq(prompts.id, id))
-    .limit(1);
-  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (existing.chapterProjectId) {
-    const [project] = await db
-      .select({ userId: projects.userId })
-      .from(projects)
-      .where(eq(projects.id, existing.chapterProjectId))
-      .limit(1);
-    if (!project || project.userId !== user.id) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-  }
+  // Admin can edit any prompt — no ownership check needed
 
   const body = await req.json().catch(() => ({}));
   const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
@@ -69,7 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!prompt) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "prompt.update",
     resourceType: "prompt",
     resourceId: prompt.id,
@@ -95,30 +77,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const csrfError = csrfCheck(_req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
-  // Ownership check: if the prompt's chapter belongs to a project, verify ownership
-  const [ownership] = await db
-    .select({ chapterProjectId: chapters.projectId })
-    .from(prompts)
-    .innerJoin(chapters, eq(chapters.id, prompts.chapterId))
-    .where(eq(prompts.id, id))
-    .limit(1);
-  if (!ownership) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (ownership.chapterProjectId) {
-    const [project] = await db
-      .select({ userId: projects.userId })
-      .from(projects)
-      .where(eq(projects.id, ownership.chapterProjectId))
-      .limit(1);
-    if (!project || project.userId !== user.id) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-  }
+  // Admin can delete any prompt — no ownership check needed
 
   // Capture chapter before deleting
   const [existing] = await db
@@ -142,7 +106,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "prompt.delete",
     resourceType: "prompt",
     resourceId: id,

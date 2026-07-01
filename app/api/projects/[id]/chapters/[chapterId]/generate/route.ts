@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapterGenerations } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
@@ -36,6 +36,14 @@ export async function POST(
   if (!project || project.userId !== user.id) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .limit(1);
+  if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;

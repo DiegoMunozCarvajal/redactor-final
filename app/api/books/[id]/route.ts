@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { bookTemplates, chapters, projects } from "@/lib/db/schema";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
@@ -9,9 +9,8 @@ import { logAudit } from "@/lib/audit";
 // GET is intentionally open to all authenticated users — templates must be
 // browsable so users can select one when creating a project.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
@@ -37,9 +36,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
@@ -64,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!template) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "template.update",
     resourceType: "book_template",
     resourceId: template.id,
@@ -78,9 +76,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const csrfError = csrfCheck(_req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
@@ -130,7 +127,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "template.delete",
     resourceType: "book_template",
     resourceId: id,

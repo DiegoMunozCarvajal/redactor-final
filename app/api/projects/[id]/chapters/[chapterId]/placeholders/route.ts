@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapterPlaceholders, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterPlaceholders, projectPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -25,6 +25,14 @@ export async function GET(
   if (!project || project.userId !== user.id) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, id)))
+    .limit(1);
+  if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const rows = await db
     .select()
@@ -66,6 +74,14 @@ export async function PATCH(
   if (!project || project.userId !== user.id) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, id)))
+    .limit(1);
+  if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
   const definitions: Record<string, string | null> = body.placeholders ?? {};

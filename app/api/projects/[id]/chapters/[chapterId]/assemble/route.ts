@@ -68,11 +68,17 @@ export async function POST(
     );
   }
 
-  // Pre-flight: verify fragments exist
+  // Pre-flight: verify fragments exist and belong to this project's chapter
   const selectedFragments = await db
     .select({ id: fragments.id })
     .from(fragments)
-    .where(inArray(fragments.id, fragmentIds));
+    .innerJoin(chapterGenerations, eq(fragments.chapterGenerationId, chapterGenerations.id))
+    .where(
+      and(
+        inArray(fragments.id, fragmentIds),
+        eq(chapterGenerations.chapterId, chapterId),
+      ),
+    );
 
   if (selectedFragments.length !== fragmentIds.length) {
     return NextResponse.json(
