@@ -81,5 +81,5 @@ export async function DELETE(
     metadata: { name: deleted.name },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

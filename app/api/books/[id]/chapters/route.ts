@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql, and, isNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { UUID_RE } from "@/lib/constants";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -14,8 +15,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
 
   // Validate UUID format to prevent Postgres errors on non-UUID params
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRe.test(id)) {
+  if (!UUID_RE.test(id)) {
     return NextResponse.json([], { status: 200 });
   }
 

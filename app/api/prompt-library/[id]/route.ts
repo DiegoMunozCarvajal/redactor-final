@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { promptLibrary } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { promptLibrary, projects } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
@@ -78,6 +78,20 @@ export async function DELETE(
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
+
+  // Check if any projects reference this prompt as their assembly prompt.
+  // FK ON DELETE SET NULL would silently deconfigure those projects.
+  const [refCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(projects)
+    .where(eq(projects.assemblyPromptId, id));
+  if (refCount && refCount.count > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete: referenced by ${refCount.count} project(s) as assembly prompt` },
+      { status: 409 },
+    );
+  }
+
   const [deleted] = await db.delete(promptLibrary).where(eq(promptLibrary.id, id)).returning();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
 
@@ -89,5 +103,5 @@ export async function DELETE(
     metadata: { name: deleted.name, category: deleted.category },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

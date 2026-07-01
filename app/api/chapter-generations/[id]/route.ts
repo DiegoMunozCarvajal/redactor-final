@@ -97,7 +97,7 @@ export async function PATCH(
     .set({
       ...(status !== undefined && { status }),
       ...(error !== undefined && { error }),
-      ...(status === "failed" ? { completedAt: new Date() } : {}),
+      ...(status === "completed" ? { completedAt: new Date() } : {}),
     })
     .where(and(...whereConditions))
     .returning();

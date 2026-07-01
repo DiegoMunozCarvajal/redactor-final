@@ -8,6 +8,7 @@ import rehypeSanitize from "rehype-sanitize";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -206,6 +207,7 @@ export default function ChapterPage() {
     content: string;
   }>>({});
   const [showPromptVersions, setShowPromptVersions] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
@@ -487,8 +489,14 @@ export default function ChapterPage() {
   }
 
   async function deletePrompt(promptId: string) {
-    if (!confirm("Delete this prompt?")) return;
-    const res = await fetch(`/api/projects/${params.id}/prompts/${promptId}`, {
+    setDeleteTarget(promptId);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
+    const res = await fetch(`/api/projects/${params.id}/prompts/${id}`, {
       method: "DELETE",
     });
     if (res.ok) {
@@ -1891,6 +1899,12 @@ export default function ChapterPage() {
         </DialogContent>
       </Dialog>
 
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description="Delete this prompt?"
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

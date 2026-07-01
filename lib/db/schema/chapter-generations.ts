@@ -44,13 +44,13 @@ export const chapterGenerations = pgTable(
       fragmentCount?: number;
       critiqueGenerationId?: string;
       correctionRaw?: string;
+      tokensUsed?: number;
+      costUsd?: number;
+      durationMs?: number;
     }>(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    // Generated column: generation_metadata->>'type'. Populated by DB, not application code.
-    // Allows indexing the JSONB type field for efficient filtering.
-    genType: text("gen_type"),
   },
   (table) => [
     index("idx_chapter_generations_project").on(table.projectId, table.chapterId),

@@ -131,7 +131,7 @@ export async function POST(
   if (result.rateLimited) {
     return NextResponse.json(
       { error: "Too many concurrent generations for this project", retryAfter: result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(result.retryAfter) } },
     );
   }
 

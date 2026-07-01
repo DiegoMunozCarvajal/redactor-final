@@ -107,7 +107,8 @@ export async function PATCH(
           { status: 409 },
         );
       }
-      throw err;
+      console.error("[generation-prompts] PATCH failed:", err);
+      return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
   } else {
     const [updated] = await db

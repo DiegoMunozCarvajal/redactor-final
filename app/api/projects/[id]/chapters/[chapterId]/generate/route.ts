@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and } from "drizzle-orm";
-import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { eq, and, sql, lt, inArray } from "drizzle-orm";
+import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateChapter } from "@/trigger/generate-chapter";
@@ -55,14 +55,33 @@ export async function POST(
       ? "halves"
       : "merge-sort";
 
-  // Serialize rate limit check and Trigger.dev dispatch under advisory lock.
+  // Serialize rate limit check + generation row insert under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two
   // concurrent requests both pass the check before either acquires the lock.
   //
   // Rate check BEFORE insert — otherwise the row we just created self-counts
   // and always trips MAX_GENERATIONS_PER_WINDOW = 1.
-  let gen: typeof chapterGenerations.$inferSelect | null = null;
+  //
+  // Trigger.dev dispatch happens OUTSIDE the lock — never hold advisory lock
+  // during external API calls (Trigger.dev is an HTTP API).
   const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale content generation rows (type IS NULL = original generation).
+    // Stale pending rows block the rate limiter permanently if Trigger.dev
+    // never picked them up.
+    const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "Stale generation (timed out)" })
+      .where(
+        and(
+          eq(chapterGenerations.projectId, projectId),
+          eq(chapterGenerations.chapterId, chapterId),
+          inArray(chapterGenerations.status, ["pending", "generating", "assembling"]),
+          sql`${chapterGenerations.generationMetadata}->>'type' IS NULL`,
+          lt(chapterGenerations.createdAt, staleCutoff),
+        ),
+      );
+
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
@@ -72,30 +91,8 @@ export async function POST(
       .insert(chapterGenerations)
       .values({ projectId, chapterId, status: "pending" })
       .returning();
-    gen = row;
 
-    try {
-      ensureTriggerConfigured();
-      await generateChapter.trigger(
-        {
-          generationId: gen.id,
-          projectId,
-          ...(model ? { model } : {}),
-          ...(effort !== undefined ? { effort } : {}),
-          skipAssembly,
-          assemblyAlgorithm,
-        },
-        { idempotencyKey: gen.id },
-      );
-      return gen;
-    } catch (err) {
-      const message = sanitizeError(err);
-      await db
-        .update(chapterGenerations)
-        .set({ status: "failed", error: message })
-        .where(eq(chapterGenerations.id, gen.id));
-      return gen;
-    }
+    return { rateLimited: false as const, gen: row };
   });
 
   if (!lockResult.locked) {
@@ -105,21 +102,45 @@ export async function POST(
     );
   }
 
-  // Rate limit was hit inside the lock — 429 with retry-after
-  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+  if (lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
     );
+  }
+
+  const gen = lockResult.result.gen;
+
+  // Trigger.dev dispatch outside the lock
+  try {
+    ensureTriggerConfigured();
+    await generateChapter.trigger(
+      {
+        generationId: gen.id,
+        projectId,
+        ...(model ? { model } : {}),
+        ...(effort !== undefined ? { effort } : {}),
+        skipAssembly,
+        assemblyAlgorithm,
+      },
+      { idempotencyKey: gen.id },
+    );
+  } catch (err) {
+    const message = sanitizeError(err);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: message })
+      .where(eq(chapterGenerations.id, gen.id));
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 
   logAudit({
     userId: user.id,
     action: "chapter.generate",
     resourceType: "chapter_generation",
-    resourceId: gen!.id,
+    resourceId: gen.id,
     metadata: { projectId, chapterId },
   });
 
-  return NextResponse.json(lockResult.result);
+  return NextResponse.json(gen);
 }

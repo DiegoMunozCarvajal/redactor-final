@@ -69,24 +69,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "assemblyPromptId must be a string" }, { status: 400 });
   }
 
-  // Validate template availability
-  if (bookTemplateId) {
-    const [template] = await db
-      .select({ id: bookTemplates.id, status: bookTemplates.status })
-      .from(bookTemplates)
-      .where(eq(bookTemplates.id, bookTemplateId))
-      .limit(1);
-    if (!template) {
-      return NextResponse.json({ error: "template not found" }, { status: 400 });
-    }
-    if (template.status !== "ready") {
-      return NextResponse.json({ error: "template is not available" }, { status: 400 });
-    }
-  }
-
   let project: typeof projects.$inferSelect;
   try {
     project = await db.transaction(async (tx) => {
+      // Validate template availability inside the transaction to close
+      // the TOCTOU window where an admin changes status between check and insert.
+      if (bookTemplateId) {
+        const [template] = await tx
+          .select({ id: bookTemplates.id, status: bookTemplates.status })
+          .from(bookTemplates)
+          .where(eq(bookTemplates.id, bookTemplateId))
+          .limit(1);
+        if (!template) {
+          throw { status: 400, message: "template not found" };
+        }
+        if (template.status !== "ready") {
+          throw { status: 400, message: "template is not available" };
+        }
+      }
+
       const [p] = await tx
         .insert(projects)
         .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null, assemblyPromptId: assemblyPromptId ?? null })
@@ -213,6 +214,13 @@ export async function POST(req: NextRequest) {
       return p;
     });
   } catch (error) {
+    // Re-thrown validation errors from inside the transaction (template check)
+    if (error && typeof error === "object" && "status" in error && "message" in error) {
+      return NextResponse.json(
+        { error: (error as { message: string }).message },
+        { status: (error as { status: number }).status },
+      );
+    }
     console.error("Failed to create project:", error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { error: "failed to create project" },

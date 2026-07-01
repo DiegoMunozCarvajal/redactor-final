@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,8 +67,16 @@ export default function MetaPromptsPage() {
     setCreating(false);
   }
 
-  async function deleteMetaPrompt(id: string) {
-    if (!confirm("Delete this meta-prompt?")) return;
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  function deleteMetaPrompt(id: string) {
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
     const res = await fetch(`/api/meta-prompts/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
@@ -155,6 +164,12 @@ export default function MetaPromptsPage() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description="Delete this meta-prompt? This cannot be undone."
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

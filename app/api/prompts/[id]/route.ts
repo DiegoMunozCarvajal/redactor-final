@@ -26,6 +26,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
+  if (userPrompt !== undefined && (typeof userPrompt !== "string" || userPrompt.length > 20000)) {
+    return NextResponse.json({ error: "userPrompt too long" }, { status: 400 });
+  }
 
   // Save version before updating
   const [current] = await db
@@ -44,7 +47,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [prompt] = await db
     .update(prompts)
-    .set({ title, content, userPrompt, position, isAssembly, isCritique, isCorrector })
+    .set({
+      ...(title !== undefined && { title }),
+      ...(content !== undefined && { content }),
+      ...(userPrompt !== undefined && { userPrompt }),
+      ...(position !== undefined && { position }),
+      ...(isAssembly !== undefined && { isAssembly }),
+      ...(isCritique !== undefined && { isCritique }),
+      ...(isCorrector !== undefined && { isCorrector }),
+    })
     .where(eq(prompts.id, id))
     .returning();
 

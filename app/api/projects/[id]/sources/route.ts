@@ -171,7 +171,7 @@ export async function POST(
     const message = err instanceof Error ? err.message : String(err);
     console.error("[sources] Embedding generation failed:", message);
     return NextResponse.json(
-      { error: `Failed to generate embeddings: ${message}` },
+      { error: "Failed to generate embeddings" },
       { status: 500 },
     );
   }

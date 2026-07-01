@@ -24,7 +24,8 @@ export async function GET() {
     .from(bookTemplates)
     .leftJoin(chapters, sql`${bookTemplates.id} = ${chapters.bookTemplateId} AND ${chapters.projectId} IS NULL`)
     .groupBy(bookTemplates.id)
-    .orderBy(desc(bookTemplates.createdAt));
+    .orderBy(desc(bookTemplates.createdAt))
+    .limit(100);
 
   return NextResponse.json(templates);
 }

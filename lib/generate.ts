@@ -100,9 +100,13 @@ export interface GenerateResult {
   text: string;
   model: string;
   provider: string;
+  durationMs?: number;
   usage: {
     inputTokens: number;
     outputTokens: number;
+    costUsd?: number;
+    cacheCreationTokens?: number;
+    cacheReadTokens?: number;
   };
 }
 
@@ -187,25 +191,32 @@ export async function generatePromptContent(
   };
 
   let rawText: string;
-  let usage: { promptTokens: number; completionTokens: number };
+  let usage: { promptTokens: number; completionTokens: number; costUsd?: number; cacheCreationTokens: number; cacheReadTokens: number };
+  let durationMs = 0;
 
   if (schema) {
     const result = await generateCompletion({ ...baseOptions, schema } as Parameters<typeof generateCompletion>[0]);
     rawText = JSON.stringify(result.data);
     usage = result.usage;
+    durationMs = result.durationMs;
   } else {
     const result = await generateCompletion(baseOptions as Parameters<typeof generateCompletion>[0]);
     rawText = result.data as string;
     usage = result.usage;
+    durationMs = result.durationMs;
   }
 
   return {
     text: stripPlaceholderWrappers(rawText),
     model,
     provider: getProviderForModel(model),
+    durationMs,
     usage: {
       inputTokens: usage.promptTokens,
       outputTokens: usage.completionTokens,
+      costUsd: usage.costUsd,
+      cacheCreationTokens: usage.cacheCreationTokens,
+      cacheReadTokens: usage.cacheReadTokens,
     },
   };
 }
@@ -268,9 +279,13 @@ async function mergeTwoFragments(
     text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
+    durationMs: result.durationMs,
     usage: {
       inputTokens: result.usage.promptTokens,
       outputTokens: result.usage.completionTokens,
+      costUsd: result.usage.costUsd,
+      cacheCreationTokens: result.usage.cacheCreationTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
     },
   };
 }
@@ -563,9 +578,13 @@ export async function generateChapterAssembly(
     text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
+    durationMs: result.durationMs,
     usage: {
       inputTokens: result.usage.promptTokens,
       outputTokens: result.usage.completionTokens,
+      costUsd: result.usage.costUsd,
+      cacheCreationTokens: result.usage.cacheCreationTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
     },
   };
 }
@@ -648,9 +667,13 @@ export async function generateChapterCritique(
     text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
+    durationMs: result.durationMs,
     usage: {
       inputTokens: result.usage.promptTokens,
       outputTokens: result.usage.completionTokens,
+      costUsd: result.usage.costUsd,
+      cacheCreationTokens: result.usage.cacheCreationTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
     },
   };
 }
@@ -731,9 +754,13 @@ export async function generateChapterCorrection(
     text: stripPlaceholderWrappers(result.data as string),
     model,
     provider: getProviderForModel(model),
+    durationMs: result.durationMs,
     usage: {
       inputTokens: result.usage.promptTokens,
       outputTokens: result.usage.completionTokens,
+      costUsd: result.usage.costUsd,
+      cacheCreationTokens: result.usage.cacheCreationTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
     },
   };
 }

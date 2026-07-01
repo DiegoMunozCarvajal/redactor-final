@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,6 +72,14 @@ export function PlaceholderFillSection({
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Cleanup: abort any in-flight stream on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   function getState(name: string): PlaceholderState {
     const placeholder = placeholders.find((p) => p.name === name);
@@ -93,6 +101,12 @@ export function PlaceholderFillSection({
   const total = placeholders.length;
 
   const fillAll = useCallback(async () => {
+    // Abort any previous stream
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     setFilling(true);
     // Reset all to pending
     const init: Record<string, PlaceholderState> = {};
@@ -115,6 +129,7 @@ export function PlaceholderFillSection({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model, effort: "max" }),
+          signal,
         },
       );
 
@@ -172,6 +187,7 @@ export function PlaceholderFillSection({
       }
 
       while (true) {
+        if (signal.aborted) break;
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -181,12 +197,17 @@ export function PlaceholderFillSection({
         processLines(lines);
       }
 
-      buffer += decoder.decode();
-      if (buffer.trim()) {
-        processLines(buffer.split("\n"));
+      // Flush remaining buffer only if not aborted
+      if (!signal.aborted) {
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processLines(buffer.split("\n"));
+        }
       }
-    } catch {
-      toast.error("Stream error");
+    } catch (err) {
+      if (!signal.aborted) {
+        toast.error("Stream error");
+      }
     } finally {
       setFilling(false);
     }

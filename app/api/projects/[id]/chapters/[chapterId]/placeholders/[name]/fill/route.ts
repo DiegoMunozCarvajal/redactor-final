@@ -5,10 +5,13 @@ import {
   prompts,
   chapterPlaceholders,
   chapters,
+  chapterGenerations,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
+import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillOnePlaceholder } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
@@ -104,6 +107,50 @@ export async function POST(
     return NextResponse.json({ name, definition: resolved[name], sources: [] });
   }
 
+  // LLM path: rate-limit via generation row inside advisory lock.
+  // Same pattern as batch fill route — prevents unbounded concurrent LLM calls.
+  const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale fill generations before rate check (inside lock for TOCTOU safety).
+    // Single fills go directly to "generating" — no Trigger.dev dispatch.
+    await cleanupStaleGenerations(projectId, "fill", {
+      chapterId,
+      statuses: ["generating"],
+    });
+
+    const rateCheck = await checkProjectRateLimit(projectId);
+    if (!rateCheck.allowed) {
+      return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
+    }
+
+    const [gen] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId,
+        status: "generating",
+        generationMetadata: { type: "fill", name },
+      })
+      .returning();
+
+    return { rateLimited: false as const, gen };
+  });
+
+  if (!lockResult.locked) {
+    return NextResponse.json(
+      { error: "project is locked" },
+      { status: 409 },
+    );
+  }
+
+  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfter: lockResult.result.retryAfter },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
+    );
+  }
+
+  const fillGen = lockResult.result.gen;
+
   // Find this placeholder's function and notes from DB for classification
   const [placeholderRow] = existingRows.filter((r) => r.name === name);
   const phDef = {
@@ -112,8 +159,10 @@ export async function POST(
     notes: placeholderRow?.notes ?? null,
   };
 
+  // LLM call outside the lock
+  let result;
   try {
-    const result = await fillOnePlaceholder(
+    result = await fillOnePlaceholder(
       phDef,
       project.topic ?? null,
       projectId,
@@ -126,36 +175,45 @@ export async function POST(
       sourceContexts,
       req.signal,
     );
-
-    // Persist definition to DB
-    await db
-      .update(chapterPlaceholders)
-      .set({
-        definition: result.definition,
-        fillMetadata: buildPlaceholderFillMetadata({
-          provider: result.provider,
-          sources: result.sources,
-          ragChunks: result.ragChunks,
-          model,
-          promptsHash,
-        }),
-      })
-      .where(
-        and(
-          eq(chapterPlaceholders.chapterId, chapterId),
-          eq(chapterPlaceholders.name, name),
-        ),
-      );
-
-    return NextResponse.json({
-      name,
-      definition: result.definition,
-      sources: result.sources,
-      ragChunks: result.ragChunks,
-      provider: result.provider,
-    });
   } catch (err) {
-    console.error("[fill/single] Failed:", err);
-    return NextResponse.json({ error: "Generation failed" }, { status: 502 });
+    const message = sanitizeError(err);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: message })
+      .where(eq(chapterGenerations.id, fillGen.id));
+    return NextResponse.json({ error: message }, { status: 502 });
   }
+
+  // Persist definition + mark generation completed
+  await db
+    .update(chapterPlaceholders)
+    .set({
+      definition: result.definition,
+      fillMetadata: buildPlaceholderFillMetadata({
+        provider: result.provider,
+        sources: result.sources,
+        ragChunks: result.ragChunks,
+        model,
+        promptsHash,
+      }),
+    })
+    .where(
+      and(
+        eq(chapterPlaceholders.chapterId, chapterId),
+        eq(chapterPlaceholders.name, name),
+      ),
+    );
+
+  await db
+    .update(chapterGenerations)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(eq(chapterGenerations.id, fillGen.id));
+
+  return NextResponse.json({
+    name,
+    definition: result.definition,
+    sources: result.sources,
+    ragChunks: result.ragChunks,
+    provider: result.provider,
+  });
 }

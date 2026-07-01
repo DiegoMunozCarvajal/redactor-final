@@ -4,7 +4,7 @@ import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateCorrection } from "@/trigger/generate-correction";
@@ -187,39 +187,14 @@ export async function POST(
 
   const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
 
-  // Clean up stale correction rows before creating a new one.
-  // Checks both "pending" (Trigger.dev never picked it up) and "generating"
-  // (crashed mid-execution). Stale pending rows block the rate limiter forever.
-  const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
-  const [staleRunning] = await db
-    .select({ id: chapterGenerations.id })
-    .from(chapterGenerations)
-    .where(
-      and(
-        eq(chapterGenerations.projectId, projectId),
-        eq(chapterGenerations.chapterId, chapterId),
-        inArray(chapterGenerations.status, ["pending", "generating"]),
-        sql`${chapterGenerations.generationMetadata}->>'type' = 'correction'`,
-        lt(chapterGenerations.createdAt, staleCutoff),
-      ),
-    )
-    .limit(1);
-  if (staleRunning) {
-    await db
-      .update(chapterGenerations)
-      .set({ status: "failed", error: "Stale generation (timed out after 30 minutes)" })
-      .where(eq(chapterGenerations.id, staleRunning.id));
-  }
-
-  let generationId: string | undefined;
-
   const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale correction rows before rate check (inside lock for TOCTOU safety).
+    await cleanupStaleGenerations(projectId, "correction", { chapterId });
+
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
-
-    let gen: typeof chapterGenerations.$inferSelect | null = null;
 
     const [row] = await db
       .insert(chapterGenerations)
@@ -236,38 +211,8 @@ export async function POST(
         },
       })
       .returning();
-    gen = row;
-    generationId = gen.id;
 
-    try {
-      ensureTriggerConfigured();
-      await generateCorrection.trigger(
-        {
-          generationId: gen.id,
-          projectId,
-          chapterId,
-          correctorPrompt: {
-            content: cpContent,
-            userPrompt: cpUserPrompt,
-          },
-          contentToCorrect,
-          critiqueContent: critiqueGen.assembledContent!,
-          projectTopic: project.topic,
-          ...(model ? { model } : {}),
-          ...(effort !== undefined ? { effort } : {}),
-        },
-        { idempotencyKey: gen.id },
-      );
-
-      return gen;
-    } catch (err) {
-      const message = sanitizeError(err);
-      await db
-        .update(chapterGenerations)
-        .set({ status: "failed", error: message })
-        .where(eq(chapterGenerations.id, gen.id));
-      return gen;
-    }
+    return { rateLimited: false as const, gen: row };
   });
 
   if (!lockResult.locked) {
@@ -277,25 +222,51 @@ export async function POST(
     );
   }
 
-  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+  if (lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
     );
   }
 
-  const genId = generationId;
-  if (!genId) {
-    return NextResponse.json({ error: "failed to create generation" }, { status: 500 });
+  const gen = lockResult.result.gen;
+
+  // Trigger.dev dispatch outside the lock
+  try {
+    ensureTriggerConfigured();
+    await generateCorrection.trigger(
+      {
+        generationId: gen.id,
+        projectId,
+        chapterId,
+        correctorPrompt: {
+          content: cpContent,
+          userPrompt: cpUserPrompt,
+        },
+        contentToCorrect,
+        critiqueContent: critiqueGen.assembledContent!,
+        projectTopic: project.topic,
+        ...(model ? { model } : {}),
+        ...(effort !== undefined ? { effort } : {}),
+      },
+      { idempotencyKey: gen.id },
+    );
+  } catch (err) {
+    const message = sanitizeError(err);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: message })
+      .where(eq(chapterGenerations.id, gen.id));
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 
   logAudit({
     userId: user.id,
     action: "chapter.correction",
     resourceType: "chapter_generation",
-    resourceId: genId,
+    resourceId: gen.id,
     metadata: { projectId, chapterId, correctorPromptId: correctorPromptId ?? "inline", critiqueGenerationId },
   });
 
-  return NextResponse.json(lockResult.result);
+  return NextResponse.json(gen);
 }

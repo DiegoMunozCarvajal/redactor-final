@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { chapters } from "./chapters";
 import { projects } from "./projects";
 
@@ -21,6 +21,7 @@ export const prompts = pgTable("prompts", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_prompts_chapter_position").on(table.chapterId, table.position),
+    index("idx_prompts_chapter_project").on(table.chapterId, table.projectId),
 ]);
 
 export type Prompt = typeof prompts.$inferSelect;

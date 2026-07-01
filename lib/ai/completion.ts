@@ -266,6 +266,13 @@ async function completeWithOpenAI<T extends z.ZodType>(
     });
     const jsonSchema = makeOpenAIStrictSchema(rawSchema as Record<string, unknown>);
 
+    // OpenAI strict mode requires all properties in `required`. If the schema
+    // has optional fields (required subset of properties), disable strict mode.
+    const allRequired = jsonSchema.properties
+      ? Array.isArray(jsonSchema.required) &&
+        jsonSchema.required.length === Object.keys(jsonSchema.properties as Record<string, unknown>).length
+      : true;
+
     const response = await openaiClient.chat.completions.create({
       model,
       ...(supportsTemperature ? { temperature: effectiveTemperature } : {}),
@@ -278,7 +285,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
         type: "json_schema" as const,
         json_schema: {
           name: "response",
-          strict: true,
+          strict: allRequired,
           schema: jsonSchema as Record<string, unknown>,
         },
       },
@@ -511,6 +518,7 @@ async function completeWithGoogle<T extends z.ZodType>(
         systemInstruction: systemPrompt,
         temperature,
         maxOutputTokens: maxTokens,
+        abortSignal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS),
         responseMimeType: "application/json",
         responseSchema: jsonSchema as Record<string, unknown>,
         ...(effortConfig.thinkingBudget
@@ -551,6 +559,7 @@ async function completeWithGoogle<T extends z.ZodType>(
         systemInstruction: systemPrompt,
         temperature,
         maxOutputTokens: maxTokens,
+        abortSignal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS),
         ...(effortConfig.thinkingBudget
           ? { thinkingConfig: { thinkingBudget: effortConfig.thinkingBudget } }
           : {}),
@@ -635,7 +644,9 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
     if (!thinkingEnabled) {
       deepseekParams.temperature = effectiveTemperature;
     }
-    if (!effortConfig.thinkingDisabled) {
+    // thinkingEnabled = schema ? false : !effortConfig.thinkingDisabled
+    // Use direct property check to preserve TypeScript discriminated union narrowing.
+    if (!effortConfig.thinkingDisabled && !schema) {
       deepseekParams.reasoning_effort = effortConfig.reasoningEffort;
       deepseekParams.extra_body = { thinking: { type: "enabled" } };
     } else {
@@ -747,7 +758,7 @@ export async function generateCompletion<T extends z.ZodType>(
   } = options;
   requireModelDefinition(model);
 
-  const startTime = Date.now();
+  const startTime = performance.now();
   const provider = getProviderForModel(model);
   const effortConfig = mapEffort(effort, provider);
 
@@ -807,7 +818,7 @@ export async function generateCompletion<T extends z.ZodType>(
         throw new Error(`Unknown provider: ${provider}`);
     }
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = Math.round(performance.now() - startTime);
     const costUsd = getCompletionCostUsd(model, result);
 
     return {

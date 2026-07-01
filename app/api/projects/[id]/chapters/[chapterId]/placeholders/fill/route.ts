@@ -8,9 +8,9 @@ import {
   chapterGenerations,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc, lt, inArray, sql } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
@@ -59,20 +59,8 @@ export async function POST(
   // checkProjectRateLimit counts fill operations alongside other generations.
   // Update to completed/failed after the SSE stream finishes.
   const lockResult = await withProjectLock(projectId, async () => {
-    // Clean up stale fill generations before rate check (same pattern as critique/correct routes)
-    const staleThreshold = new Date(Date.now() - STALE_TIMEOUT_MS);
-    await db
-      .update(chapterGenerations)
-      .set({ status: "failed", error: "stale — cleaned up before new fill run" })
-      .where(
-        and(
-          eq(chapterGenerations.projectId, projectId),
-          eq(chapterGenerations.chapterId, chapterId),
-          inArray(chapterGenerations.status, ["pending", "generating"]),
-          sql`${chapterGenerations.generationMetadata}->>'type' = 'fill'`,
-          lt(chapterGenerations.createdAt, staleThreshold),
-        ),
-      );
+    // Clean up stale fill generations before rate check (inside lock for TOCTOU safety).
+    await cleanupStaleGenerations(projectId, "fill", { chapterId });
 
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
@@ -100,7 +88,7 @@ export async function POST(
   if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
     );
   }
 

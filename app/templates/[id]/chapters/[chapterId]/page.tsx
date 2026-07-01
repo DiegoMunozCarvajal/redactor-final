@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -27,6 +28,7 @@ export default function ChapterPromptEditorPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [showVersions, setShowVersions] = useState<Record<string, boolean>>({})
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -142,10 +144,16 @@ export default function ChapterPromptEditorPage() {
   }
 
   async function deletePrompt(promptId: string) {
-    if (!confirm("Delete this prompt?")) return
-    const res = await fetch(`/api/prompts/${promptId}`, { method: "DELETE" })
+    setDeleteTarget(promptId)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const id = deleteTarget
+    setDeleteTarget(null)
+    const res = await fetch(`/api/prompts/${id}`, { method: "DELETE" })
     if (res.ok) {
-      setPrompts((prev) => prev.filter((p) => p.id !== promptId))
+      setPrompts((prev) => prev.filter((p) => p.id !== id))
       fetchPlaceholders()
       toast.success("Prompt deleted")
     } else {
@@ -596,6 +604,12 @@ export default function ChapterPromptEditorPage() {
           </Card>
         )}
       </div>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="Delete this prompt?"
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

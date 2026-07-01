@@ -4,7 +4,7 @@ import { projects, chapters, chapterGenerations, fragments, prompts, promptLibra
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateChapter } from "@/trigger/generate-chapter";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
@@ -174,9 +174,16 @@ export async function POST(
     );
   }
 
-  // Serialize rate limit check and Trigger.dev dispatch under advisory lock
-  let gen: typeof chapterGenerations.$inferSelect | null = null;
+  // Serialize rate limit check + generation row insert under advisory lock.
+  // Trigger.dev dispatch happens OUTSIDE the lock — never hold advisory lock
+  // during external API calls (Trigger.dev is an HTTP API).
   const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale assembly rows before rate check.
+    await cleanupStaleGenerations(projectId, "assembly", {
+      chapterId,
+      statuses: ["pending", "generating", "assembling"],
+    });
+
     // Rate check BEFORE creating our own row — otherwise it self-counts
     // and always trips MAX_GENERATIONS_PER_WINDOW = 1.
     const rateCheck = await checkProjectRateLimit(projectId);
@@ -201,31 +208,8 @@ export async function POST(
         generationMetadata: meta as typeof chapterGenerations.$inferSelect["generationMetadata"],
       })
       .returning();
-    gen = row;
 
-    try {
-      ensureTriggerConfigured();
-      await generateChapter.trigger(
-        {
-          generationId: gen.id,
-          projectId,
-          ...(model ? { model } : {}),
-          ...(effort !== undefined ? { effort } : {}),
-          assemblyAlgorithm,
-          fragmentIds,
-          ...(assemblyPromptId ? { assemblyPromptId } : {}),
-        },
-        { idempotencyKey: gen.id },
-      );
-      return gen;
-    } catch (err) {
-      const message = sanitizeError(err);
-      await db
-        .update(chapterGenerations)
-        .set({ status: "failed", error: message })
-        .where(eq(chapterGenerations.id, gen.id));
-      return gen;
-    }
+    return { rateLimited: false as const, gen: row };
   });
 
   if (!lockResult.locked) {
@@ -235,22 +219,46 @@ export async function POST(
     );
   }
 
-  if ("rateLimited" in lockResult.result && lockResult.result.rateLimited) {
+  if (lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
     );
   }
 
-  const genId = gen!.id;
+  const gen = lockResult.result.gen;
+
+  // Trigger.dev dispatch outside the lock
+  try {
+    ensureTriggerConfigured();
+    await generateChapter.trigger(
+      {
+        generationId: gen.id,
+        projectId,
+        ...(model ? { model } : {}),
+        ...(effort !== undefined ? { effort } : {}),
+        assemblyAlgorithm,
+        fragmentIds,
+        ...(assemblyPromptId ? { assemblyPromptId } : {}),
+      },
+      { idempotencyKey: gen.id },
+    );
+  } catch (err) {
+    const message = sanitizeError(err);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: message })
+      .where(eq(chapterGenerations.id, gen.id));
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 
   logAudit({
     userId: user.id,
     action: "chapter.assemble",
     resourceType: "chapter_generation",
-    resourceId: genId,
+    resourceId: gen.id,
     metadata: { projectId, chapterId, fragmentIds, assemblyAlgorithm },
   });
 
-  return NextResponse.json(lockResult.result);
+  return NextResponse.json(gen);
 }

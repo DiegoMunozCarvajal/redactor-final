@@ -54,5 +54,5 @@ export async function DELETE(
     console.warn("[sources] Storage cleanup failed (may be expected):", err instanceof Error ? err.message : String(err));
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

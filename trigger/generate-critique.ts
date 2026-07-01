@@ -111,6 +111,11 @@ export const generateCritique = task({
             algorithm: "critique",
             model: result.model,
             fragmentCount: 1,
+            tokensUsed:
+              (result.usage?.inputTokens ?? 0) +
+              (result.usage?.outputTokens ?? 0),
+            ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
+            ...(result.durationMs ? { durationMs: result.durationMs } : {}),
           },
           completedAt: new Date(),
         })

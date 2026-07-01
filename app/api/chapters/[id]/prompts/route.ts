@@ -34,6 +34,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!title || !content) {
     return NextResponse.json({ error: "title and content are required" }, { status: 400 });
   }
+  if (typeof content !== "string" || content.length > 20000) {
+    return NextResponse.json({ error: "content too long" }, { status: 400 });
+  }
 
   const existing = await db
     .select({ count: sql<number>`count(*)::int` })

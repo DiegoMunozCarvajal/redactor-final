@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { bookTemplates, chapters, projects } from "@/lib/db/schema";
+import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
+import { UUID_RE } from "@/lib/constants";
 
-// GET is intentionally open to all authenticated users — templates must be
+// GET is open to all authenticated users — templates must be
 // browsable so users can select one when creating a project.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   // Validate UUID format to prevent Postgres errors on non-UUID params
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRe.test(id)) {
+  if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 

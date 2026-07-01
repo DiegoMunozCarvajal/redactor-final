@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, asc } from "drizzle-orm";
 import { generatePromptContent } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
-import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
 
@@ -64,6 +64,14 @@ export async function POST(
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
+    // Clean up stale title generation rows before creating a new one.
+    // Without this, a crashed title generation blocks ALL generation types
+    // for the project permanently (checkProjectRateLimit counts all types).
+    // Title gens go directly to "generating" — no Trigger.dev dispatch.
+    await cleanupStaleGenerations(projectId, "title", {
+      statuses: ["generating"],
+    });
+
     const [gen] = await db
       .insert(chapterGenerations)
       .values({
@@ -87,7 +95,7 @@ export async function POST(
   if (lockResult.result.rateLimited) {
     return NextResponse.json(
       { error: "rate limited", retryAfter: lockResult.result.retryAfter },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(lockResult.result.retryAfter) } },
     );
   }
 
@@ -137,15 +145,20 @@ export async function POST(
     );
   }
 
-  await db
-    .update(projects)
-    .set({ title, subtitle: subtitle || null })
-    .where(eq(projects.id, projectId));
+  // Atomic: both updates succeed or neither does.
+  // Prevents inconsistent state where title is saved but generation
+  // stays "generating" — which would permanently block rate limiting.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(projects)
+      .set({ title, subtitle: subtitle || null })
+      .where(eq(projects.id, projectId));
 
-  await db
-    .update(chapterGenerations)
-    .set({ status: "completed", completedAt: new Date() })
-    .where(eq(chapterGenerations.id, generationId));
+    await tx
+      .update(chapterGenerations)
+      .set({ status: "completed", completedAt: new Date() })
+      .where(eq(chapterGenerations.id, generationId));
+  });
 
   return NextResponse.json({ title, subtitle });
 

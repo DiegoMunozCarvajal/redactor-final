@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProjectCardSkeleton } from "@/components/patterns/project-card-skeleton";
 import { PageHeader } from "@/components/patterns/page-header";
 import { ContinueWritingCard } from "@/components/patterns/continue-writing-card";
@@ -41,6 +42,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const fetchProjects = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -72,15 +74,20 @@ export default function ProjectsPage() {
     return () => controller.abort();
   }, [fetchProjects, fetchTemplates]);
 
-  async function deleteProject(id: string, name: string) {
-    if (!confirm(`Delete project "${name}" and all its generations?`)) return;
+  const deleteProject = useCallback(async (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+  }, []);
+
+  async function confirmDeleteProject() {
+    if (!deleteTarget) return;
+    const { id } = deleteTarget;
+    setDeleteTarget(null);
     const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      fetchProjects();
-    } else {
+    if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
       alert(err.error ?? "Failed to delete");
     }
+    fetchProjects();
   }
 
   // --- Skeleton loading ---
@@ -229,6 +236,12 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description={`Delete project "${deleteTarget?.name ?? ""}" and all its generations? This cannot be undone.`}
+        onConfirm={confirmDeleteProject}
+      />
     </div>
   );
 }

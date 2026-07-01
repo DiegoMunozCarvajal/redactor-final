@@ -40,7 +40,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [chapter] = await db
     .update(chapters)
-    .set({ title, position })
+    .set({
+      ...(title !== undefined && { title }),
+      ...(position !== undefined && { position }),
+    })
     .where(eq(chapters.id, id))
     .returning();
 

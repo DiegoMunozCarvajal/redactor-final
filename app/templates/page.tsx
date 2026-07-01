@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ResourceCard } from "@/components/patterns/resource-card";
@@ -21,6 +22,7 @@ export default function TemplatesPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const fetchTemplates = useCallback(async () => {
     const res = await fetch("/api/books");
     if (res.ok) setTemplates(await res.json());
@@ -32,7 +34,13 @@ export default function TemplatesPage() {
   }, [fetchTemplates]);
 
   async function deleteTemplate(id: string) {
-    if (!confirm("Delete this template and all its chapters/prompts?")) return;
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
     const res = await fetch(`/api/books/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
@@ -86,6 +94,12 @@ export default function TemplatesPage() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description="Delete this template and all its chapters/prompts?"
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

@@ -12,7 +12,8 @@ export async function GET() {
   const rows = await db
     .select()
     .from(generationSystemPrompts)
-    .orderBy(desc(generationSystemPrompts.createdAt));
+    .orderBy(desc(generationSystemPrompts.createdAt))
+    .limit(100);
 
   return NextResponse.json(rows);
 }
@@ -81,7 +82,8 @@ export async function POST(req: NextRequest) {
           { status: 409 },
         );
       }
-      throw err;
+      console.error("[generation-prompts] POST failed:", err);
+      return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
   }
 

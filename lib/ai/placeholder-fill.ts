@@ -1,6 +1,6 @@
 import { generateCompletion, type ReasoningEffort } from "./completion";
 import { DEFAULT_GENERATION_MODEL } from "./providers";
-import { webSearch, searchSemanticScholar, type SearchResult } from "./web-search";
+import { searchSemanticScholar, type SearchResult } from "./web-search";
 import { retrieveContext } from "./rag";
 import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 import { db } from "@/lib/db";
@@ -505,7 +505,9 @@ export async function fillOnePlaceholder(
 
   if (!skipResearch) {
     const query = buildSearchQuery(ph, projectTopic);
-    console.log(`[placeholder-fill] {${ph.name}} provider=${provider} query="${query}"`);
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[placeholder-fill] {${ph.name}} provider=${provider} query="${query}"`);
+    }
 
     if (provider === "rag") {
       const result = await retrieveContext(query, projectId, {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +46,7 @@ function PromptLibraryContent() {
   const [newDescription, setNewDescription] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newUserPrompt, setNewUserPrompt] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const currentTab = TAB_OPTIONS.find((t) => t.value === activeTab) ?? TAB_OPTIONS[0];
 
@@ -89,7 +91,13 @@ function PromptLibraryContent() {
   }
 
   async function deleteItem(id: string) {
-    if (!confirm(`Delete this ${currentTab.label.toLowerCase()} prompt?`)) return;
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
     const res = await fetch(`/api/prompt-library/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
@@ -188,6 +196,12 @@ function PromptLibraryContent() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description={`Delete this ${currentTab.label.toLowerCase()} prompt?`}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

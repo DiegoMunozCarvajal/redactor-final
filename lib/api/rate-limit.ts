@@ -1,10 +1,45 @@
 import { db } from "@/lib/db/drizzle";
 import { lockClient } from "@/lib/db/lock-pool";
 import { chapterGenerations } from "@/lib/db/schema";
-import { eq, and, gte, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, sql, inArray, lt, type SQL } from "drizzle-orm";
 
 export const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_GENERATIONS_PER_WINDOW = 1;
+
+/**
+ * Clean up stale generation rows for a given type before creating a new one.
+ * Stale rows (stuck in pending/generating for >30min) block the rate limiter.
+ *
+ * Call inside withProjectLock for TOCTOU safety.
+ */
+export async function cleanupStaleGenerations(
+  projectId: string,
+  type: string,
+  opts?: {
+    chapterId?: string;
+    statuses?: Array<"pending" | "generating" | "assembling" | "completed" | "failed" | "awaiting_assembly">;
+    errorMessage?: string;
+  },
+): Promise<void> {
+  const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
+  const conditions: SQL[] = [
+    eq(chapterGenerations.projectId, projectId),
+    inArray(chapterGenerations.status, opts?.statuses ?? ["pending", "generating", "assembling"]),
+    sql`${chapterGenerations.generationMetadata}->>'type' = ${type}`,
+    lt(chapterGenerations.createdAt, staleCutoff),
+  ];
+  if (opts?.chapterId) {
+    conditions.push(eq(chapterGenerations.chapterId, opts.chapterId));
+  }
+
+  await db
+    .update(chapterGenerations)
+    .set({
+      status: "failed",
+      error: opts?.errorMessage ?? `Stale ${type} generation (timed out)`,
+    })
+    .where(and(...conditions));
+}
 
 function projectIdToLockKey(projectId: string): [number, number] {
   const hex = projectId.replace(/-/g, "");

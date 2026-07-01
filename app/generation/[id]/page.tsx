@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,8 +64,10 @@ export default function GenerationEditPage() {
     setSaving(false);
   }
 
-  async function deletePrompt() {
-    if (!confirm("Delete this generation prompt?")) return;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  async function confirmDelete() {
+    setDeleteOpen(false);
     const res = await fetch(`/api/generation-prompts/${params.id}`, { method: "DELETE" });
     if (!res.ok) {
       toast.error("Failed to delete");
@@ -89,7 +92,7 @@ export default function GenerationEditPage() {
           <Button variant="outline" onClick={() => router.push("/generation")}>
             <ArrowLeft className="h-4 w-4 mr-2" />Back
           </Button>
-          <Button variant="destructive" onClick={deletePrompt}>Delete</Button>
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
           <Button onClick={save} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Save
@@ -122,6 +125,12 @@ export default function GenerationEditPage() {
           Default — use this prompt for all fragment generation
         </label>
       </div>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        description="Delete this generation prompt? This cannot be undone."
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (category && VALID_CATEGORIES.includes(category as (typeof VALID_CATEGORIES)[number])) {
     base.where(eq(promptLibrary.category, category));
   }
-  const rows = await base.orderBy(asc(promptLibrary.createdAt));
+  const rows = await base.orderBy(asc(promptLibrary.createdAt)).limit(100);
 
   return NextResponse.json(rows);
 }

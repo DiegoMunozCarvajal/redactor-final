@@ -153,7 +153,12 @@ export function makeOpenAIStrictSchema(schema: Record<string, unknown>): Record<
   if (result.type === "object" && result.properties) {
     result.additionalProperties = false;
     const propKeys = Object.keys(result.properties as Record<string, unknown>);
-    result.required = propKeys;
+    // Preserve original required array. OpenAI strict mode requires ALL
+    // properties in required, so optional fields are incompatible with strict.
+    // Keep the original required so callers can decide whether strict is safe.
+    if (!result.required || !Array.isArray(result.required)) {
+      result.required = propKeys;
+    }
     result.properties = Object.fromEntries(
       Object.entries(result.properties as Record<string, unknown>).map(([k, v]) => [
         k,

@@ -287,9 +287,13 @@ export const generateChapter = task({
                 tokensUsed:
                   (result.usage?.inputTokens ?? 0) +
                   (result.usage?.outputTokens ?? 0),
-                metadata: result.provider
-                  ? { provider: result.provider }
-                  : undefined,
+                metadata: {
+                  provider: result.provider,
+                  ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
+                  ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
+                  ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
+                  ...(result.durationMs ? { durationMs: result.durationMs } : {}),
+                },
               });
 
             return {

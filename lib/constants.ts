@@ -42,3 +42,6 @@ export const ACCEPTED_FILE_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
 
+// UUID v4 format validation
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+

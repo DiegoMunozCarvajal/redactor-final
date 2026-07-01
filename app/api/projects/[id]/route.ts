@@ -5,8 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from "@/lib/constants";
 
 export async function GET(
   _req: NextRequest,

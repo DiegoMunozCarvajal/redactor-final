@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,8 +81,16 @@ export default function GenerationPage() {
     setCreating(false);
   }
 
-  async function deletePrompt(id: string) {
-    if (!confirm("Delete this generation prompt?")) return;
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  function deletePrompt(id: string) {
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
     const res = await fetch(`/api/generation-prompts/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
@@ -165,6 +174,12 @@ export default function GenerationPage() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        description="Delete this generation prompt? This cannot be undone."
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

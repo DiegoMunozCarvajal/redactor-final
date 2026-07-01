@@ -13,7 +13,8 @@ export async function GET() {
   const rows = await db
     .select()
     .from(metaPrompts)
-    .orderBy(desc(metaPrompts.createdAt));
+    .orderBy(desc(metaPrompts.createdAt))
+    .limit(100);
 
   return NextResponse.json(rows);
 }
@@ -30,6 +31,9 @@ export async function POST(req: NextRequest) {
 
   if (!name || !content) {
     return NextResponse.json({ error: "name and content are required" }, { status: 400 });
+  }
+  if (typeof content !== "string" || content.length > 20000) {
+    return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
 
   const [metaPrompt] = await db
