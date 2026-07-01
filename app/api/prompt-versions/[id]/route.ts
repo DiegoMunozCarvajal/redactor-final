@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { promptVersions, prompts, projects } from "@/lib/db/schema";
 import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 
 export async function GET(
   _req: NextRequest,
@@ -48,7 +49,9 @@ export async function GET(
     if (!templatePrompt) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
-    // Template prompts are readable by any authenticated user — no ownership check
+    // Template prompts require admin per project policy (CLAUDE.md)
+    const admin = await requireAdmin();
+    if (!admin.authorized) return admin.response;
   }
 
   const { promptId: _, ...rest } = version;

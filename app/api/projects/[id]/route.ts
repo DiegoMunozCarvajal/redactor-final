@@ -57,7 +57,7 @@ export async function GET(
     .from(chapterGenerations)
     .where(and(
       eq(chapterGenerations.projectId, project.id),
-      sql`${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('title', 'prompt')`,
+      sql`${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('title', 'prompt', 'fill', 'critique')`,
     ))
     .orderBy(desc(chapterGenerations.createdAt));
 

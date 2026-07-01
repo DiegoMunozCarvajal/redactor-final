@@ -1,4 +1,6 @@
 // lib/placeholders.ts
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import * as schema from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { chapterPlaceholders } from "@/lib/db/schema";
 import { eq, inArray, and, asc } from "drizzle-orm";
@@ -10,14 +12,17 @@ import {
 
 export { extractPlaceholders, getMissingPlaceholderNames, getPlaceholderNamesToDelete };
 
+type DbOrTx = PostgresJsDatabase<typeof schema>;
+
 export async function syncChapterPlaceholders(
   chapterId: string,
   promptContents: string[],
   projectTopic?: string | null,
+  parentTx?: DbOrTx,
 ) {
   const detected = extractPlaceholders(promptContents);
 
-  await db.transaction(async (tx) => {
+  const doSync = async (tx: DbOrTx) => {
     const existingRows = await tx
       .select({
         name: chapterPlaceholders.name,
@@ -138,7 +143,12 @@ export async function syncChapterPlaceholders(
           );
       }
     }
-  });
+  };
+
+  if (parentTx) {
+    return doSync(parentTx);
+  }
+  return db.transaction(doSync);
 }
 
 export async function getChapterPlaceholders(chapterId: string, projectTopic?: string | null): Promise<Record<string, string>> {

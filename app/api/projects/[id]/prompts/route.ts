@@ -81,6 +81,15 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const { chapterId, title, content, userPrompt, isAssembly, isCritique, isCorrector } = body;
 
+  // Validate role flags are mutually exclusive
+  const roleCount = [isAssembly, isCritique, isCorrector].filter(Boolean).length;
+  if (roleCount > 1) {
+    return NextResponse.json(
+      { error: "at most one of isAssembly, isCritique, isCorrector can be true" },
+      { status: 400 },
+    );
+  }
+
   // Validate required fields before any DB query
   if (!chapterId || !title || !content) {
     return NextResponse.json(

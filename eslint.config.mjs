@@ -18,6 +18,7 @@ const eslintConfig = [
       "drizzle/**",
       "coverage/**",
       "next-env.d.ts",
+      "dspy_optimizer/**",
     ],
   },
   {

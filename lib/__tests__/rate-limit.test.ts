@@ -9,7 +9,9 @@ vi.mock("@/lib/db/drizzle", () => ({
     update: vi.fn(),
     insert: vi.fn(),
     delete: vi.fn(),
-    transaction: vi.fn((fn: any) => fn({ select: vi.fn(), update: vi.fn(), insert: vi.fn(), delete: vi.fn() })),
+    transaction: vi.fn((fn: (tx: Record<string, ReturnType<typeof vi.fn>>) => unknown) =>
+      fn({ select: vi.fn(), update: vi.fn(), insert: vi.fn(), delete: vi.fn() })
+    ),
   },
 }));
 vi.mock("@/lib/db/lock-pool", () => ({

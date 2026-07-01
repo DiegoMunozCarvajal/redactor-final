@@ -30,34 +30,74 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "userPrompt too long" }, { status: 400 });
   }
 
-  // Save version before updating
-  const [current] = await db
-    .select()
+  // Load current role flags to validate final state, not just payload
+  const [currentFlags] = await db
+    .select({ isAssembly: prompts.isAssembly, isCritique: prompts.isCritique, isCorrector: prompts.isCorrector })
     .from(prompts)
     .where(eq(prompts.id, id))
     .limit(1);
-  if (current) {
-    await db.insert(promptVersions).values({
-      promptId: current.id,
-      title: current.title,
-      content: current.content,
-      userPrompt: current.userPrompt,
-    });
+  if (!currentFlags) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  // Validate role flags are mutually exclusive (compute next state, not just payload)
+  const nextAssembly = isAssembly ?? currentFlags.isAssembly;
+  const nextCritique = isCritique ?? currentFlags.isCritique;
+  const nextCorrector = isCorrector ?? currentFlags.isCorrector;
+  const roleCount = [nextAssembly, nextCritique, nextCorrector].filter(Boolean).length;
+  if (roleCount > 1) {
+    return NextResponse.json(
+      { error: "at most one of isAssembly, isCritique, isCorrector can be true" },
+      { status: 400 },
+    );
   }
 
-  const [prompt] = await db
-    .update(prompts)
-    .set({
-      ...(title !== undefined && { title }),
-      ...(content !== undefined && { content }),
-      ...(userPrompt !== undefined && { userPrompt }),
-      ...(position !== undefined && { position }),
-      ...(isAssembly !== undefined && { isAssembly }),
-      ...(isCritique !== undefined && { isCritique }),
-      ...(isCorrector !== undefined && { isCorrector }),
-    })
-    .where(eq(prompts.id, id))
-    .returning();
+  // Version insert, prompt update, and placeholder sync in one transaction
+  // so partial failure doesn't leave phantom versions or stale placeholders.
+  const prompt = await db.transaction(async (tx) => {
+    // Save version before updating
+    const [current] = await tx
+      .select()
+      .from(prompts)
+      .where(eq(prompts.id, id))
+      .limit(1);
+    if (current) {
+      await tx.insert(promptVersions).values({
+        promptId: current.id,
+        title: current.title,
+        content: current.content,
+        userPrompt: current.userPrompt,
+      });
+    }
+
+    const [updated] = await tx
+      .update(prompts)
+      .set({
+        ...(title !== undefined && { title }),
+        ...(content !== undefined && { content }),
+        ...(userPrompt !== undefined && { userPrompt }),
+        ...(position !== undefined && { position }),
+        ...(isAssembly !== undefined && { isAssembly }),
+        ...(isCritique !== undefined && { isCritique }),
+        ...(isCorrector !== undefined && { isCorrector }),
+      })
+      .where(eq(prompts.id, id))
+      .returning();
+
+    if (!updated) return undefined;
+
+    // Sync placeholders inside the same transaction
+    const allPrompts = await tx
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+      .from(prompts)
+      .where(eq(prompts.chapterId, updated.chapterId));
+    await syncChapterPlaceholders(
+      updated.chapterId,
+      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+      undefined,
+      tx,
+    );
+
+    return updated;
+  });
 
   if (!prompt) return NextResponse.json({ error: "not found" }, { status: 404 });
 
@@ -68,18 +108,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     resourceId: prompt.id,
     metadata: { title: prompt.title, isAssembly: prompt.isAssembly, isCritique: prompt.isCritique },
   });
-
-  // Sync placeholders for the prompt's chapter
-  if (prompt) {
-    const allPrompts = await db
-      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
-      .from(prompts)
-      .where(eq(prompts.chapterId, prompt.chapterId));
-    await syncChapterPlaceholders(
-      prompt.chapterId,
-      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
-    );
-  }
 
   return NextResponse.json(prompt);
 }

@@ -80,6 +80,12 @@ export async function POST(
     }
   }
 
+  // Verify requested placeholder name exists before any lock or LLM call
+  const [placeholderRow] = existingRows.filter((r) => r.name === name);
+  if (!placeholderRow) {
+    return NextResponse.json({ error: "placeholder not found" }, { status: 404 });
+  }
+
   // Check if this placeholder can be resolved directly (no LLM)
   const { resolved } = resolvePlaceholdersDirect(
     [name],
@@ -151,12 +157,10 @@ export async function POST(
 
   const fillGen = lockResult.result.gen;
 
-  // Find this placeholder's function and notes from DB for classification
-  const [placeholderRow] = existingRows.filter((r) => r.name === name);
   const phDef = {
     name,
-    function: placeholderRow?.function ?? null,
-    notes: placeholderRow?.notes ?? null,
+    function: placeholderRow.function ?? null,
+    notes: placeholderRow.notes ?? null,
   };
 
   // LLM call outside the lock

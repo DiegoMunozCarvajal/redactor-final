@@ -48,46 +48,65 @@ export async function PUT(
   const body = await req.json().catch(() => ({}));
   const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
 
+  // Validate role flags are mutually exclusive (compute next state, not just payload)
+  const nextAssembly = isAssembly ?? existing.isAssembly;
+  const nextCritique = isCritique ?? existing.isCritique;
+  const nextCorrector = isCorrector ?? existing.isCorrector;
+  const roleCount = [nextAssembly, nextCritique, nextCorrector].filter(Boolean).length;
+  if (roleCount > 1) {
+    return NextResponse.json(
+      { error: "at most one of isAssembly, isCritique, isCorrector can be true" },
+      { status: 400 },
+    );
+  }
+
   if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
 
-  // Save version before updating assembly or critique prompt
-  if (isAssembly || isCritique || isCorrector || existing.isAssembly || existing.isCritique || existing.isCorrector) {
-    await db.insert(promptVersions).values({
-      promptId: existing.id,
-      title: existing.title,
-      content: existing.content,
-      userPrompt: existing.userPrompt,
-    });
-  }
+  // Version insert, prompt update, and placeholder sync in one transaction
+  // so partial failure doesn't leave phantom versions or stale placeholders.
+  const updated = await db.transaction(async (tx) => {
+    // Save version before updating assembly or critique prompt
+    if (isAssembly || isCritique || isCorrector || existing.isAssembly || existing.isCritique || existing.isCorrector) {
+      await tx.insert(promptVersions).values({
+        promptId: existing.id,
+        title: existing.title,
+        content: existing.content,
+        userPrompt: existing.userPrompt,
+      });
+    }
 
-  const [updated] = await db
-    .update(prompts)
-    .set({
-      ...(title !== undefined && { title }),
-      ...(content !== undefined && { content }),
-      ...(userPrompt !== undefined && { userPrompt }),
-      ...(position !== undefined && { position }),
-      ...(isAssembly !== undefined && { isAssembly }),
-      ...(isCritique !== undefined && { isCritique }),
-      ...(isCorrector !== undefined && { isCorrector }),
-    })
-    .where(eq(prompts.id, promptId))
-    .returning();
+    const [u] = await tx
+      .update(prompts)
+      .set({
+        ...(title !== undefined && { title }),
+        ...(content !== undefined && { content }),
+        ...(userPrompt !== undefined && { userPrompt }),
+        ...(position !== undefined && { position }),
+        ...(isAssembly !== undefined && { isAssembly }),
+        ...(isCritique !== undefined && { isCritique }),
+        ...(isCorrector !== undefined && { isCorrector }),
+      })
+      .where(eq(prompts.id, promptId))
+      .returning();
 
-  // Sync placeholders
-  if (updated) {
-    const allPrompts = await db
-      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
-      .from(prompts)
-      .where(eq(prompts.chapterId, updated.chapterId));
-    await syncChapterPlaceholders(
-      updated.chapterId,
-      allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
-      project.topic,
-    );
-  }
+    // Sync placeholders inside the same transaction
+    if (u) {
+      const allPrompts = await tx
+        .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+        .from(prompts)
+        .where(eq(prompts.chapterId, u.chapterId));
+      await syncChapterPlaceholders(
+        u.chapterId,
+        allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+        project.topic,
+        tx,
+      );
+    }
+
+    return u;
+  });
 
   return NextResponse.json(updated);
 }

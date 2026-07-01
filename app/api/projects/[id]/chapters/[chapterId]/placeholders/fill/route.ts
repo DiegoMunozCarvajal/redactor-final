@@ -75,7 +75,24 @@ export async function POST(
         generationMetadata: { type: "fill" },
       })
       .returning();
-    return { rateLimited: false as const, gen };
+
+    // Check for placeholders inside the lock so empty chapters don't
+    // leave a zombie generation row that blocks rate limiting.
+    const phRows = await db
+      .select()
+      .from(chapterPlaceholders)
+      .where(eq(chapterPlaceholders.chapterId, chapterId))
+      .orderBy(asc(chapterPlaceholders.name));
+
+    if (phRows.length === 0) {
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: "no placeholders to fill" })
+        .where(eq(chapterGenerations.id, gen.id));
+      return { rateLimited: false as const, gen, emptyPlaceholders: true as const };
+    }
+
+    return { rateLimited: false as const, gen, emptyPlaceholders: false as const, phRows };
   });
 
   if (!lockResult.locked) {
@@ -92,18 +109,12 @@ export async function POST(
     );
   }
 
-  const fillGen = lockResult.result.gen;
-
-  // Load placeholders with metadata
-  const placeholderRows = await db
-    .select()
-    .from(chapterPlaceholders)
-    .where(eq(chapterPlaceholders.chapterId, chapterId))
-    .orderBy(asc(chapterPlaceholders.name));
-
-  if (placeholderRows.length === 0) {
+  if (lockResult.result.emptyPlaceholders) {
     return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
+
+  const fillGen = lockResult.result.gen;
+  const placeholderRows = lockResult.result.phRows;
 
   // Load prompt contents (content + userPrompt) and source contexts for context
   const promptRows = await db

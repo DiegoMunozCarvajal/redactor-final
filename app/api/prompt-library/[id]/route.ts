@@ -4,14 +4,17 @@ import { promptLibrary, projects } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const [row] = await db.select().from(promptLibrary).where(eq(promptLibrary.id, id)).limit(1);
@@ -39,6 +42,12 @@ export async function PUT(
   }
   if (userPrompt !== undefined && (typeof userPrompt !== "string" || userPrompt.length > 50_000)) {
     return NextResponse.json({ error: "userPrompt too long" }, { status: 400 });
+  }
+  if (category !== undefined && !["assembly", "critique", "corrector"].includes(category)) {
+    return NextResponse.json(
+      { error: "category must be one of: assembly, critique, corrector" },
+      { status: 400 },
+    );
   }
 
   const [updated] = await db

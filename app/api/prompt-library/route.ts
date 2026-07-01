@@ -4,13 +4,16 @@ import { promptLibrary } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 
 const VALID_CATEGORIES = ["assembly", "critique", "corrector"] as const;
 
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin.authorized) return admin.response;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
