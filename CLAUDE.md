@@ -37,7 +37,7 @@ projects ──< chapter_generations ──< fragments
 - **prompts**: Template-level prompts. Each has `isAssembly` boolean (true = assembly prompt, false = content prompt), `content` with `{tema}` placeholder, `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
 - **projectPrompts**: Project-scoped copies of template prompts. Created when a template is applied to a project.
 - **projects**: A user's book instance — has `topic` (replaces `{tema}` placeholder), `lastAccessedAt` (updated on GET, drives dashboard ordering), optional `generationSystemPromptId` FK, and links to a `book_template`.
-- **book_templates**: Has `status` field: `null` (ready), `"generating"` (AI is creating template structure), `"failed"` (auto-generation failed). Templates with non-null status are disabled in the create-project dialog.
+- **book_templates**: Has `status` field: `"ready"` (available), `"generating"` (AI is creating template structure), `"failed"` (auto-generation failed). Templates with non-ready status are disabled in the create-project dialog.
 - **chapterGenerations**: Per-chapter generation execution. Status: pending → generating → assembling → completed/failed. Created per-chapter, not per-book. Distinguished by `generationMetadata.type`: `null` (original assembly), `"critique"` (AI critique output), `"correction"` (corrected chapter text).
 - **fragments**: Individual AI responses for each prompt in a chapter generation.
 - **chapterPlaceholders**: Dynamic `{name}` tokens extracted from prompts, with optional AI-filled definitions. Unique per (chapterId, name).
@@ -70,7 +70,10 @@ Users can critique assembled chapters and apply corrections via the chapter UI:
 - **`completion.ts`**: Single entry point for all LLM calls (`generateCompletion`). Routes to Anthropic, OpenAI, Google, or DeepSeek based on model ID. Handles structured output (Zod schemas), prompt caching (Anthropic ephemeral cache), and provider-specific quirks (Anthropic JSON schema sanitization, OpenAI strict mode, DeepSeek JSON retry).
 - **`providers.ts`**: Model catalog with pricing, provider mapping, and stage-to-model defaults.
 - **`clients/`**: SDK instances for each provider.
-- **`placeholder-fill.ts`**: Fills `{name}` placeholders with AI-generated definitions. Research providers: `"rag"` (vector search), `"semantic-scholar"` (academic papers), `"llm"` (LLM knowledge only — no external search), `"direct"` (DB-resolved). Web search removed — LLM-only fills produce higher quality than SEO articles. Source context from `prompts.sourceContext` is fed to the LLM as domain reference (never copied).
+- **`rag.ts`**: Vector retrieval + Cohere rerank.
+- **`embeddings.ts`**: Embedding generation via OpenAI.
+- **`web-search.ts`**: Web search via Exa (primary) + Tavily (fallback). Used for research but NOT for placeholder fill (placeholder fill uses LLM-only).
+- **`placeholder-fill.ts`**: Fills `{name}` placeholders with AI-generated definitions. Research providers: `"rag"` (vector search), `"semantic-scholar"` (academic papers), `"llm"` (LLM knowledge only — no external search), `"direct"` (DB-resolved). Source context from `prompts.sourceContext` is fed to the LLM as domain reference (never copied).
 
 ### Auth
 
