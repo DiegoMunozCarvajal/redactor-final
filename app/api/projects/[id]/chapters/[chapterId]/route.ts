@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, isNotNull, ne } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -148,6 +148,26 @@ export async function PATCH(
 
   if (position !== undefined && (position < 0 || position > 1000))
     return NextResponse.json({ error: "position must be 0-1000" }, { status: 400 });
+
+  if (position !== undefined) {
+    const [conflict] = await db
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(
+        and(
+          eq(chapters.projectId, projectId),
+          eq(chapters.position, position),
+          ne(chapters.id, chapterId),
+        ),
+      )
+      .limit(1);
+    if (conflict) {
+      return NextResponse.json(
+        { error: `position ${position} already taken by another chapter` },
+        { status: 409 },
+      );
+    }
+  }
 
   const [chapter] = await db
     .update(chapters)

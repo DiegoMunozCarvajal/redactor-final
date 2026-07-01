@@ -58,7 +58,7 @@ export async function PUT(
 
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "meta_prompt.update",
     resourceType: "meta_prompt",
@@ -83,7 +83,7 @@ export async function DELETE(
   const [deleted] = await db.delete(metaPrompts).where(eq(metaPrompts.id, id)).returning();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "meta_prompt.delete",
     resourceType: "meta_prompt",

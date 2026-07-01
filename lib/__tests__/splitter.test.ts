@@ -11,7 +11,6 @@ vi.mock("js-tiktoken", () => ({
 }));
 
 import { countTokens, splitText, inferSectionTitleForOffset } from "@/lib/chunking/splitter";
-import type { TextChunk } from "@/lib/chunking/splitter";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,13 +83,12 @@ describe("splitText", () => {
     const chunks = splitText(text, 4, 2);
     expect(chunks.length).toBeGreaterThan(1);
     // At least one chunk should contain overlap text
-    let foundOverlap = false;
     for (let i = 1; i < chunks.length; i++) {
       // Overlap: current chunk may share words with previous
       const prevWords = new Set(chunks[i - 1].content.split(/\s+/));
       const currWords = chunks[i].content.split(/\s+/);
       if (currWords.some((w) => prevWords.has(w))) {
-        foundOverlap = true;
+        // overlap found — verifying chunks exist below
       }
     }
     // Overlap behavior depends on exact tokenization — just verify chunks exist

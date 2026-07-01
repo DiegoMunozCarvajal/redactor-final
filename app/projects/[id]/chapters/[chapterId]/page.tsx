@@ -191,7 +191,6 @@ export default function ChapterPage() {
   const [selectedCritiqueGenerationId, setSelectedCritiqueGenerationId] = useState<string | undefined>();
   const [correctorPromptList, setCorrectorPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [selectingCorrector, setSelectingCorrector] = useState(false);
-  const [correcting, setCorrecting] = useState(false);
   const [correctorModalOpen, setCorrectorModalOpen] = useState(false);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
@@ -209,7 +208,6 @@ export default function ChapterPage() {
   const [showPromptVersions, setShowPromptVersions] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const assemblyFetchRef = useRef(false);
-  const critiqueFetchRef = useRef(false);
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
@@ -790,38 +788,34 @@ export default function ChapterPage() {
     setAssemblyModalOpen(true);
   }
 
-  function openCritiqueModal() {
-    // Fetch critique prompts for the picker if not loaded.
-    // Guard against double-click races with a ref.
-    if (critiquePromptList.length === 0 && !critiqueFetchRef.current) {
-      critiqueFetchRef.current = true;
-      fetch("/api/prompt-library?category=critique")
-        .then((r) => r.json())
-        .then((data) => {
-          if (Array.isArray(data)) setCritiquePromptList(data);
-        })
-        .catch(() => {})
-        .finally(() => { critiqueFetchRef.current = false; });
-    }
-    setCritiqueModalOpen(true);
-  }
-
   async function runCritique() {
-    if (!critiquePromptId) {
+    if (critiquePromptId) {
+      // Library prompt selected — use it directly
+    } else if (critiquePrompt) {
+      // Project-level critique prompt exists — send inline
+    } else {
       toast.error("Select a critique prompt");
       return;
     }
     setCritiquing(true);
     try {
+      const body: Record<string, unknown> = {
+        model: critiqueModel,
+      };
+      if (critiquePromptId) {
+        body.critiquePromptId = critiquePromptId;
+      } else if (critiquePrompt) {
+        body.critiquePrompt = {
+          content: critiquePrompt.content,
+          userPrompt: critiquePrompt.userPrompt ?? null,
+        };
+      }
       const res = await fetch(
         `/api/projects/${params.id}/chapters/${params.chapterId}/critique`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            critiquePromptId,
-            model: critiqueModel,
-          }),
+          body: JSON.stringify(body),
         },
       );
       if (res.ok) {
@@ -1627,7 +1621,6 @@ export default function ChapterPage() {
         onSelectFromLibrary={handleSelectCorrectorPrompt}
         selectingFromLibrary={selectingCorrector}
         onCorrect={() => setCorrectorModalOpen(true)}
-        correcting={correcting}
         onDelete={async () => {
           if (!correctorPrompt) return;
           await fetch(`/api/projects/${params.id}/prompts/${correctorPrompt.id}`, {

@@ -64,7 +64,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!template) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "template.update",
     resourceType: "book_template",
@@ -129,7 +129,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "template.delete",
     resourceType: "book_template",

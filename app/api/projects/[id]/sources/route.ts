@@ -119,18 +119,6 @@ export async function POST(
   const MAX_CHUNKS = 200;
   const MAX_SOURCES_PER_PROJECT = 50;
 
-  const [{ count: sourceCount }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(sources)
-    .where(eq(sources.projectId, projectId));
-
-  if (sourceCount >= MAX_SOURCES_PER_PROJECT) {
-    return NextResponse.json(
-      { error: `max ${MAX_SOURCES_PER_PROJECT} sources per project` },
-      { status: 400 },
-    );
-  }
-
   const fileType = ext === "md" ? "markdown" : "text";
 
   // Accept explicit sourceKind from form data, else auto-detect from filename
@@ -179,44 +167,71 @@ export async function POST(
 
   // Insert source and chunks in a transaction so chunk failure
   // doesn't leave a processed=true source with missing chunks.
-  const [inserted] = await db.transaction(async (tx) => {
-    const [src] = await tx
-      .insert(sources)
-      .values({
+  try {
+    const [inserted] = await db.transaction(async (tx) => {
+      // Lock project row and check source quota atomically
+      await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .for("update");
+
+      const [{ count: sourceCount }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(sources)
+        .where(eq(sources.projectId, projectId));
+
+      if (sourceCount >= MAX_SOURCES_PER_PROJECT) {
+        throw new Error(`max ${MAX_SOURCES_PER_PROJECT} sources per project`);
+      }
+
+      const [src] = await tx
+        .insert(sources)
+        .values({
+          projectId,
+          fileName,
+          fileType,
+          sourceKind,
+          extractedText: text,
+          citation: citation.slice(0, 500),
+          processed: true,
+          chunkCount: chunks.length,
+        })
+        .returning({ id: sources.id });
+
+      // Insert chunks
+      const chunkRows = chunks.map((content, i) => ({
+        sourceId: src.id,
         projectId,
-        fileName,
-        fileType,
-        sourceKind,
-        extractedText: text,
-        citation: citation.slice(0, 500),
-        processed: true,
-        chunkCount: chunks.length,
-      })
-      .returning({ id: sources.id });
+        chunkIndex: i,
+        content,
+        tokenCount: content.split(/\s+/).length,
+        embedding: embeddings[i],
+      }));
 
-    // Insert chunks
-    const chunkRows = chunks.map((content, i) => ({
-      sourceId: src.id,
-      projectId,
-      chunkIndex: i,
-      content,
-      tokenCount: content.split(/\s+/).length,
-      embedding: embeddings[i],
-    }));
+      const BATCH = 50;
+      for (let i = 0; i < chunkRows.length; i += BATCH) {
+        const batch = chunkRows.slice(i, i + BATCH);
+        await tx.insert(sourceChunks).values(batch);
+      }
 
-    const BATCH = 50;
-    for (let i = 0; i < chunkRows.length; i += BATCH) {
-      const batch = chunkRows.slice(i, i + BATCH);
-      await tx.insert(sourceChunks).values(batch);
+      return [src];
+    });
+
+    return NextResponse.json({
+      id: inserted.id,
+      fileName,
+      chunkCount: chunks.length,
+      sourceKind,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("sources per project")) {
+      return NextResponse.json(
+        { error: message },
+        { status: 400 },
+      );
     }
-
-    return [src];
-  });
-
-  return NextResponse.json({
-    id: inserted.id,
-    fileName,
-    chunkCount: chunks.length,
-    sourceKind,
-  });
+    throw err;
+  }
 }

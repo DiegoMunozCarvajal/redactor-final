@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { sourceChunks, sources } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 import { generateEmbedding } from "./embeddings";
 import { rerank } from "./rerank";

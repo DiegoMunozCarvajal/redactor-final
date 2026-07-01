@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { prompts, promptVersions, chapters, projects } from "@/lib/db/schema";
+import { prompts, promptVersions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -101,7 +101,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!prompt) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "prompt.update",
     resourceType: "prompt",
@@ -144,7 +144,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "prompt.delete",
     resourceType: "prompt",

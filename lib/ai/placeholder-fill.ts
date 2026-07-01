@@ -282,8 +282,6 @@ interface ValidationResult {
 const MIN_DEFINITION_LENGTH = 30;   // catch "arrancar un roble" cases
 const MAX_WORDS_FACTUAL = 250;
 const MAX_WORDS_NARRATIVE = 400;
-const MAX_WORDS_STYLISTIC = 100;
-
 export function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
   // Match whole-word/phrase patterns to avoid false positives.
   // "caso" alone is excluded — too broad (appears in "en caso de", "hacer caso", etc.).

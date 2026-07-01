@@ -13,8 +13,7 @@ export async function GET(
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user)
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const [row] = await db.select().from(promptLibrary).where(eq(promptLibrary.id, id)).limit(1);
@@ -65,7 +64,7 @@ export async function PUT(
 
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "prompt_library.update",
     resourceType: "prompt_library",
@@ -104,7 +103,7 @@ export async function DELETE(
   const [deleted] = await db.delete(promptLibrary).where(eq(promptLibrary.id, id)).returning();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "prompt_library.delete",
     resourceType: "prompt_library",

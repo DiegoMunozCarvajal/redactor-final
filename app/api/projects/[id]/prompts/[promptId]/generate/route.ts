@@ -185,7 +185,7 @@ export async function POST(
       return [f];
     });
 
-    logAudit({
+    await logAudit({
       userId: user.id,
       action: "prompt.generate",
       resourceType: "project_prompt",

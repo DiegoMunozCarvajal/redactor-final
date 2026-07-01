@@ -2,6 +2,7 @@ import type { ReasoningEffort } from "@/lib/ai/completion";
 import { generateCompletion } from "@/lib/ai/completion";
 import {
   DEFAULT_GENERATION_MODEL,
+  getModelDefinition,
   getProviderForModel,
 } from "@/lib/ai/providers";
 import { db } from "@/lib/db";
@@ -92,8 +93,13 @@ export interface GeneratePromptParams {
 
 /** Assembly output scales with fragment count. Each fragment contributes ~2048 tokens.
  *  Base floor accounts for thinking overhead when effort is active. */
-function assemblyMaxTokens(fragmentCount: number): number {
-  return Math.max(32768, fragmentCount * 2048);
+function assemblyMaxTokens(fragmentCount: number, model?: string): number {
+  const computed = Math.max(32768, fragmentCount * 2048);
+  if (model) {
+    const def = getModelDefinition(model);
+    if (def?.maxOutputTokens) return Math.min(computed, def.maxOutputTokens);
+  }
+  return computed;
 }
 
 export interface GenerateResult {
@@ -167,7 +173,7 @@ export async function generatePromptContent(
   } = params;
 
   // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
-  const effectiveSystemPrompt = prompt.userPrompt
+  let effectiveSystemPrompt = prompt.userPrompt
     ? prompt.content
     : systemPrompt ?? await getActiveGenerationSystemPrompt(projectId);
   const userContent = prompt.userPrompt ?? prompt.content;
@@ -177,6 +183,11 @@ export async function generatePromptContent(
   // static system prompt — cache it across calls within the 5-min TTL window.
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!prompt.userPrompt;
+
+  // Apply placeholders to system prompt when using metaprompt pattern
+  if (prompt.userPrompt) {
+    effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
+  }
 
   const baseOptions = {
     model,
@@ -256,7 +267,7 @@ async function mergeTwoFragments(
     fragmentsText.replace(/\$/g, "$$$$"),
   );
 
-  const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2);
+  const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2, model);
 
   // Anthropic ephemeral cache: the system prompt (STYLE_RULES + assemblyPrompt.content)
   // is static across all merge calls in a chapter. Cache it to avoid re-sending every merge.
@@ -536,10 +547,15 @@ export async function generateChapterAssembly(
   const baseSystemPrompt = assemblyPrompt.userPrompt
     ? assemblyPrompt.content
     : "";
-  const effectiveSystemPrompt = baseSystemPrompt
+  let effectiveSystemPrompt = baseSystemPrompt
     ? `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
     : `Eres un editor senior que ensambla capítulos de no-ficción en español. Aplica estas reglas de estilo al ensamblar el texto:\n\n${STYLE_RULES}`;
   const userContent = assemblyPrompt.userPrompt ?? assemblyPrompt.content;
+
+  // Apply placeholders to system prompt when using metaprompt pattern
+  if (assemblyPrompt.userPrompt) {
+    effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
+  }
 
   let content = applyPlaceholders(userContent, placeholders, projectTopic);
 
@@ -556,7 +572,7 @@ export async function generateChapterAssembly(
     fragmentsText.replace(/\$/g, "$$$$"),
   );
 
-  const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length);
+  const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length, model);
 
   // Anthropic ephemeral cache: system prompt (assemblyPrompt.content) is static
   const isAnthropic = getProviderForModel(model) === "anthropic";
@@ -622,7 +638,7 @@ export async function generateChapterCritique(
   const baseSystemPrompt = critiquePrompt.userPrompt
     ? critiquePrompt.content
     : "";
-  const effectiveSystemPrompt = baseSystemPrompt
+  let effectiveSystemPrompt = baseSystemPrompt
     ? `Eres un crítico editorial. Al evaluar el texto, usa estas reglas de estilo como criterio de calidad:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
     : `Eres un crítico editorial. Al evaluar el texto, usa estas reglas de estilo como criterio de calidad:\n\n${STYLE_RULES}`;
   const userContent = critiquePrompt.userPrompt ?? critiquePrompt.content;
@@ -650,6 +666,11 @@ export async function generateChapterCritique(
   // is the static system prompt — cache it across critique calls.
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!critiquePrompt.userPrompt;
+
+  // Apply placeholders to system prompt when using metaprompt pattern
+  if (critiquePrompt.userPrompt) {
+    effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
+  }
 
   const result = await generateCompletion({
     model,
@@ -708,7 +729,7 @@ export async function generateChapterCorrection(
   const baseSystemPrompt = correctorPrompt.userPrompt
     ? correctorPrompt.content
     : "";
-  const effectiveSystemPrompt = baseSystemPrompt
+  let effectiveSystemPrompt = baseSystemPrompt
     ? `Eres un corrector editorial. Al reescribir el texto, aplica estas reglas de estilo:\n\n${STYLE_RULES}\n\n---\n\n${baseSystemPrompt}`
     : `Eres un corrector editorial. Al reescribir el texto, aplica estas reglas de estilo:\n\n${STYLE_RULES}`;
   const userContent = correctorPrompt.userPrompt ?? correctorPrompt.content;
@@ -737,6 +758,11 @@ export async function generateChapterCorrection(
   // Anthropic ephemeral cache
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!correctorPrompt.userPrompt;
+
+  // Apply placeholders to system prompt when using metaprompt pattern
+  if (correctorPrompt.userPrompt) {
+    effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
+  }
 
   const result = await generateCompletion({
     model,

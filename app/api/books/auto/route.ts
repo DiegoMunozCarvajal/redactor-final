@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       ...(effort ? { effort } : {}),
     });
 
-    logAudit({
+    await logAudit({
       userId: admin.user.id,
       action: "template.auto_create",
       resourceType: "book_template",

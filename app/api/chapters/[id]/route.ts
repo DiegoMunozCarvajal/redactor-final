@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!chapter) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "chapter.update",
     resourceType: "chapter",
@@ -79,7 +79,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   await db.delete(chapters).where(eq(chapters.id, id));
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "chapter.delete",
     resourceType: "chapter",

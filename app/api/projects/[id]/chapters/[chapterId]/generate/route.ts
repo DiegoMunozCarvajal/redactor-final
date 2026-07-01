@@ -143,7 +143,7 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "chapter.generate",
     resourceType: "chapter_generation",

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { copyTemplatePromptsToChapter } from "@/lib/db/queries/copy-template-prompts";
 
@@ -35,17 +35,30 @@ export async function POST(
   const title = body.title || "New chapter";
   const templateChapterId = body.templateChapterId as string | undefined;
 
-  // Resolve bookTemplateId before the transaction (read-only, no lock needed)
+  // Resolve and validate bookTemplateId before the transaction.
   let bookTemplateId: string | null = null;
   if (templateChapterId) {
     const [templateCh] = await db
-      .select()
+      .select({ id: chapters.id, bookTemplateId: chapters.bookTemplateId, projectId: chapters.projectId })
       .from(chapters)
       .where(eq(chapters.id, templateChapterId))
       .limit(1);
-    if (templateCh) {
-      bookTemplateId = templateCh.bookTemplateId;
+
+    // templateChapterId must exist, be a template chapter (no projectId),
+    // and belong to the same bookTemplate as the project.
+    if (!templateCh || templateCh.projectId !== null) {
+      return NextResponse.json(
+        { error: "templateChapterId not found or is not a template chapter" },
+        { status: 400 },
+      );
     }
+    if (project.bookTemplateId && templateCh.bookTemplateId !== project.bookTemplateId) {
+      return NextResponse.json(
+        { error: "templateChapterId does not belong to the project's book template" },
+        { status: 400 },
+      );
+    }
+    bookTemplateId = templateCh.bookTemplateId;
   }
 
   // Insert chapter, copy template prompts, and sync placeholders atomically.
@@ -61,8 +74,7 @@ export async function POST(
     const [last] = await tx
       .select({ maxPos: sql<number>`coalesce(max(${chapters.position}), -1)::int` })
       .from(chapters)
-      .where(eq(chapters.projectId, projectId))
-      .for("update");
+      .where(eq(chapters.projectId, projectId));
 
     const position = (last?.maxPos ?? -1) + 1;
 

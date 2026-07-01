@@ -24,6 +24,7 @@ export function ensureEnvLoaded(): void {
       (raw.startsWith("'") && raw.endsWith("'"))
         ? raw.slice(1, -1)
         : raw;
+    if (process.env[key] !== undefined) continue;
     process.env[key] = value;
   }
 }

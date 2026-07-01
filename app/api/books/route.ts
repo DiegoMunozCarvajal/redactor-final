@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   const [template] = await db.insert(bookTemplates).values({ name, description }).returning();
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "template.create",
     resourceType: "book_template",

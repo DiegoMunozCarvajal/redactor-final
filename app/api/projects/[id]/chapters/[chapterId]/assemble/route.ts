@@ -10,6 +10,7 @@ import { generateChapter } from "@/trigger/generate-chapter";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import { DEFAULT_GENERATION_MODEL, getModelDefinition } from "@/lib/ai/providers";
 import type { AssemblyAlgorithm } from "@/lib/generate";
 
 export async function POST(
@@ -64,6 +65,19 @@ export async function POST(
   if (fragmentIds.length > MAX_FRAGMENTS) {
     return NextResponse.json(
       { error: `too many fragments, max ${MAX_FRAGMENTS}` },
+      { status: 400 },
+    );
+  }
+
+  // Validate token budget against model output limits
+  const assemblyModel = model ?? DEFAULT_GENERATION_MODEL;
+  const modelDef = getModelDefinition(assemblyModel);
+  const estimatedTokens = fragmentIds.length * 2048;
+  if (modelDef?.maxOutputTokens && estimatedTokens > modelDef.maxOutputTokens) {
+    return NextResponse.json(
+      {
+        error: `${fragmentIds.length} fragments would require ~${estimatedTokens.toLocaleString()} output tokens, but ${assemblyModel} supports max ${modelDef.maxOutputTokens.toLocaleString()}. Remove some fragments.`,
+      },
       { status: 400 },
     );
   }
@@ -252,7 +266,7 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "chapter.assemble",
     resourceType: "chapter_generation",

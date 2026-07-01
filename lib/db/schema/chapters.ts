@@ -1,11 +1,8 @@
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { bookTemplates } from "./book-templates";
 import { projects } from "./projects";
 
-// WARNING: DB has CHECK constraint chk_chapter_parent:
-//   CHECK (book_template_id IS NOT NULL OR project_id IS NOT NULL)
-// This constraint cannot be expressed in Drizzle pgTable. If regenerating
-// migrations, re-add it manually.
 export const chapters = pgTable(
   "chapters",
   {
@@ -23,6 +20,8 @@ export const chapters = pgTable(
   (table) => [
     index("idx_chapters_template").on(table.bookTemplateId, table.position),
     index("idx_chapters_project").on(table.projectId),
+    uniqueIndex("uq_chapters_project_position").on(table.projectId, table.position),
+    check("chk_chapter_parent", sql`book_template_id IS NOT NULL OR project_id IS NOT NULL`),
   ],
 );
 

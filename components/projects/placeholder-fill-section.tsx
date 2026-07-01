@@ -81,7 +81,7 @@ export function PlaceholderFillSection({
     };
   }, []);
 
-  function getState(name: string): PlaceholderState {
+  const getState = useCallback((name: string): PlaceholderState => {
     const placeholder = placeholders.find((p) => p.name === name);
     const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
     return states[name] ?? {
@@ -95,7 +95,7 @@ export function PlaceholderFillSection({
           : undefined
       ),
     };
-  }
+  }, [placeholders, states]);
 
   const progress = Object.values(states).filter((s) => s.status === "filled").length;
   const total = placeholders.length;
@@ -204,7 +204,7 @@ export function PlaceholderFillSection({
           processLines(buffer.split("\n"));
         }
       }
-    } catch (err) {
+    } catch {
       if (!signal.aborted) {
         toast.error("Stream error");
       }
@@ -267,7 +267,7 @@ export function PlaceholderFillSection({
         return next;
       });
     }
-  }, [projectId, chapterId, model, onFillComplete]);
+  }, [projectId, chapterId, model, onFillComplete, getState]);
 
   function startEdit(name: string) {
     const state = getState(name);

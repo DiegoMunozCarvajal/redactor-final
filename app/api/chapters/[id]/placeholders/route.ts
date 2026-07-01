@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { chapterPlaceholders, chapters, projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, isNull } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 export async function GET(
   _req: NextRequest,

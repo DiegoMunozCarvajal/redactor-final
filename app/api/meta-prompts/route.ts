@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     .values({ name, description: description ?? null, content, userPrompt: userPrompt ?? null })
     .returning();
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "meta_prompt.create",
     resourceType: "meta_prompt",

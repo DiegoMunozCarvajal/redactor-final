@@ -85,9 +85,42 @@ export async function PATCH(
 
   const body = await req.json().catch(() => ({}));
   const definitions: Record<string, string | null> = body.placeholders ?? {};
+  const entries = Object.entries(definitions);
+
+  const PLACEHOLDER_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  const MAX_ENTRIES = 100;
+  const MAX_NAME_LENGTH = 100;
+
+  if (entries.length > MAX_ENTRIES) {
+    return NextResponse.json(
+      { error: `max ${MAX_ENTRIES} placeholders per request` },
+      { status: 400 },
+    );
+  }
+
+  for (const [name, def] of entries) {
+    if (!name || name.length > MAX_NAME_LENGTH) {
+      return NextResponse.json(
+        { error: `placeholder name too long (max ${MAX_NAME_LENGTH})` },
+        { status: 400 },
+      );
+    }
+    if (!PLACEHOLDER_NAME_RE.test(name)) {
+      return NextResponse.json(
+        { error: `invalid placeholder name: "${name}"` },
+        { status: 400 },
+      );
+    }
+    if (def !== null && typeof def !== "string") {
+      return NextResponse.json(
+        { error: `definition for "${name}" must be string or null` },
+        { status: 400 },
+      );
+    }
+  }
 
   // Validate definition lengths before any DB writes
-  for (const [name, def] of Object.entries(definitions)) {
+  for (const [name, def] of entries) {
     if (typeof def === "string" && def.length > 10_000) {
       return NextResponse.json(
         { error: `definition for "${name}" exceeds 10,000 characters` },
@@ -97,7 +130,6 @@ export async function PATCH(
   }
 
   // Batch upsert placeholder definitions using ON CONFLICT to avoid N+1 updates
-  const entries = Object.entries(definitions);
   if (entries.length > 0) {
     await db
       .insert(chapterPlaceholders)

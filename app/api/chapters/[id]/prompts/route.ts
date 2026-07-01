@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
     .returning();
 
-  logAudit({
+  await logAudit({
     userId: admin.user.id,
     action: "prompt.create",
     resourceType: "prompt",

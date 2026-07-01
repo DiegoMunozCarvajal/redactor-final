@@ -15,6 +15,8 @@ export interface ModelDefinition {
    * is active. undefined = temperature is freely configurable.
    */
   fixedTemperature?: number;
+  /** Max tokens the model can produce in a single response */
+  maxOutputTokens?: number;
 }
 
 /**
@@ -30,6 +32,7 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     pricing: { input: 2.75, output: 16.5 },
     supportsStructuredOutput: true,
     fixedTemperature: 1,
+    maxOutputTokens: 16384,
   },
   // Anthropic
   {
@@ -38,6 +41,7 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     provider: "anthropic",
     pricing: { input: 15, output: 75 },
     supportsStructuredOutput: true,
+    maxOutputTokens: 32768,
   },
   // DeepSeek
   {
@@ -46,6 +50,7 @@ export const AVAILABLE_MODELS: ModelDefinition[] = [
     provider: "deepseek",
     pricing: { input: 1.74, output: 3.48 },
     supportsStructuredOutput: true,
+    maxOutputTokens: 32768,
   },
 ];
 

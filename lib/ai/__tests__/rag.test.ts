@@ -24,7 +24,6 @@ vi.mock("@/lib/ai/rerank", () => ({
 }));
 
 import { retrieveContext } from "@/lib/ai/rag";
-import type { RetrievedChunk } from "@/lib/ai/rag";
 
 function makeRows(
   count: number,

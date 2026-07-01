@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
@@ -47,14 +47,30 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const critiquePromptId = body.critiquePromptId as string | undefined;
+  const critiquePrompt = body.critiquePrompt as { content: string; userPrompt?: string | null } | undefined;
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
-  if (!critiquePromptId) {
+  if (!critiquePromptId && !critiquePrompt) {
     return NextResponse.json(
-      { error: "critiquePromptId is required" },
+      { error: "critiquePromptId or critiquePrompt is required" },
       { status: 400 },
     );
+  }
+
+  if (critiquePrompt) {
+    if (critiquePrompt.content.length > 100_000) {
+      return NextResponse.json(
+        { error: "critiquePrompt.content too large, max 100KB" },
+        { status: 400 },
+      );
+    }
+    if (critiquePrompt.userPrompt && critiquePrompt.userPrompt.length > 50_000) {
+      return NextResponse.json(
+        { error: "critiquePrompt.userPrompt too large, max 50KB" },
+        { status: 400 },
+      );
+    }
   }
 
   // Determine what content to critique: use provided content or fetch latest assembly
@@ -94,30 +110,43 @@ export async function POST(
     contentToCritique = latest.assembledContent;
   }
 
-  // Load the critique prompt
-  const [cp] = await db
-    .select()
-    .from(promptLibrary)
-    .where(and(eq(promptLibrary.id, critiquePromptId), eq(promptLibrary.category, "critique")))
-    .limit(1);
+  // Resolve critique prompt: inline object or library prompt
+  let cpContent: string;
+  let cpUserPrompt: string | null;
+  let cpName: string;
 
-  if (!cp) {
-    return NextResponse.json(
-      { error: "critique prompt not found" },
-      { status: 400 },
-    );
+  if (critiquePrompt) {
+    cpContent = critiquePrompt.content;
+    cpUserPrompt = critiquePrompt.userPrompt ?? null;
+    cpName = "Project Critique";
+  } else {
+    const [cp] = await db
+      .select()
+      .from(promptLibrary)
+      .where(and(eq(promptLibrary.id, critiquePromptId!), eq(promptLibrary.category, "critique")))
+      .limit(1);
+
+    if (!cp) {
+      return NextResponse.json(
+        { error: "critique prompt not found" },
+        { status: 400 },
+      );
+    }
+    cpContent = cp.content;
+    cpUserPrompt = cp.userPrompt;
+    cpName = cp.name;
   }
 
   const placeholders = await getChapterPlaceholders(chapterId, project.topic);
   const missingPlaceholders = getMissingPlaceholderNames(
-    [cp.content, cp.userPrompt].filter(Boolean) as string[],
+    [cpContent, cpUserPrompt].filter(Boolean) as string[],
     placeholders,
   );
   if (missingPlaceholders.length > 0) {
     const missing = missingPlaceholders.join(", ");
     return NextResponse.json(
       {
-        error: `Cannot run critique "${cp.name}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
+        error: `Cannot run critique "${cpName}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
       },
       { status: 400 },
     );
@@ -142,8 +171,8 @@ export async function POST(
         status: "pending",
         generationMetadata: {
           type: "critique",
-          promptId: cp.id,
-          promptTitle: cp.name,
+          promptId: critiquePromptId ?? "inline",
+          promptTitle: cpName,
           model: resolvedModel,
         },
       })
@@ -177,8 +206,8 @@ export async function POST(
         projectId,
         chapterId,
         critiquePrompt: {
-          content: cp.content,
-          userPrompt: cp.userPrompt,
+          content: cpContent,
+          userPrompt: cpUserPrompt,
         },
         contentToCritique,
         projectTopic: project.topic,
@@ -196,12 +225,12 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "chapter.critique",
     resourceType: "chapter_generation",
     resourceId: gen.id,
-    metadata: { projectId, chapterId, critiquePromptId: cp.id },
+    metadata: { projectId, chapterId, critiquePromptId: critiquePromptId ?? "inline" },
   });
 
   return NextResponse.json(gen);

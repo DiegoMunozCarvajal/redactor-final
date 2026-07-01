@@ -51,16 +51,17 @@ export const generateTemplate = task({
   }) => {
     const { templateId, metaPromptId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
 
-    // Idempotency guard: if the template already reached a terminal state
-    // (success or permanent failure), don't reprocess.  Retry races and
-    // double-dispatches are handled by checking before resetting status.
+    // Idempotency guard: if the template already completed successfully,
+    // don't reprocess. "failed" is NOT terminal — retries recover from
+    // transient LLM errors. Blocking on "failed" would defeat Trigger.dev
+    // retries entirely (catch sets failed → next retry sees failed → returns).
     const [current] = await db
       .select({ status: bookTemplates.status })
       .from(bookTemplates)
       .where(eq(bookTemplates.id, templateId))
       .limit(1);
 
-    if (current && (current.status === "ready" || current.status === "failed")) {
+    if (current?.status === "ready") {
       return;
     }
 

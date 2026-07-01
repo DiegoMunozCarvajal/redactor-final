@@ -54,6 +54,15 @@ export async function POST(
 
   const { chapters: reordered } = parsed.data;
 
+  // Validate no duplicate positions — the schema only checks type/range.
+  const positionSet = new Set(reordered.map((c) => c.position));
+  if (positionSet.size !== reordered.length) {
+    return NextResponse.json(
+      { error: "duplicate positions are not allowed" },
+      { status: 400 },
+    );
+  }
+
   // Verify all chapter IDs belong to this project
   const chapterIds = reordered.map((c) => c.id);
   const existingChapters = await db
@@ -77,6 +86,13 @@ export async function POST(
 
   // Update all positions in a single transaction
   await db.transaction(async (tx) => {
+    // Lock target chapter rows to serialize concurrent reorders
+    await tx
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(inArray(chapters.id, reordered.map((c) => c.id)))
+      .for("update");
+
     for (const ch of reordered) {
       await tx
         .update(chapters)

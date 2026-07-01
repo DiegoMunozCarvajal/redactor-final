@@ -48,6 +48,27 @@ export async function PUT(
   const body = await req.json().catch(() => ({}));
   const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
 
+  // Validate input types and lengths (matching create route limits)
+  if (title !== undefined && (typeof title !== "string" || title.length > 500)) {
+    return NextResponse.json({ error: "title max 500 chars" }, { status: 400 });
+  }
+  if (content !== undefined && (typeof content !== "string" || content.length > 100_000)) {
+    return NextResponse.json({ error: "content max 100KB" }, { status: 400 });
+  }
+  if (userPrompt !== undefined && userPrompt !== null &&
+      (typeof userPrompt !== "string" || userPrompt.length > 100_000)) {
+    return NextResponse.json({ error: "userPrompt max 100KB" }, { status: 400 });
+  }
+  if (position !== undefined && (typeof position !== "number" || position < 0 || !Number.isInteger(position))) {
+    return NextResponse.json({ error: "position must be a non-negative integer" }, { status: 400 });
+  }
+  // Validate boolean flags
+  for (const flag of [["isAssembly", isAssembly], ["isCritique", isCritique], ["isCorrector", isCorrector]] as const) {
+    if (flag[1] !== undefined && typeof flag[1] !== "boolean") {
+      return NextResponse.json({ error: `${flag[0]} must be a boolean` }, { status: 400 });
+    }
+  }
+
   // Validate role flags are mutually exclusive (compute next state, not just payload)
   const nextAssembly = isAssembly ?? existing.isAssembly;
   const nextCritique = isCritique ?? existing.isCritique;
@@ -58,10 +79,6 @@ export async function PUT(
       { error: "at most one of isAssembly, isCritique, isCorrector can be true" },
       { status: 400 },
     );
-  }
-
-  if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
-    return NextResponse.json({ error: "content too long" }, { status: 400 });
   }
 
   // Version insert, prompt update, and placeholder sync in one transaction
@@ -150,19 +167,24 @@ export async function DELETE(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  await db.delete(fragments).where(eq(fragments.projectPromptId, promptId));
-  await db.delete(prompts).where(eq(prompts.id, promptId));
+  // Delete fragments, prompt, and sync placeholders atomically.
+  // Doing these outside a transaction leaves orphaned fragments or stale
+  // placeholders on partial failure (e.g., crash between delete and sync).
+  await db.transaction(async (tx) => {
+    await tx.delete(fragments).where(eq(fragments.projectPromptId, promptId));
+    await tx.delete(prompts).where(eq(prompts.id, promptId));
 
-  // Sync placeholders
-  const remainingPrompts = await db
-    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
-    .from(prompts)
-    .where(eq(prompts.chapterId, existing.chapterId));
-  await syncChapterPlaceholders(
-    existing.chapterId,
-    remainingPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
-    project.topic,
-  );
+    const remaining = await tx
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+      .from(prompts)
+      .where(eq(prompts.chapterId, existing.chapterId));
+    await syncChapterPlaceholders(
+      existing.chapterId,
+      remaining.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
+      project.topic,
+      tx,
+    );
+  });
 
   return NextResponse.json({ ok: true });
 }

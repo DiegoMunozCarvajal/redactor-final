@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabasePublicEnv, SupabaseConfigurationError } from "@/lib/auth/supabase-config";
+import { getSupabasePublicEnv } from "@/lib/auth/supabase-config";
 import type { UserResponse } from "@supabase/supabase-js";
 
 // ---------------------------------------------------------------------------

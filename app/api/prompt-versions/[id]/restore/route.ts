@@ -5,6 +5,7 @@ import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
+import { syncChapterPlaceholders } from "@/lib/placeholders";
 
 export async function POST(
   req: NextRequest,
@@ -26,30 +27,55 @@ export async function POST(
   // promptVersions.promptId references prompts.id (template or project-scoped).
   // Template prompts (projectId IS NULL) require admin; project prompts (projectId IS NOT NULL) require project ownership.
   const [templatePrompt] = await db
-    .select()
+    .select({
+      id: prompts.id,
+      title: prompts.title,
+      content: prompts.content,
+      userPrompt: prompts.userPrompt,
+      chapterId: prompts.chapterId,
+    })
     .from(prompts)
     .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
     .limit(1);
 
   if (templatePrompt) {
-    // Template prompt restore — admin only
     const admin = await requireAdmin();
     if (!admin.authorized) return admin.response;
 
-    await db.insert(promptVersions).values({
-      promptId: templatePrompt.id,
-      title: templatePrompt.title,
-      content: templatePrompt.content,
-      userPrompt: templatePrompt.userPrompt,
+    // Restore prompt in a transaction and sync placeholders.
+    // Restoring may add/remove {placeholder} tokens; stale chapterPlaceholders
+    // cause missing or orphaned tokens on the next template usage.
+    const restored = await db.transaction(async (tx) => {
+      await tx.insert(promptVersions).values({
+        promptId: templatePrompt.id,
+        title: templatePrompt.title,
+        content: templatePrompt.content,
+        userPrompt: templatePrompt.userPrompt,
+      });
+
+      const [r] = await tx
+        .update(prompts)
+        .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
+        .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
+        .returning();
+
+      if (!r) throw { status: 404, message: "prompt not found" };
+
+      // Sync placeholders for the template chapter
+      const allPrompts = await tx
+        .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+        .from(prompts)
+        .where(eq(prompts.chapterId, r.chapterId));
+
+      const contents = allPrompts.flatMap(
+        (p) => [p.content, p.userPrompt].filter(Boolean) as string[],
+      );
+
+      await syncChapterPlaceholders(r.chapterId, contents, null, tx);
+
+      return r;
     });
 
-    const [restored] = await db
-      .update(prompts)
-      .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
-      .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
-      .returning();
-
-    if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
     return NextResponse.json(restored);
   }
 
@@ -60,6 +86,7 @@ export async function POST(
       title: prompts.title,
       content: prompts.content,
       userPrompt: prompts.userPrompt,
+      chapterId: prompts.chapterId,
       projectId: prompts.projectId,
     })
     .from(prompts)
@@ -72,7 +99,7 @@ export async function POST(
     if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const [project] = await db
-      .select({ userId: projects.userId })
+      .select({ userId: projects.userId, topic: projects.topic })
       .from(projects)
       .where(eq(projects.id, projectPrompt.projectId!))
       .limit(1);
@@ -80,20 +107,46 @@ export async function POST(
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
 
-    await db.insert(promptVersions).values({
-      promptId: projectPrompt.id,
-      title: projectPrompt.title,
-      content: projectPrompt.content,
-      userPrompt: projectPrompt.userPrompt,
+    // Restore prompt + sync chapter placeholders in a transaction.
+    // Restoring may add/remove {placeholder} tokens in prompt content;
+    // stale chapterPlaceholders cause missing or orphaned tokens on next generation.
+    const restored = await db.transaction(async (tx) => {
+      // Save current state as a new version before overwriting
+      await tx.insert(promptVersions).values({
+        promptId: projectPrompt.id,
+        title: projectPrompt.title,
+        content: projectPrompt.content,
+        userPrompt: projectPrompt.userPrompt,
+      });
+
+      const [r] = await tx
+        .update(prompts)
+        .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
+        .where(and(eq(prompts.id, version.promptId), isNotNull(prompts.projectId)))
+        .returning();
+
+      if (!r) throw { status: 404, message: "prompt not found" };
+
+      // Sync placeholders: collect prompt contents after restore and reconcile
+      const allPrompts = await tx
+        .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+        .from(prompts)
+        .where(eq(prompts.chapterId, r.chapterId));
+
+      const contents = allPrompts.flatMap(
+        (p) => [p.content, p.userPrompt].filter(Boolean) as string[],
+      );
+
+      await syncChapterPlaceholders(
+        r.chapterId,
+        contents,
+        project.topic,
+        tx,
+      );
+
+      return r;
     });
 
-    const [restored] = await db
-      .update(prompts)
-      .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
-      .where(and(eq(prompts.id, version.promptId), isNotNull(prompts.projectId)))
-      .returning();
-
-    if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
     return NextResponse.json(restored);
   }
 

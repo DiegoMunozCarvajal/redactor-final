@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
@@ -264,7 +264,7 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "chapter.correction",
     resourceType: "chapter_generation",

@@ -17,7 +17,7 @@ interface Props {
   promptId: string
 }
 
-export function VersionHistory({ versionsApiUrl, promptId }: Props) {
+export function VersionHistory({ versionsApiUrl, promptId: _promptId }: Props) {
   const [versions, setVersions] = useState<Version[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)

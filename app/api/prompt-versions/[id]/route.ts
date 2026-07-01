@@ -54,6 +54,10 @@ export async function GET(
     if (!admin.authorized) return admin.response;
   }
 
-  const { promptId: _, ...rest } = version;
-  return NextResponse.json(rest);
+  return NextResponse.json({
+    id: version.id,
+    title: version.title,
+    content: version.content,
+    createdAt: version.createdAt,
+  });
 }

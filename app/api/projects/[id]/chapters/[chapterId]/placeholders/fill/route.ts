@@ -140,6 +140,8 @@ export async function POST(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let terminalEvent: "done" | "cancelled" | "error" | null = null;
+
       try {
         for await (const event of fillPlaceholdersSequential(
           placeholderDefs,
@@ -177,12 +179,34 @@ export async function POST(
                 ),
               );
           }
+
+          // Track terminal events from the generator
+          if (event.type === "cancelled") {
+            terminalEvent = "cancelled";
+          } else if (event.type === "error") {
+            terminalEvent = "error";
+          } else if (event.type === "done") {
+            terminalEvent = "done";
+          }
         }
-        // Mark fill generation as completed
-        await db
-          .update(chapterGenerations)
-          .set({ status: "completed", completedAt: new Date() })
-          .where(eq(chapterGenerations.id, fillGen.id));
+
+        // Set appropriate DB status based on terminal event
+        if (terminalEvent === "done") {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "completed", completedAt: new Date() })
+            .where(eq(chapterGenerations.id, fillGen.id));
+        } else if (terminalEvent === "cancelled") {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "failed", error: "Fill cancelled by user" })
+            .where(eq(chapterGenerations.id, fillGen.id));
+        } else if (terminalEvent === "error") {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "failed", error: "Fill encountered errors" })
+            .where(eq(chapterGenerations.id, fillGen.id));
+        }
       } catch (err) {
         // Mark fill generation as failed
         await db

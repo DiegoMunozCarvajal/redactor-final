@@ -7,7 +7,7 @@ import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { extractPlaceholders } from "@/lib/placeholders";
-import { copyTemplatePromptsToChapter, copyTemplatePlaceholdersBatch } from "@/lib/db/queries/copy-template-prompts";
+import { copyTemplatePromptsToChapter } from "@/lib/db/queries/copy-template-prompts";
 
 export async function GET() {
   const supabase = await createClient();
@@ -89,6 +89,23 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Validate assemblyPromptId: must exist in prompt_library with category "assembly".
+      // A critique or corrector UUID passes FK checks but produces a broken default
+      // assembly config — reject early with a clear error.
+      if (assemblyPromptId) {
+        const [prompt] = await tx
+          .select({ id: promptLibrary.id, category: promptLibrary.category })
+          .from(promptLibrary)
+          .where(eq(promptLibrary.id, assemblyPromptId))
+          .limit(1);
+        if (!prompt) {
+          throw { status: 400, message: "assemblyPromptId not found" };
+        }
+        if (prompt.category !== "assembly") {
+          throw { status: 400, message: "assemblyPromptId must be an assembly prompt" };
+        }
+      }
+
       const [p] = await tx
         .insert(projects)
         .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null, assemblyPromptId: assemblyPromptId ?? null })
@@ -124,9 +141,6 @@ export async function POST(req: NextRequest) {
 
           await copyTemplatePromptsToChapter(tx, chapter.id, p.id, projectChapter.id);
         }
-
-        // Copy template chapter placeholders to project chapters
-        await copyTemplatePlaceholdersBatch(tx, chapterIdMap);
 
         // Sync placeholders from project prompts — catch any {tokens} in prompt
         // content that weren't already in the template's chapterPlaceholders table
@@ -229,7 +243,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "project.create",
     resourceType: "project",

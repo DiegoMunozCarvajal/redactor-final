@@ -176,14 +176,19 @@ export const generateChapter = task({
           promptTitle: globalAp.name,
           promptSource: "library",
         };
-        // Sync placeholders from assembly prompt to chapterPlaceholders.
-        // Uses syncChapterPlaceholders for case-variant dedup, lowercasing,
-        // and auto-resolve of tema variants from project.topic.
+        // Sync placeholders from assembly + content prompts to chapterPlaceholders.
+        // Using only assembly prompt contents causes syncChapterPlaceholders to
+        // delete placeholders only referenced by content prompts (e.g., {autor}
+        // appears in content but not in assembly → gets dropped on next sync).
         const apContents = [globalAp.content, globalAp.userPrompt].filter(
           (s): s is string => typeof s === "string" && s.length > 0,
         );
-        if (apContents.length > 0) {
-          await syncChapterPlaceholders(gen.chapterId, apContents, project.topic);
+        const cpContents = contentPrompts.flatMap((p) =>
+          [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
+        );
+        const allContents = [...cpContents, ...apContents];
+        if (allContents.length > 0) {
+          await syncChapterPlaceholders(gen.chapterId, allContents, project.topic);
         }
       }
     }

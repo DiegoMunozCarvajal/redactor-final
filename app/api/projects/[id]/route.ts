@@ -203,7 +203,7 @@ export async function PATCH(
     return u;
   });
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "project.update",
     resourceType: "project",
@@ -248,7 +248,7 @@ export async function DELETE(
     );
   }
 
-  logAudit({
+  await logAudit({
     userId: user.id,
     action: "project.delete",
     resourceType: "project",
