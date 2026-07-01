@@ -19,6 +19,7 @@ export const projectPrompts = pgTable("project_prompts", {
   userPrompt: text("user_prompt"),
   function: text("function"),
   notes: text("notes"),
+  sourceContext: text("source_context"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_project_prompts_chapter_position").on(table.chapterId, table.position),

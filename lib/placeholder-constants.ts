@@ -23,4 +23,8 @@ export const STYLISTIC_PATTERNS = [
   "formato", "extensión", "extension",
   "concepto", "creencia", "principio", "resultado", "pregunta",
   "objecion", "objeción", "cierre", "idea", "sintesis", "síntesis",
+  // Definitional — the LLM defines these directly, no external research
+  "sujeto", "objeto", "campo", "area", "ámbito", "ambito",
+  "alcance", "definición", "definicion", "propósito", "proposito",
+  "dominio", "disciplina", "marco", "contexto",
 ] as const;

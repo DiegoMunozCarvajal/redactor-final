@@ -92,14 +92,15 @@ export async function POST(
     return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
 
-  // Load prompt contents for context
+  // Load prompt contents and source contexts for context
   const promptRows = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, sourceContext: projectPrompts.sourceContext })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
   const promptContents = promptRows.map((p) => p.content);
+  const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
   // Compute prompts hash for stale detection
   const promptsHash = hashPromptContents(promptContents);
@@ -125,6 +126,7 @@ export async function POST(
           effort,
           undefined,
           chapterId,
+          sourceContexts,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));

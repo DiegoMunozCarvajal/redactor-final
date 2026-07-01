@@ -7,6 +7,7 @@ import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateTemplate } from "@/trigger/generate-template";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
@@ -39,11 +40,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let templateId: string | undefined;
+
   try {
     const template = await db.transaction(async (tx) => {
       const [tpl] = await tx
         .insert(bookTemplates)
-        .values({ name: name.trim(), description: description?.trim() || null })
+        .values({ name: name.trim(), description: description?.trim() || null, status: "generating" })
         .returning();
 
       const createdChapters: { id: string; title: string; position: number }[] = [];
@@ -63,6 +66,8 @@ export async function POST(req: NextRequest) {
 
       return { template: tpl, createdChapters };
     });
+
+    templateId = template.template.id;
 
     // Build chapter payload for the background task
     const chapterPayloads = template.createdChapters.map((ch, i) => ({
@@ -97,6 +102,17 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = sanitizeError(err);
     console.error("Failed to auto-create template:", message);
+
+    // If the template was inserted but trigger enqueue failed, mark it as
+    // failed so it doesn't stay "generating" forever.
+    if (templateId) {
+      await db
+        .update(bookTemplates)
+        .set({ status: "failed" })
+        .where(eq(bookTemplates.id, templateId))
+        .catch(() => {}); // best-effort — don't mask original error
+    }
+
     return NextResponse.json({ error: "failed to create template" }, { status: 500 });
   }
 }

@@ -15,7 +15,7 @@ export interface PlaceholderFillEvent {
   definition?: string;
   sources?: SearchResult[];
   ragChunks?: number;
-  /** Research provider used: "rag" | "semantic-scholar" | "web" | "direct" | "reused" | "none" */
+  /** Research provider used: "rag" | "semantic-scholar" | "llm" | "direct" | "reused" */
   provider?: string;
   error?: string;
   /** Index of current placeholder being filled (0-based) */
@@ -155,11 +155,14 @@ En el prompt del usuario verás varias secciones. Es crítico que distingas su f
 
 4. **Research Results (Web / Semantic Scholar)**: Resultados de búsqueda externa para verificación factual. Evalúa su relevancia y confiabilidad antes de usarlos.
 
+5. **📄 Fuentes originales de los prompts**: Fragmentos del texto fuente que inspiró cada prompt del capítulo. Son material de referencia para entender el dominio y el tono del contenido original. NUNCA copies texto de esta sección. Si la fuente contiene casos o anécdotas, extrae el patrón subyacente y crea uno distinto. Si hay tensión con cualquier otra sección, las fuentes originales tienen la MENOR prioridad — son solo contexto.
+
 ## Regla de prioridad
 
 - Si hay tensión entre las NOTAS y los PROMPTS DEL CAPÍTULO → las NOTAS tienen prioridad.
 - Si hay tensión entre las NOTAS y los DOCUMENTOS SUBIDOS (RAG) → el RAG tiene prioridad. Las notas solo guían CÓMO adaptar el material, no si debes usarlo.
 - Si hay tensión entre las NOTAS y la BÚSQUEDA WEB/Semantic Scholar → las NOTAS tienen prioridad (la búsqueda externa es complementaria).
+- Las FUENTES ORIGINALES tienen la menor prioridad en cualquier conflicto. Si contradicen las notas, los prompts o el research, ignóralas.
 
 ## 🚫 Prohibición de propiedad intelectual
 
@@ -176,7 +179,9 @@ Si detectas que un resultado de búsqueda está parafraseando un libro famoso, N
 
 1. **Primero, entiende la función y las notas**: te dicen el propósito del placeholder, cómo se relaciona con otros placeholders mencionados en el contexto del capítulo, la extensión recomendada, el tono sugerido y el tipo de contenido esperado. Adhiérete estrictamente a ellas en cuanto a formato, tono y extensión, pero nunca permitas que las notas te hagan ignorar el material de documentos subidos (RAG).
 
-2. **Luego, procesa los resultados de búsqueda según su tipo**:
+2. **Procesa las fuentes originales (si están presentes)**: la sección 📄 Fuentes originales contiene el texto fuente que inspiró los prompts del capítulo. Este material es para entender el dominio, el tono y el tipo de contenido que el autor original manejaba. **NUNCA copies frases textuales, metáforas, ejemplos concretos ni historias de estas fuentes.** **NUNCA incluyas nombres propios, datos personales, ubicaciones ni información identificable de las fuentes originales en tu definición.** Si la fuente contiene un caso o anécdota, generaliza el patrón subyacente y crea uno distinto. El objetivo es que tu definición esté informada por el contexto pero sea completamente original.
+
+3. **Luego, procesa los resultados de búsqueda según su tipo**:
 
 **Si el research es RAG (documentos subidos):**
 No apliques los criterios de evaluación estándar. En lugar de evaluar si usar o no el material, ADÁPTALO siguiendo este proceso:
@@ -206,9 +211,9 @@ Usa el siguiente formato:
 - Conclusión: ¿Algún resultado pasa todos los criterios? [Sí/No]. Si sí, ¿cuál?
 </evaluacion>
 
-3. **Si ningún resultado pasa los criterios** (para búsqueda web/Semantic Scholar), usa tu mejor conocimiento para responder, pero incluye solo información que puedas verificar. Es preferible una definición precisa sin fuente explícita que una definición con fuentes inventadas. Para placeholders estilísticos o creativos (los que la nota indique que no requieren búsqueda), usa directamente tu conocimiento.
+4. **Si ningún resultado pasa los criterios** (para búsqueda web/Semantic Scholar), usa tu mejor conocimiento para responder, pero incluye solo información que puedas verificar. Es preferible una definición precisa sin fuente explícita que una definición con fuentes inventadas. Para placeholders estilísticos o creativos (los que la nota indique que no requieren búsqueda), usa directamente tu conocimiento.
 
-4. **Redacta la definición**: consulta las Notas del placeholder para la extensión esperada. Si las notas especifican un número de párrafos u oraciones, adhiérete a esa indicación. Si no hay guidance de extensión, evalúa el propósito: placeholders narrativos (fábulas, historias, anécdotas, casos de estudio) requieren desarrollo completo con inicio, desarrollo y cierre; placeholders factuales (estudios, papers, referencias) requieren descripción con metodología, resultados y fuente; placeholders estilísticos (tono, enfoque) pueden resolverse en 1-2 oraciones. La definición debe poder insertarse tal cual en el flujo del texto sin edición adicional (no escribas una meta-descripción tipo "este placeholder contiene...").
+5. **Redacta la definición**: consulta las Notas del placeholder para la extensión esperada. Si las notas especifican un número de párrafos u oraciones, adhiérete a esa indicación. Si no hay guidance de extensión, evalúa el propósito: placeholders narrativos (fábulas, historias, anécdotas, casos de estudio) requieren desarrollo completo con inicio, desarrollo y cierre; placeholders factuales (estudios, papers, referencias) requieren descripción con metodología, resultados y fuente; placeholders estilísticos (tono, enfoque) pueden resolverse en 1-2 oraciones. La definición debe poder insertarse tal cual en el flujo del texto sin edición adicional (no escribas una meta-descripción tipo "este placeholder contiene...").
 
 **🚫 La definición NUNCA debe contener el nombre del placeholder como texto.** Por ejemplo, para {exito_notable}, no escribas "un éxito notable: ..." — eso es name bleeding. La definición debe ser el contenido en sí, no una frase que repita el nombre.
 
@@ -220,7 +225,7 @@ Usa el siguiente formato:
 - Placeholders estilísticos (tono, perfil): **máximo 100 palabras** (~2-3 oraciones).
 - Si las Notas del placeholder especifican una extensión diferente, obedécelas.
 
-5. **Entrega el resultado**: responde ÚNICAMENTE con JSON válido en este formato: {"definition": "tu definición"}
+6. **Entrega el resultado**: responde ÚNICAMENTE con JSON válido en este formato: {"definition": "tu definición"}
 
 ## Ejemplos
 
@@ -423,6 +428,9 @@ export async function fillOnePlaceholder(
   effort?: ReasoningEffort,
   temperature?: number,
   currentChapterId?: string,
+  /** Source context for each prompt (same index as promptContents). Used to
+   *  understand the original material without copying it. Null entries allowed. */
+  sourceContexts?: (string | null)[],
 ): Promise<FillOneResult> {
   // Phase 0: Direct resolution
   const direct = resolveDirectly(ph.name, projectTopic);
@@ -466,15 +474,34 @@ export async function fillOnePlaceholder(
     .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 10000)}${c.length > 10000 ? "..." : ""}`)
     .join("\n\n");
 
-  // Phase 1: Research — ternary decision: RAG | Semantic Scholar | Web search
+  // Build source context section from the original material that inspired each prompt.
+  // This gives the LLM domain knowledge without permission to copy verbatim.
+  let sourceContextSection = "";
+  const hasSourceContext = sourceContexts && sourceContexts.some((s) => s?.trim());
+  if (hasSourceContext) {
+    const entries = sourceContexts!
+      .map((s, i) => {
+        if (!s?.trim()) return null;
+        return `Fuente original del Prompt ${i + 1}:\n${s.slice(0, 5000)}${s.length > 5000 ? "..." : ""}`;
+      })
+      .filter(Boolean);
+    if (entries.length > 0) {
+      sourceContextSection = `\n## 📄 Fuentes originales de los prompts\n\nEstos fragmentos son el texto fuente que inspiró la creación de los prompts del capítulo. **Úsalos SOLO para entender el contexto y el dominio del material original.** NO copies frases textuales, metáforas, ejemplos ni historias de estas fuentes. Si la fuente contiene casos concretos, generalízalos o crea otros distintos que ilustren el mismo principio sin calcar la narrativa.\n\n${entries.join("\n\n---\n\n")}`;
+    }
+  }
+
+  // Phase 1: Research — only for RAG and Semantic Scholar providers.
+  // Web search removed: LLM-only fills produce higher quality definitions than
+  // scraping generic SEO articles that dominate web results for these queries.
   let sources: SearchResult[] = [];
   let ragContext = "";
   let ragChunks = 0;
 
-  const skipResearch = provider === "none" || provider === "direct";
+  const skipResearch = provider === "llm" || provider === "direct";
 
   if (!skipResearch) {
     const query = buildSearchQuery(ph, projectTopic);
+    console.log(`[placeholder-fill] {${ph.name}} provider=${provider} query="${query}"`);
 
     if (provider === "rag") {
       const result = await retrieveContext(query, projectId, {
@@ -485,20 +512,15 @@ export async function fillOnePlaceholder(
         ragContext = result.contextText;
         ragChunks = result.chunks.length;
       } else {
-        throw new Error(`RAG retrieval returned no results for {${ph.name}}`);
+        console.warn(`[placeholder-fill] {${ph.name}} RAG empty for query "${query}"`);
       }
+      // Fall through — empty RAG uses LLM fallback below
     } else if (provider === "semantic-scholar") {
       sources = await searchSemanticScholar(query);
       if (sources.length === 0) {
-        throw new Error(`Semantic Scholar returned no results for {${ph.name}}`);
+        console.warn(`[placeholder-fill] {${ph.name}} Semantic Scholar empty for query "${query}"`);
       }
-    } else {
-      // Exclude Semantic Scholar for web provider — irrelevant academic papers
-      // (e.g. "Mal de Parkinson" mixed with "cómo conquistar mujeres") contaminate the context.
-      sources = await webSearch(query, { semanticScholar: false });
-      if (sources.length === 0) {
-        throw new Error(`Web search returned no results for {${ph.name}}`);
-      }
+      // Fall through — empty results use LLM fallback below
     }
   }
 
@@ -508,10 +530,7 @@ export async function fillOnePlaceholder(
     const strippedRag = ragContext.replace(/^## (?:Source Material|Documentos subidos)\n?\n?/, "");
     researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${strippedRag}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
   } else if (sources.length > 0) {
-    const sourceLabel = provider === "semantic-scholar"
-      ? "Semantic Scholar · papers académicos (evalúa y cita)"
-      : "Web search (evalúa relevancia y confiabilidad)";
-    researchSection = `\n## Research Results (${sourceLabel})\n\n<research_results source="${provider}">`;
+    researchSection = `\n## Research Results (Semantic Scholar · papers académicos)\n\n<research_results source="${provider}">`;
     for (let idx = 0; idx < sources.length; idx++) {
       const s = sources[idx];
       researchSection += `\n<result id="${idx + 1}">\n<content>${s.title}\n${s.snippet}</content>`;
@@ -522,9 +541,10 @@ export async function fillOnePlaceholder(
     }
     researchSection += "\n</research_results>";
   } else if (skipResearch) {
-    researchSection = "\n## Nota\n\nEste placeholder es estilístico/creativo. No requiere búsqueda externa. Usa tu conocimiento para dar una definición pertinente y específica.";
+    researchSection = "\n## Nota\n\nEste placeholder no requiere búsqueda externa. Usa tu conocimiento para dar una definición pertinente, específica y alineada con el tema del proyecto.";
   } else {
-    researchSection = `\n## Nota\n\nNo se encontraron resultados de búsqueda (${provider || "sin búsqueda"}). Usa tu mejor conocimiento.`;
+    const providerLabel = provider === "rag" ? "RAG" : provider === "semantic-scholar" ? "Semantic Scholar" : provider;
+    researchSection = `\n## Nota\n\nLa búsqueda en ${providerLabel || "fuentes externas"} no arrojó resultados. Usa tu mejor conocimiento para elaborar una definición pertinente y alineada con el tema del proyecto.`;
   }
 
   // Phase 3: Build individual prompt
@@ -560,6 +580,7 @@ ${projectTopic || "(sin tema especificado)"}
 (tono, alcance y orientación — NO copies este texto directamente)
 
 ${promptContext}
+${sourceContextSection}
 ${existingDefsSection}
 ${researchSection}
 
@@ -579,7 +600,7 @@ Responde ÚNICAMENTE con JSON: {"definition": "tu definición (extensión según
     definition,
     sources,
     ragChunks: ragChunks || undefined,
-    provider: skipResearch ? "none" : (provider || "web"),
+    provider,
   };
 }
 export async function* fillPlaceholdersSequential(
@@ -591,6 +612,7 @@ export async function* fillPlaceholdersSequential(
   effort?: ReasoningEffort,
   temperature?: number,
   currentChapterId?: string,
+  sourceContexts?: (string | null)[],
 ): AsyncGenerator<PlaceholderFillEvent> {
   const total = placeholders.length;
   const existingDefs: Record<string, string> = {};
@@ -609,6 +631,7 @@ export async function* fillPlaceholdersSequential(
         effort,
         temperature,
         currentChapterId,
+        sourceContexts,
       );
 
       if (result.definition) {
@@ -769,11 +792,13 @@ export async function researchPlaceholdersWithRag(
 
   for (const name of placeholderNames) {
     const func = placeholderFunctions[name];
-    if (inferPlaceholderProvider(name, func?.function) === "rag") {
+    const prov = inferPlaceholderProvider(name, func?.function);
+    if (prov === "rag") {
       ragNames.push(name);
-    } else {
+    } else if (prov === "semantic-scholar") {
       webNames.push(name);
     }
+    // "llm" and "direct" placeholders are skipped — no external research
   }
 
   const ragContexts: Record<string, string> = {};
@@ -903,32 +928,14 @@ export async function fillSinglePlaceholder(
   effort?: ReasoningEffort,
   temperature?: number,
 ): Promise<{ definition: string; sources: SearchResult[] }> {
-  const query = `${name.replace(/_/g, " ")} ${projectTopic || ""}`.trim();
-  let sources: SearchResult[] = [];
-  try {
-    sources = await webSearch(query);
-  } catch (err) {
-    console.warn(`[web-search] Failed for single {${name}}:`, (err as Error).message);
-  }
-
-  let researchContext = "";
-  if (sources.length > 0) {
-    researchContext = "\n\n## Research Results\n";
-    for (const r of sources) {
-      researchContext += `- ${r.title}\n  ${r.snippet}\n  URL: ${r.url}\n`;
-    }
-  }
+  // LLM-only: no web search. The LLM uses its own knowledge guided by the
+  // anti-IP, anti-fabrication, and length rules in the system prompt.
 
   const systemPrompt =
     customSystemPrompt ||
     `Eres un investigador experto en libros. Define este placeholder con un valor conciso y específico que encaje en el capítulo.
 
-Calidad de fuentes:
-- Evalúa los resultados de búsqueda: ¿tratan directamente el tema del placeholder? ¿Son específicos o genéricos? ¿La fuente es confiable?
-- Si los resultados son relevantes y específicos, extrae datos, nombres, fechas e instituciones de ellos
-- Si ningún resultado es útil, descártalos y responde con tu mejor conocimiento sin inventar fuentes ni cifras
-
-🚫 No reproduzcas metáforas, historias ni ejemplos distintivos de libros conocidos (el bambú de James Clear, el equipo de ciclismo británico, etc.). Si detectas que una fuente parafrasea un libro famoso, no uses ese material.
+🚫 No reproduzcas metáforas, historias ni ejemplos distintivos de libros conocidos (el bambú de James Clear, el equipo de ciclismo británico, etc.).
 🚫 No inventes anécdotas ni casos de estudio. Si no tienes fuente real, usa una descripción conceptual directa.
 🚫 La definición NUNCA debe contener el nombre del placeholder como texto (name bleeding).
 🚫 No uses adjetivos huecos ("profundo", "innovador", "fascinante") ni muletillas ("realmente", "simplemente").
@@ -940,16 +947,13 @@ Reglas:
 
 Ejemplo:
 Placeholder: {CASO_ESTUDIO}
-Tema: "La aplicación de los seis principios de persuasión de Cialdini en campañas de salud pública, cubriendo reciprocidad, escasez y prueba social con casos documentados de cambios de comportamiento a escala poblacional"
-Resultados de búsqueda: [resultados sobre campañas reales de salud pública]
+Tema: "La aplicación de los seis principios de persuasión de Cialdini en campañas de salud pública"
 Respuesta: {"definition": "La campaña 'Truth' antitabaco en Estados Unidos (2000-2014), que aplicó el principio de prueba social al mostrar adolescentes rechazando la manipulación de las tabacaleras, redujo el tabaquismo juvenil del 23% al 7% según un estudio del CDC publicado en 2015 en American Journal of Public Health"}`;
 
   const userPrompt = `## Existing Placeholder Definitions (for context)
 ${Object.entries(existingDefinitions)
   .map(([k, v]) => `- {${k}}: ${v}`)
   .join("\n")}
-
-${researchContext}
 
 ## Placeholder to Define
 {${name}}
@@ -966,8 +970,8 @@ Return JSON: {"definition": "your concise definition"}`;
 
   try {
     const parsed = extractJson(result.data as string) as Record<string, unknown>;
-    return { definition: (parsed.definition as string) ?? "", sources };
+    return { definition: (parsed.definition as string) ?? "", sources: [] };
   } catch {
-    return { definition: (result.data as string).trim(), sources };
+    return { definition: (result.data as string).trim(), sources: [] };
   }
 }

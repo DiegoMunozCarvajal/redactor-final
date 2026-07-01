@@ -95,6 +95,9 @@ export async function POST(
           isAssembly: p.isAssembly,
           title: p.title,
           content: p.content,
+          function: p.function,
+          notes: p.notes,
+          sourceContext: p.sourceContext,
         })),
       );
     }

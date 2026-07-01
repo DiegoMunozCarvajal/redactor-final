@@ -16,6 +16,7 @@ export async function GET() {
       id: bookTemplates.id,
       name: bookTemplates.name,
       description: bookTemplates.description,
+      status: bookTemplates.status,
       createdAt: bookTemplates.createdAt,
       chapterCount: sql<number>`cast(count(${chapters.id}) as int)`,
     })

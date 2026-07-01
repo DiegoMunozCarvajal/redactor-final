@@ -4,6 +4,59 @@ import {
   DEFAULT_GENERATION_MODEL,
   getProviderForModel,
 } from "@/lib/ai/providers";
+import { db } from "@/lib/db";
+import { generationSystemPrompts, projects } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+
+// In-memory cache for the default generation system prompt.
+// Refreshed on each call. TTL of 60s means a default change takes up to 60s
+// to propagate to all serverless instances. Acceptable trade-off for avoiding
+// a DB query on every fragment generation request.
+let cachedDefaultPrompt: { content: string; fetchedAt: number } | null = null;
+const CACHE_TTL_MS = 60_000; // 1 minute
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function getActiveGenerationSystemPrompt(projectId?: string): Promise<string> {
+  // 1. Project override
+  if (projectId) {
+    if (!UUID_RE.test(projectId)) {
+      throw new Error(`Invalid projectId: ${projectId}`);
+    }
+    const [project] = await db
+      .select({ promptId: projects.generationSystemPromptId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (project?.promptId) {
+      const [row] = await db
+        .select({ content: generationSystemPrompts.content })
+        .from(generationSystemPrompts)
+        .where(eq(generationSystemPrompts.id, project.promptId))
+        .limit(1);
+      if (row?.content) return row.content;
+    }
+  }
+
+  // 2. Default prompt from DB (with short-lived cache)
+  const now = Date.now();
+  if (cachedDefaultPrompt && (now - cachedDefaultPrompt.fetchedAt) < CACHE_TTL_MS) {
+    return cachedDefaultPrompt.content;
+  }
+
+  const [def] = await db
+    .select({ content: generationSystemPrompts.content })
+    .from(generationSystemPrompts)
+    .where(eq(generationSystemPrompts.isDefault, true))
+    .limit(1);
+  if (def?.content) {
+    cachedDefaultPrompt = { content: def.content, fetchedAt: now };
+    return def.content;
+  }
+
+  // 3. Hardcoded fallback
+  return DEFAULT_SYSTEM_PROMPT;
+}
 
 const DEFAULT_SYSTEM_PROMPT = `<rol>
 Eres un escritor senior de no-ficción en español. Escribes para personas que quieren entender ideas complejas sin perderse en jerga ni academicismos. Tu tono es cercano y preciso, cero pedante.
@@ -106,10 +159,12 @@ export interface GeneratePromptParams {
   temperature?: number;
   maxTokens?: number;
   effort?: ReasoningEffort;
-  /** Override the default system prompt. Defaults to Spanish-only output instruction. */
+  /** Override the default system prompt. If omitted, resolves from DB (project override → default → hardcoded fallback). */
   systemPrompt?: string;
   /** Project topic. Used as fallback when {tema} placeholder has no definition. */
   projectTopic?: string | null;
+  /** Project ID. Used to resolve project-level system prompt override. */
+  projectId?: string;
 }
 
 /** Assembly output scales with fragment count. Each fragment contributes ~2048 tokens.
@@ -178,14 +233,15 @@ export async function generatePromptContent(
     temperature,
     maxTokens,
     effort,
-    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    systemPrompt,
     projectTopic,
+    projectId,
   } = params;
 
   // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
   const effectiveSystemPrompt = prompt.userPrompt
     ? prompt.content
-    : systemPrompt;
+    : systemPrompt ?? await getActiveGenerationSystemPrompt(projectId);
   const userContent = prompt.userPrompt ?? prompt.content;
   const content = applyPlaceholders(userContent, placeholders, projectTopic);
 

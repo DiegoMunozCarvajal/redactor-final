@@ -16,13 +16,13 @@ describe("placeholder research provider inference", () => {
   });
 
   it("uses no research for stylistic placeholders", () => {
-    expect(inferPlaceholderProvider("LECTOR_OBJETIVO")).toBe("none");
+    expect(inferPlaceholderProvider("LECTOR_OBJETIVO")).toBe("llm");
   });
 
   it("does not match 'tema' inside other words (segment matching)", () => {
     // "SISTEMA" contains "tema" as substring but its segments are ["sistema"]
     expect(inferPlaceholderProvider("SISTEMA")).not.toBe("direct");
-    expect(inferPlaceholderProvider("SISTEMA")).toBe("web");
+    expect(inferPlaceholderProvider("SISTEMA")).toBe("llm");
   });
 
   it("uses RAG when a whole segment matches, not substring", () => {
@@ -36,6 +36,6 @@ describe("placeholder research provider inference", () => {
     // RAG wins because checked first
     expect(inferPlaceholderProvider("EJEMPLO_CIENTIFICO")).toBe("rag");
     // "LECTOR" segment → stylistic/none
-    expect(inferPlaceholderProvider("LECTOR_PRINCIPIANTE")).toBe("none");
+    expect(inferPlaceholderProvider("LECTOR_PRINCIPIANTE")).toBe("llm");
   });
 });

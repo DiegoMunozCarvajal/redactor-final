@@ -1,6 +1,6 @@
 import { RAG_KEYWORDS, SEMANTIC_SCHOLAR_KEYWORDS, STYLISTIC_PATTERNS } from "./placeholder-constants";
 
-export type PlaceholderProvider = "rag" | "semantic-scholar" | "web" | "none" | "direct";
+export type PlaceholderProvider = "rag" | "semantic-scholar" | "llm" | "direct";
 
 export function inferPlaceholderProvider(
   name: string,
@@ -25,7 +25,7 @@ export function inferPlaceholderProvider(
   // Segment-based matching: check if any keyword matches a whole segment.
   // Uses both name segments and function words for precise matching.
   if (!needsResearch && STYLISTIC_PATTERNS.some((pattern) => nameSegments.some((s) => s === pattern))) {
-    return "none";
+    return "llm";
   }
 
   if (RAG_KEYWORDS.some((keyword) => allSegments.some((s) => s === keyword))) {
@@ -36,5 +36,5 @@ export function inferPlaceholderProvider(
     return "semantic-scholar";
   }
 
-  return "web";
+  return "llm";
 }

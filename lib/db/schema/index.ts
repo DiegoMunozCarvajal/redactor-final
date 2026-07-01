@@ -12,4 +12,5 @@ export * from "./meta-prompts";
 export * from "./assembly-prompts";
 export * from "./critique-prompts";
 export * from "./corrector-prompts";
+export * from "./generation-prompts";
 export * from "./sources";

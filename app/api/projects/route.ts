@@ -27,7 +27,7 @@ export async function GET() {
     .leftJoin(chapterGenerations, eq(chapterGenerations.chapterId, chapters.id))
     .where(eq(projects.userId, user.id))
     .groupBy(projects.id)
-    .orderBy(desc(projects.createdAt));
+    .orderBy(sql`${projects.lastAccessedAt} DESC NULLS LAST`, desc(projects.createdAt));
 
   const result = rows.map((r) => ({
     ...r.project,
@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
                 content: prompt.content,
                 function: prompt.function,
                 notes: prompt.notes,
+                sourceContext: prompt.sourceContext,
               })),
             );
           }

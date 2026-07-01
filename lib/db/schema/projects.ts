@@ -1,6 +1,7 @@
 import { index, pgSchema, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { bookTemplates } from "./book-templates";
 import { assemblyPrompts } from "./assembly-prompts";
+import { generationSystemPrompts } from "./generation-prompts";
 
 const authSchema = pgSchema("auth");
 const authUsers = authSchema.table("users", {
@@ -25,6 +26,10 @@ export const projects = pgTable(
       onDelete: "set null",
     }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+    generationSystemPromptId: uuid("generation_system_prompt_id").references(() => generationSystemPrompts.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [index("idx_projects_user").on(table.userId)],
 );

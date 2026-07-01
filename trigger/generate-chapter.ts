@@ -126,9 +126,8 @@ export const generateChapter = task({
     const contentPrompts = promptList.filter(
       (p) => !p.isAssembly && !p.isCritique,
     );
-    let assemblyPrompt: PromptLike | undefined = promptList.find(
-      (p) => p.isAssembly,
-    );
+    const assemblyPromptRow = promptList.find((p) => p.isAssembly);
+    let assemblyPrompt: PromptLike | undefined = assemblyPromptRow;
     let assemblyMetadata:
       | {
           promptId?: string;
@@ -136,11 +135,10 @@ export const generateChapter = task({
           promptSource?: string;
         }
       | undefined;
-    const chapterAssemblyPrompt = promptList.find((p) => p.isAssembly);
-    if (chapterAssemblyPrompt) {
+    if (assemblyPromptRow) {
       assemblyMetadata = {
-        promptId: chapterAssemblyPrompt.id,
-        promptTitle: chapterAssemblyPrompt.title,
+        promptId: assemblyPromptRow.id,
+        promptTitle: assemblyPromptRow.title,
         promptSource: "chapter",
       };
     }
@@ -254,6 +252,7 @@ export const generateChapter = task({
             prompt,
             placeholders,
             projectTopic: project.topic,
+            projectId,
             ...(model ? { model } : {}),
             ...(effort !== undefined ? { effort } : {}),
           });

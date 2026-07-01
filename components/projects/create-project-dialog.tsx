@@ -38,9 +38,11 @@ type FormData = z.infer<typeof schema>
 export function CreateProjectDialog({
   templates,
   trigger,
+  onOpenChange,
 }: {
-  templates: { id: string; name: string }[]
+  templates: { id: string; name: string; status: string }[]
   trigger?: React.ReactNode
+  onOpenChange?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const [bookTemplateId, setBookTemplateId] = useState<string | null>(null)
@@ -53,6 +55,11 @@ export function CreateProjectDialog({
   } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
+
+  function handleOpenChange(open: boolean) {
+    setOpen(open)
+    onOpenChange?.(open)
+  }
 
   async function onSubmit(data: FormData) {
     try {
@@ -85,7 +92,7 @@ export function CreateProjectDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button>
@@ -149,11 +156,28 @@ export function CreateProjectDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No template (start from scratch)</SelectItem>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
+                {templates.map((t) => {
+                  const isGenerating = t.status === "generating";
+                  const isFailed = t.status === "failed";
+                  const isDisabled = isGenerating || isFailed;
+                  return (
+                    <SelectItem key={t.id} value={t.id} disabled={isDisabled}>
+                      <span className="flex items-center gap-2">
+                        {t.name}
+                        {isGenerating && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 animate-pulse">
+                            Generating...
+                          </span>
+                        )}
+                        {isFailed && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+                            Failed
+                          </span>
+                        )}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

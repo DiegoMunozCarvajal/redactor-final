@@ -14,5 +14,5 @@ if (!projectRef) {
 export default defineConfig({
   project: projectRef,
   dirs: ["./trigger"],
-  maxDuration: 1800,
+  maxDuration: 3600, // 1 hour — assembly with many fragments + max effort can exceed 30 min
 });

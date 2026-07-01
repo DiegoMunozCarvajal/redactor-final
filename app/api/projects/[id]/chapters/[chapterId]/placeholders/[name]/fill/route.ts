@@ -54,11 +54,12 @@ export async function POST(
   const effort = body.effort as ReasoningEffort | undefined;
 
   const promptRows = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, sourceContext: projectPrompts.sourceContext })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
   const promptContents = promptRows.map((p) => p.content);
+  const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
   // Compute prompts hash for stale detection
   const promptsHash = hashPromptContents(promptContents);
@@ -122,6 +123,7 @@ export async function POST(
       effort,
       undefined,
       chapterId,
+      sourceContexts,
     );
 
     // Persist definition to DB

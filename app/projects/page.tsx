@@ -34,6 +34,7 @@ interface ProjectData {
 interface Template {
   id: string;
   name: string;
+  status: string;
 }
 
 export default function ProjectsPage() {
@@ -115,7 +116,10 @@ export default function ProjectsPage() {
             AI-powered non-fiction books in Spanish. Pick a template, set a
             topic, and generate a complete book chapter by chapter.
           </p>
-          <CreateProjectDialog templates={templates} />
+          <CreateProjectDialog
+            templates={templates}
+            onOpenChange={(open) => { if (open) fetchTemplates(); }}
+          />
           <div className="flex items-center gap-6 mt-8 text-xs text-muted-foreground/60">
             <span>1. Pick template</span>
             <span className="text-border">&#8594;</span>
@@ -160,7 +164,10 @@ export default function ProjectsPage() {
             onDelete={deleteProject}
           />
         </div>
-        <QuickStartCard templates={templates} />
+        <QuickStartCard
+          templates={templates}
+          onOpenChange={(open) => { if (open) fetchTemplates(); }}
+        />
         <StatsCard
           totalProjects={projects.length}
           totalChapters={totalChapters}
