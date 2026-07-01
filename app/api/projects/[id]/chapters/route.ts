@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, prompts, projectPrompts, chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -102,7 +102,6 @@ export async function POST(
         );
 
         // Copy template chapter placeholders to the new chapter
-        const { chapterPlaceholders } = await import("@/lib/db/schema");
         const templatePlaceholders = await tx
           .select()
           .from(chapterPlaceholders)
