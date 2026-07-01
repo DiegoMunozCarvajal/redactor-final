@@ -91,7 +91,9 @@ export async function POST(
   if (body.content && typeof body.content === "string") {
     contentToCorrect = body.content;
   } else {
-    // Fetch the latest completed assembly for this chapter (exclude critiques and corrections)
+    // Fetch the latest content to correct: prefer the most recent correction,
+    // falling back to the original assembly. Exclude critique outputs (we don't
+    // correct a critique — we correct content).
     const [latestAssembly] = await db
       .select()
       .from(chapterGenerations)
@@ -100,7 +102,7 @@ export async function POST(
           eq(chapterGenerations.projectId, projectId),
           eq(chapterGenerations.chapterId, chapterId),
           eq(chapterGenerations.status, "completed"),
-          sql`(${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('critique', 'correction'))`,
+          sql`(${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' != 'critique')`,
         ),
       )
       .orderBy(desc(chapterGenerations.completedAt))

@@ -827,11 +827,12 @@ export default function ChapterPage() {
   const totalTokens = generations.reduce((sum, g) => {
     return sum + g.fragments.reduce((s, f) => s + (f.tokensUsed ?? 0), 0);
   }, 0);
-  // Exclude critique generations from assembly versions.
-  // Generations with null generationMetadata (pre-metadata records) pass through
-  // safely: getAssemblyVersions filters on assembledContent, so they're excluded anyway.
+  // Include original assemblies and corrections in assembly versions.
+  // Corrections are valid content to critique/re-correct — show them here.
+  // Only exclude critique outputs (type === "critique") since those are analyses,
+  // not chapter content.
   const assemblyGenerations = generations.filter(
-    (g) => g.generationMetadata?.type !== "critique" && g.generationMetadata?.type !== "correction",
+    (g) => g.generationMetadata?.type !== "critique",
   );
   const assemblyVersions = getAssemblyVersions(assemblyGenerations);
   const hasAssembly = assemblyVersions.length > 0;
