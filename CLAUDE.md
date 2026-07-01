@@ -34,7 +34,7 @@ projects ──< chapter_generations ──< fragments
 
 - **book_templates**: A book structure — name + description. Admin creates via UI.
 - **chapters**: Belongs to a template or project, ordered by `position`. Has CHECK constraint: `book_template_id IS NOT NULL OR project_id IS NOT NULL`.
-- **prompts**: Template-level prompts. Each has `isAssembly` boolean (true = assembly prompt, false = content prompt), `content` with `{tema}` placeholder, `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
+- **prompts**: Template-level prompts. Each has `isAssembly`, `isCritique`, `isCorrector` boolean flags (mutually exclusive in practice), `content` with `{tema}` placeholder, `userPrompt` (optional user-visible prompt text), `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
 - **projectPrompts**: Project-scoped copies of template prompts. Created when a template is applied to a project.
 - **projects**: A user's book instance — has `topic` (replaces `{tema}` placeholder), `lastAccessedAt` (updated on GET, drives dashboard ordering), optional `generationSystemPromptId` FK, and links to a `book_template`.
 - **book_templates**: Has `status` field: `"ready"` (available), `"generating"` (AI is creating template structure), `"failed"` (auto-generation failed). Templates with non-ready status are disabled in the create-project dialog.
@@ -83,7 +83,9 @@ Server components use `createClient()` from `lib/supabase/server.ts`. Client com
 
 ### Rate Limiting (`lib/api/rate-limit.ts`)
 
-Two layers: PostgreSQL advisory lock per project (serializes same-project runs at DB level) + sliding window check (max 1 running run per project per 60s). Uses a dedicated `postgres` client connection pool for advisory lock critical sections.
+Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serializes critical sections at DB level) + sliding window check via `checkProjectRateLimit()` (max 1 active run per project per 30min stale window). Uses a dedicated `postgres` client connection pool for advisory lock critical sections.
+
+**Critical pattern**: Rate check + insert must be atomic inside `withProjectLock`. Release lock before LLM calls — never hold advisory lock during external API work. See Key Conventions → Rate Limiting Conventions for code pattern.
 
 ### UI
 
@@ -101,6 +103,55 @@ Two layers: PostgreSQL advisory lock per project (serializes same-project runs a
 - **No v2 prompt files**: v4 stores prompts in DB. The `lib/prompts/` directory from v2 does NOT exist here. Old imports like `@/lib/prompts/unit-brief-small-book` are dead code.
 - **No v2 voice corpus**: v4 defines style via prompt fields (styleRules, knowledgeAreas), not external corpus files.
 - **No `after()` fragility**: Pipeline runs fully in Trigger.dev, not in Next.js `after()` callbacks.
+
+### Security Conventions [hard]
+
+- **Auth gates by route type**:
+  - Global prompt CRUD (assembly/meta/critique/corrector prompts) → `requireAdmin()` from `lib/auth/admin.ts`. Returns `{ authorized: true, user }` or `{ authorized: false, response }`.
+  - Project-scoped routes → `createClient()` + `getUser()`, then verify `project.userId === user.id`.
+  - Admin-only + project-scoped in same route (e.g. version restore) → resolve resource type first, gate accordingly.
+- **CSRF**: All mutation routes (POST, PUT, PATCH, DELETE) must call `csrfCheck(req)` as the FIRST check, before auth. Return its error response if non-null.
+- **Secrets**: Never hardcode API keys, tokens, or credentials. Use `process.env` / `os.environ.get()`. Python scripts in `dspy_optimizer/` use `load_dotenv(Path(__file__).resolve().parents[3] / ".env")` + `os.environ.get()`.
+- **Storage ownership**: `lib/storage/sources.ts` `verifyProjectOwnership()` must compare `project.userId !== userId`. Callers (`downloadSourceFile`, `deleteSourceFile`, `getSignedDownloadUrl`) pass userId — function must use it.
+
+### Rate Limiting Conventions [hard]
+
+- **TOCTOU protection**: Rate check + generation insert must be atomic. Wrap in `withProjectLock(projectId, async () => { ... })`. Release lock before LLM call — never hold advisory lock during external API work.
+- **Pattern**:
+  ```ts
+  const lockResult = await withProjectLock(projectId, async () => {
+    const rateLimit = await checkProjectRateLimit(projectId);
+    if (!rateLimit.allowed) return { rateLimited: true, retryAfter: rateLimit.retryAfter };
+    const [gen] = await db.insert(chapterGenerations).values({...}).returning();
+    return { rateLimited: false, gen };
+  });
+  if (!lockResult.locked) return 409;
+  if (lockResult.result.rateLimited) return 429;
+  // LLM call outside lock
+  ```
+- **Sliding window**: `checkProjectRateLimit` checks max 1 active generation (pending/generating/assembling) per project per 30min window. Used by prompt generation and placeholder fill routes.
+- **Stale cleanup**: Before inserting a new generation row, clean up stale rows (status stuck in "generating" for >30min). Do this inside the lock.
+
+### Data Integrity Conventions [hard]
+
+- **Multi-table inserts**: Use `db.transaction(async (tx) => { ... })`. Don't insert source then chunks separately — chunk failure leaves orphaned `processed=true` source.
+- **Template prompt copy**: When copying `prompts` → `projectPrompts`, preserve ALL fields: `isAssembly`, `isCritique`, `isCorrector`, `title`, `content`, `userPrompt`, `function`, `notes`, `sourceContext`. Both `app/api/projects/route.ts` and `app/api/projects/[id]/chapters/route.ts` must stay in sync.
+- **Template rebuild**: When regenerating template prompts on retry, delete existing prompts + insert new ones + upsert placeholders atomically in one `db.transaction`. `onConflictDoNothing` keeps stale prompts from prior partial attempts.
+- **Placeholder hash**: Must include both `content` and `userPrompt` for stale detection. Select `{ content, userPrompt }`, hash `[p.content, p.userPrompt].filter(Boolean).join("")`.
+
+### Prompt Type Conventions [hard]
+
+- **Three exclusion flags**: `isAssembly`, `isCritique`, `isCorrector`. Content generation must filter ALL three: `(p) => !p.isAssembly && !p.isCritique && !p.isCorrector`.
+- **Assembly prompt**: `isAssembly = true`. One per chapter. Runs after all content fragments complete.
+- **Critique prompt**: `isCritique = true`. Used by critique pipeline. NOT content.
+- **Corrector prompt**: `isCorrector = true`. Used by correction pipeline. NOT content.
+- **`promptVersions.promptId`**: No FK constraint. References either `prompts.id` (template) or `projectPrompts.id` (project). Always resolve by checking both tables. Template → require admin. Project → verify project owner.
+
+### State Machine Conventions [hard]
+
+- **Generation status flow**: `pending` → `generating` → `assembling` → `completed` | `failed`.
+- **UI polling**: Must poll on ALL active states: `status === "pending" || status === "generating" || status === "assembling"`. Polling only on `"generating"` misses pending (not yet picked up by Trigger) and assembling (after content, before completion).
+- **Template status**: `ready` | `generating` | `failed`. Non-ready templates disabled in project creation dialog.
 
 ## Environment Variables
 
