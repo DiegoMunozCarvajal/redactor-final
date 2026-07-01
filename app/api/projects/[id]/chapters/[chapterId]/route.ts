@@ -148,13 +148,13 @@ export async function PATCH(
 
   const patchSchema = z.object({
     title: z.string().min(1).max(500).optional(),
-    position: z.number().int().positive().optional(),
+    position: z.number().int().min(0).optional(),
   });
 
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.flatten().fieldErrors },
+      { error: "validation failed", details: parsed.error.flatten() },
       { status: 400 },
     );
   }
