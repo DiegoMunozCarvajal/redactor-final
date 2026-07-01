@@ -5,8 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
-import { generateChapterCritique } from "@/lib/generate";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import { ensureTriggerConfigured } from "@/lib/trigger/setup";
+import { generateCritique } from "@/trigger/generate-critique";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
@@ -154,64 +155,52 @@ export async function POST(
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
-    let gen: typeof chapterGenerations.$inferSelect | undefined;
+    let gen: typeof chapterGenerations.$inferSelect | null = null;
+
+    const [row] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId,
+        status: "pending",
+        generationMetadata: {
+          type: "critique",
+          promptId: cp.id,
+          promptTitle: cp.name,
+          model: resolvedModel,
+        },
+      })
+      .returning();
+    gen = row;
+    generationId = gen.id;
 
     try {
-      const [inserted] = await db
-        .insert(chapterGenerations)
-        .values({
+      ensureTriggerConfigured();
+      await generateCritique.trigger(
+        {
+          generationId: gen.id,
           projectId,
           chapterId,
-          status: "generating",
-          generationMetadata: {
-            type: "critique",
-            promptId: cp.id,
-            promptTitle: cp.name,
-            model: resolvedModel,
+          critiquePrompt: {
+            content: cp.content,
+            userPrompt: cp.userPrompt,
           },
-        })
-        .returning();
-      gen = inserted;
-      generationId = gen.id;
-      const result = await generateChapterCritique({
-        critiquePrompt: {
-          content: cp.content,
-          userPrompt: cp.userPrompt,
+          contentToCritique,
+          projectTopic: project.topic,
+          ...(model ? { model } : {}),
+          ...(effort !== undefined ? { effort } : {}),
         },
-        content: contentToCritique,
-        placeholders,
-        model: resolvedModel,
-        effort,
-        projectTopic: project.topic,
-      });
+        { idempotencyKey: gen.id },
+      );
 
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: result.text,
-          assemblyMetadata: {
-            algorithm: "critique",
-            promptId: cp.id,
-            promptTitle: cp.name,
-            promptSource: "library",
-            model: result.model,
-            fragmentCount: 1,
-          },
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, gen.id));
-
-      return { generationId: gen.id, critiqueContent: result.text };
+      return gen;
     } catch (err) {
       const message = sanitizeError(err);
-      if (gen) {
-        await db
-          .update(chapterGenerations)
-          .set({ status: "failed", error: message })
-          .where(eq(chapterGenerations.id, gen.id));
-      }
-      throw err;
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: message })
+        .where(eq(chapterGenerations.id, gen.id));
+      return gen;
     }
   });
 

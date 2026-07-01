@@ -5,8 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
-import { generateChapterCorrection } from "@/lib/generate";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import { ensureTriggerConfigured } from "@/lib/trigger/setup";
+import { generateCorrection } from "@/trigger/generate-correction";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
@@ -197,73 +198,54 @@ export async function POST(
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
 
-    let gen: typeof chapterGenerations.$inferSelect | undefined;
+    let gen: typeof chapterGenerations.$inferSelect | null = null;
+
+    const [row] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId,
+        status: "pending",
+        generationMetadata: {
+          type: "correction",
+          promptId: correctorPromptId ?? "inline",
+          promptTitle: cpName,
+          model: resolvedModel,
+          critiqueGenerationId,
+        },
+      })
+      .returning();
+    gen = row;
+    generationId = gen.id;
 
     try {
-      const [inserted] = await db
-        .insert(chapterGenerations)
-        .values({
+      ensureTriggerConfigured();
+      await generateCorrection.trigger(
+        {
+          generationId: gen.id,
           projectId,
           chapterId,
-          status: "generating",
-          generationMetadata: {
-            type: "correction",
-            promptId: correctorPromptId ?? "inline",
-            promptTitle: cpName,
-            model: resolvedModel,
-            critiqueGenerationId,
+          correctorPrompt: {
+            content: cpContent,
+            userPrompt: cpUserPrompt,
           },
-        })
-        .returning();
-      gen = inserted;
-      generationId = gen.id;
-
-      const result = await generateChapterCorrection({
-        correctorPrompt: {
-          content: cpContent,
-          userPrompt: cpUserPrompt,
+          contentToCorrect,
+          critiqueContent: critiqueGen.assembledContent!,
+          projectTopic: project.topic,
+          ...(model ? { model } : {}),
+          ...(effort !== undefined ? { effort } : {}),
         },
-        content: contentToCorrect,
-        critiqueContent: critiqueGen.assembledContent!,
-        placeholders,
-        model: resolvedModel,
-        effort,
-        projectTopic: project.topic,
-      });
+        { idempotencyKey: gen.id },
+      );
 
-      // Extract <capitulo_corregido> from the output for clean display
-      const capMatch = result.text.match(/<capitulo_corregido>([\s\S]*?)<\/capitulo_corregido>/);
-      const cleanChapter = capMatch ? capMatch[1].trim() : result.text;
-
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: cleanChapter,
-          assemblyMetadata: {
-            algorithm: "correction",
-            promptId: correctorPromptId ?? "inline",
-            promptTitle: cpName,
-            promptSource: correctorPromptId ? "library" : "project",
-            model: result.model,
-            fragmentCount: 1,
-            critiqueGenerationId,
-            correctionRaw: result.text,
-          },
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, gen.id));
-
-      return { generationId: gen.id, correctionContent: result.text };
+      return gen;
     } catch (err) {
       const message = sanitizeError(err);
-      if (gen) {
-        await db
-          .update(chapterGenerations)
-          .set({ status: "failed", error: message })
-          .where(eq(chapterGenerations.id, gen.id));
-      }
-      throw err;
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: message })
+        .where(eq(chapterGenerations.id, gen.id));
+      return gen;
     }
   });
 
