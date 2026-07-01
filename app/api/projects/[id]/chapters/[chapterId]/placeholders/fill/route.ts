@@ -92,17 +92,17 @@ export async function POST(
     return NextResponse.json({ error: "no placeholders to fill" }, { status: 400 });
   }
 
-  // Load prompt contents and source contexts for context
+  // Load prompt contents (content + userPrompt) and source contexts for context
   const promptRows = await db
-    .select({ content: projectPrompts.content, sourceContext: projectPrompts.sourceContext })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt, sourceContext: projectPrompts.sourceContext })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
-  const promptContents = promptRows.map((p) => p.content);
+  const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
   const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
-  // Compute prompts hash for stale detection
+  // Compute prompts hash for stale detection — includes userPrompt changes
   const promptsHash = hashPromptContents(promptContents);
 
   // Build placeholder defs for the sequential pipeline

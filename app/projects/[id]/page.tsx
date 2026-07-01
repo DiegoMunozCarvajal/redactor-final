@@ -83,7 +83,10 @@ interface ProjectData {
   useEffect(() => {
     if (!project) return;
     const hasGenerating = project.chapters.some(
-      (ch) => ch.latestGeneration?.status === "generating",
+      (ch) => {
+        const status = ch.latestGeneration?.status;
+        return status === "pending" || status === "generating" || status === "assembling";
+      },
     );
     if (!hasGenerating) return;
 

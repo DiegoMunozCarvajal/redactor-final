@@ -97,44 +97,50 @@ export const generateTemplate = task({
           // Deduplicate placeholders across all blocks in this chapter
           const placeholderMap = new Map<string, { function: string; notes: string }>();
 
-          for (let i = 0; i < blocks.length; i++) {
-            const block = blocks[i];
+          // Rebuild chapter prompts atomically. Delete stale prompts then insert
+          // new ones in one transaction — prevents mixed old/new prompt set on
+          // retry if inserts fail partway (which onConflictDoNothing couldn't fix).
+          await db.transaction(async (tx) => {
+            await tx.delete(prompts).where(eq(prompts.chapterId, chapter.chapterId));
 
-            // Insert prompt (unique on chapter_id + position — safe on retry)
-            await db.insert(prompts).values({
-              chapterId: chapter.chapterId,
-              position: i,
-              isAssembly: false,
-              title: block.name,
-              content: block.content,
-              function: block.function,
-              notes: block.notes,
-              sourceContext: block.sourceContext,
-            }).onConflictDoNothing();
+            for (let i = 0; i < blocks.length; i++) {
+              const block = blocks[i];
 
-            // Collect placeholders (first seen wins for function/notes)
-            for (const ph of block.placeholders) {
-              if (!placeholderMap.has(ph.name)) {
-                placeholderMap.set(ph.name, { function: ph.function, notes: ph.notes });
+              await tx.insert(prompts).values({
+                chapterId: chapter.chapterId,
+                position: i,
+                isAssembly: false,
+                title: block.name,
+                content: block.content,
+                function: block.function,
+                notes: block.notes,
+                sourceContext: block.sourceContext,
+              });
+
+              // Collect placeholders (first seen wins for function/notes)
+              for (const ph of block.placeholders) {
+                if (!placeholderMap.has(ph.name)) {
+                  placeholderMap.set(ph.name, { function: ph.function, notes: ph.notes });
+                }
               }
             }
-          }
 
-          // Upsert placeholders — refresh function/notes on regeneration
-          for (const [name, { function: fn, notes }] of placeholderMap) {
-            await db
-              .insert(chapterPlaceholders)
-              .values({
-                chapterId: chapter.chapterId,
-                name,
-                function: fn,
-                notes,
-              })
-              .onConflictDoUpdate({
-                target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
-                set: { function: fn, notes },
-              });
-          }
+            // Upsert placeholders — refresh function/notes on regeneration
+            for (const [name, { function: fn, notes }] of placeholderMap) {
+              await tx
+                .insert(chapterPlaceholders)
+                .values({
+                  chapterId: chapter.chapterId,
+                  name,
+                  function: fn,
+                  notes,
+                })
+                .onConflictDoUpdate({
+                  target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
+                  set: { function: fn, notes },
+                });
+            }
+          });
         },
       );
 

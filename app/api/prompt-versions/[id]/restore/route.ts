@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { prompts, promptVersions } from "@/lib/db/schema";
+import { prompts, projectPrompts, projects, promptVersions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -11,10 +12,6 @@ export async function POST(
 ) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
@@ -26,28 +23,77 @@ export async function POST(
 
   if (!version) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // Save current prompt as a new version
-  const [current] = await db
+  // promptVersions.promptId can reference either prompts.id (template) or
+  // projectPrompts.id (project-scoped). Try template first, then project.
+  // Template prompts require admin; project prompts require project ownership.
+  const [templatePrompt] = await db
     .select()
     .from(prompts)
     .where(eq(prompts.id, version.promptId))
     .limit(1);
 
-  if (current) {
+  if (templatePrompt) {
+    // Template prompt restore — admin only
+    const admin = await requireAdmin();
+    if (!admin.authorized) return admin.response;
+
     await db.insert(promptVersions).values({
-      promptId: current.id,
-      title: current.title,
-      content: current.content,
+      promptId: templatePrompt.id,
+      title: templatePrompt.title,
+      content: templatePrompt.content,
     });
+
+    const [restored] = await db
+      .update(prompts)
+      .set({ title: version.title, content: version.content })
+      .where(eq(prompts.id, version.promptId))
+      .returning();
+
+    if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
+    return NextResponse.json(restored);
   }
 
-  // Restore the version content
-  const [restored] = await db
-    .update(prompts)
-    .set({ title: version.title, content: version.content })
-    .where(eq(prompts.id, version.promptId))
-    .returning();
+  // Try project-scoped prompt — verify project ownership
+  const [projectPrompt] = await db
+    .select({
+      id: projectPrompts.id,
+      title: projectPrompts.title,
+      content: projectPrompts.content,
+      projectId: projectPrompts.projectId,
+    })
+    .from(projectPrompts)
+    .where(eq(projectPrompts.id, version.promptId))
+    .limit(1);
 
-  if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
-  return NextResponse.json(restored);
+  if (projectPrompt) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+    const [project] = await db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, projectPrompt.projectId))
+      .limit(1);
+    if (!project || project.userId !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+
+    await db.insert(promptVersions).values({
+      promptId: projectPrompt.id,
+      title: projectPrompt.title,
+      content: projectPrompt.content,
+    });
+
+    const [restored] = await db
+      .update(projectPrompts)
+      .set({ title: version.title, content: version.content })
+      .where(eq(projectPrompts.id, version.promptId))
+      .returning();
+
+    if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
+    return NextResponse.json(restored);
+  }
+
+  return NextResponse.json({ error: "prompt not found" }, { status: 404 });
 }

@@ -54,14 +54,14 @@ export async function POST(
   const effort = body.effort as ReasoningEffort | undefined;
 
   const promptRows = await db
-    .select({ content: projectPrompts.content, sourceContext: projectPrompts.sourceContext })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt, sourceContext: projectPrompts.sourceContext })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
-  const promptContents = promptRows.map((p) => p.content);
+  const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
   const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
-  // Compute prompts hash for stale detection
+  // Compute prompts hash for stale detection — includes userPrompt changes
   const promptsHash = hashPromptContents(promptContents);
 
   const existingRows = await db

@@ -16,11 +16,14 @@ from pathlib import Path
 
 import anthropic
 
+from dotenv import load_dotenv
+
 from dspy_optimizer.judge import evaluate_fragment
 from dspy_optimizer.db import close_pool, fetch_prompt
 
-# Real Anthropic API — bypass ANTHROPIC_BASE_URL DeepSeek proxy
-ANTHROPIC_API_KEY = "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"
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 
 # Same system prompt as lib/generate.ts DEFAULT_SYSTEM_PROMPT

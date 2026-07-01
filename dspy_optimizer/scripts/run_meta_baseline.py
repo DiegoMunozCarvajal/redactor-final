@@ -43,7 +43,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 # API keys
-ANTHROPIC_API_KEY = "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"
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")

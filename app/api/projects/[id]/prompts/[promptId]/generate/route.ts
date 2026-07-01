@@ -4,7 +4,7 @@ import { projects, projectPrompts, chapterGenerations, fragments } from "@/lib/d
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
+import { STALE_TIMEOUT_MS, checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generatePromptContent } from "@/lib/generate";
 import { getProviderForModel } from "@/lib/ai/providers";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
@@ -66,48 +66,74 @@ export async function POST(
     );
   }
 
-  // Clean up stale generation rows for this prompt before creating a new one.
-  // If a previous request timed out, its row would be stuck in "generating".
-  const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
-  const [staleRunning] = await db
-    .select({ id: chapterGenerations.id })
-    .from(chapterGenerations)
-    .where(
-      and(
-        eq(chapterGenerations.projectId, projectId),
-        eq(chapterGenerations.chapterId, prompt.chapterId),
-        eq(chapterGenerations.status, "generating"),
-        sql`${chapterGenerations.generationMetadata}->>'type' = 'prompt'`,
-        sql`${chapterGenerations.generationMetadata}->>'promptId' = ${promptId}`,
-        lt(chapterGenerations.createdAt, staleCutoff),
-      ),
-    )
-    .limit(1);
-  if (staleRunning) {
-    await db
-      .update(chapterGenerations)
-      .set({ status: "failed", error: "Stale generation (timed out after 30 minutes)" })
-      .where(eq(chapterGenerations.id, staleRunning.id));
+  // Rate limit + generation insert must be atomic. Without a lock, two
+  // concurrent POSTs can both pass checkProjectRateLimit (count=0), both
+  // insert a "generating" row, and both fire LLM calls — doubling cost.
+  // The lock is released before the LLM call so UI-driven parallelism works.
+  const lockResult = await withProjectLock(projectId, async () => {
+    const rateLimit = await checkProjectRateLimit(projectId);
+    if (!rateLimit.allowed) {
+      return { rateLimited: true as const, retryAfter: rateLimit.retryAfter };
+    }
+
+    // Clean up stale generation rows for this prompt before creating a new one.
+    const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
+    const [staleRunning] = await db
+      .select({ id: chapterGenerations.id })
+      .from(chapterGenerations)
+      .where(
+        and(
+          eq(chapterGenerations.projectId, projectId),
+          eq(chapterGenerations.chapterId, prompt.chapterId),
+          eq(chapterGenerations.status, "generating"),
+          sql`${chapterGenerations.generationMetadata}->>'type' = 'prompt'`,
+          sql`${chapterGenerations.generationMetadata}->>'promptId' = ${promptId}`,
+          lt(chapterGenerations.createdAt, staleCutoff),
+        ),
+      )
+      .limit(1);
+    if (staleRunning) {
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: "Stale generation (timed out after 30 minutes)" })
+        .where(eq(chapterGenerations.id, staleRunning.id));
+    }
+
+    const [gen] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId: prompt.chapterId,
+        status: "generating",
+        generationMetadata: {
+          type: "prompt",
+          promptId: prompt.id,
+          promptTitle: prompt.title,
+          ...(model ? { model } : {}),
+          ...(effort ? { effort } : {}),
+        },
+      })
+      .returning();
+
+    return { rateLimited: false as const, gen };
+  });
+
+  if (!lockResult.locked) {
+    return NextResponse.json(
+      { error: "project is locked" },
+      { status: 409 },
+    );
   }
 
-  // Create generation row before the LLM call so UI can poll real status.
-  // Do not hold project advisory lock during LLM work; fragment generation is
-  // independent per prompt and must support UI-driven parallelism.
-  const [gen] = await db
-    .insert(chapterGenerations)
-    .values({
-      projectId,
-      chapterId: prompt.chapterId,
-      status: "generating",
-      generationMetadata: {
-        type: "prompt",
-        promptId: prompt.id,
-        promptTitle: prompt.title,
-        ...(model ? { model } : {}),
-        ...(effort ? { effort } : {}),
-      },
-    })
-    .returning();
+  const result = lockResult.result;
+  if (result.rateLimited) {
+    return NextResponse.json(
+      { error: "Too many concurrent generations for this project", retryAfter: result.retryAfter },
+      { status: 429 },
+    );
+  }
+
+  const gen = result.gen;
 
   try {
     const result = await generatePromptContent({

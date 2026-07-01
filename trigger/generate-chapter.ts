@@ -134,7 +134,7 @@ export const generateChapter = task({
       .orderBy(asc(projectPrompts.position));
 
     const contentPrompts = promptList.filter(
-      (p) => !p.isAssembly && !p.isCritique,
+      (p) => !p.isAssembly && !p.isCritique && !p.isCorrector,
     );
     const assemblyPromptRow = promptList.find((p) => p.isAssembly);
     let assemblyPrompt: PromptLike | undefined = assemblyPromptRow;

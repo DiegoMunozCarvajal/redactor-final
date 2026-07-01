@@ -42,12 +42,12 @@ export async function GET(
 
   // Compute current prompts hash for stale detection
   const promptRows = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
-  const currentPromptsHash = hashPromptContents(promptRows.map((p) => p.content));
+  const currentPromptsHash = hashPromptContents(promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("")));
 
   return NextResponse.json({ placeholders: rows, currentPromptsHash });
 }
@@ -108,12 +108,12 @@ export async function PATCH(
     .orderBy(asc(chapterPlaceholders.name));
 
   const promptRows = await db
-    .select({ content: projectPrompts.content })
+    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
     .from(projectPrompts)
     .where(eq(projectPrompts.chapterId, chapterId))
     .orderBy(asc(projectPrompts.position));
 
-  const currentPromptsHash = hashPromptContents(promptRows.map((p) => p.content));
+  const currentPromptsHash = hashPromptContents(promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("")));
 
   return NextResponse.json({ placeholders: rows, currentPromptsHash });
 }

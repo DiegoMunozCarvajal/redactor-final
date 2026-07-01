@@ -23,15 +23,15 @@ function projectIdFromPath(storagePath: string): string {
 }
 
 /** Verify the user owns the project referenced in the storage path. */
-async function verifyProjectOwnership(storagePath: string, _userId: string): Promise<void> {
+async function verifyProjectOwnership(storagePath: string, userId: string): Promise<void> {
   const projectId = projectIdFromPath(storagePath);
   const [project] = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, userId: projects.userId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!project) throw new Error(`Project not found: ${projectId}`);
-  // project.userId check done at call site — this just validates project exists
+  if (project.userId !== userId) throw new Error(`Access denied for project: ${projectId}`);
 }
 
 export async function uploadSourceFile(

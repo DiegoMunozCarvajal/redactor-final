@@ -154,36 +154,41 @@ export async function POST(
     );
   }
 
-  // Insert source
-  const [inserted] = await db
-    .insert(sources)
-    .values({
+  // Insert source and chunks in a transaction so chunk failure
+  // doesn't leave a processed=true source with missing chunks.
+  const [inserted] = await db.transaction(async (tx) => {
+    const [src] = await tx
+      .insert(sources)
+      .values({
+        projectId,
+        fileName,
+        fileType,
+        sourceKind,
+        extractedText: text,
+        citation: citation.slice(0, 500),
+        processed: true,
+        chunkCount: chunks.length,
+      })
+      .returning({ id: sources.id });
+
+    // Insert chunks
+    const chunkRows = chunks.map((content, i) => ({
+      sourceId: src.id,
       projectId,
-      fileName,
-      fileType,
-      sourceKind,
-      extractedText: text,
-      citation: citation.slice(0, 500),
-      processed: true,
-      chunkCount: chunks.length,
-    })
-    .returning({ id: sources.id });
+      chunkIndex: i,
+      content,
+      tokenCount: content.split(/\s+/).length,
+      embedding: embeddings[i],
+    }));
 
-  // Insert chunks
-  const chunkRows = chunks.map((content, i) => ({
-    sourceId: inserted.id,
-    projectId,
-    chunkIndex: i,
-    content,
-    tokenCount: content.split(/\s+/).length,
-    embedding: embeddings[i],
-  }));
+    const BATCH = 50;
+    for (let i = 0; i < chunkRows.length; i += BATCH) {
+      const batch = chunkRows.slice(i, i + BATCH);
+      await tx.insert(sourceChunks).values(batch);
+    }
 
-  const BATCH = 50;
-  for (let i = 0; i < chunkRows.length; i += BATCH) {
-    const batch = chunkRows.slice(i, i + BATCH);
-    await db.insert(sourceChunks).values(batch);
-  }
+    return [src];
+  });
 
   return NextResponse.json({
     id: inserted.id,
