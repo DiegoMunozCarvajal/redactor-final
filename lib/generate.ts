@@ -194,7 +194,7 @@ export async function generatePromptContent(
     systemPrompt: useCache ? "" : effectiveSystemPrompt,
     userPrompt: content,
     ...(useCache
-      ? { cachedSystemPrompt: prompt.content, cacheSystemPrompt: true }
+      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
