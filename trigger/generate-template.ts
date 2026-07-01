@@ -35,6 +35,7 @@ interface ChapterPayload {
 
 export const generateTemplate = task({
   id: "generate-template",
+  maxDuration: 600, // 10 minutes — multiple parallel LLM calls across chapters
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -49,6 +50,19 @@ export const generateTemplate = task({
     effort?: ReasoningEffort;
   }) => {
     const { templateId, metaPromptId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
+
+    // Idempotency guard: if the template already reached a terminal state
+    // (success or permanent failure), don't reprocess.  Retry races and
+    // double-dispatches are handled by checking before resetting status.
+    const [current] = await db
+      .select({ status: bookTemplates.status })
+      .from(bookTemplates)
+      .where(eq(bookTemplates.id, templateId))
+      .limit(1);
+
+    if (current && (current.status === "ready" || current.status === "failed")) {
+      return;
+    }
 
     // Reset status to generating on each attempt (retry-safe).
     // On the final failed attempt, the catch block leaves it as "failed".

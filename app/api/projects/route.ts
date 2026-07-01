@@ -31,7 +31,8 @@ export async function GET() {
     ))
     .where(eq(projects.userId, user.id))
     .groupBy(projects.id)
-    .orderBy(sql`${projects.lastAccessedAt} DESC NULLS LAST`, desc(projects.createdAt));
+    .orderBy(sql`${projects.lastAccessedAt} DESC NULLS LAST`, desc(projects.createdAt))
+    .limit(100);
 
   const result = rows.map((r) => ({
     ...r.project,

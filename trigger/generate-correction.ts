@@ -9,6 +9,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 
 export const generateCorrection = task({
   id: "generate-correction",
+  maxDuration: 300, // 5 minutes — single LLM call
   retry: {
     maxAttempts: 3,
     factor: 2,

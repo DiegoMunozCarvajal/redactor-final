@@ -34,7 +34,7 @@ projects ──< chapter_generations ──< fragments
 
 - **book_templates**: A book structure — name + description. Admin creates via UI.
 - **chapters**: Belongs to a template or project, ordered by `position`. Has CHECK constraint: `book_template_id IS NOT NULL OR project_id IS NOT NULL`.
-- **prompts**: Unified chapter prompts table. `projectId=NULL` = template prompt, `projectId` set = project prompt. Each has `isAssembly`, `isCritique`, `isCorrector` boolean flags (mutually exclusive in practice), `content` with `{tema}` placeholder, `userPrompt` (optional user-visible prompt text), `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
+- **prompts**: Unified chapter prompts table. `projectId=NULL` = template prompt, `projectId` set = project prompt. Each has `isAssembly`, `isCritique`, `isCorrector` boolean flags (mutually exclusive in practice), `content` with `{tema}` placeholder, `userPrompt` (optional user-visible prompt text), `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
 - **projectPrompts**: REMOVED — merged into `prompts` table. `projectId` column distinguishes project prompts from template prompts.
 - **projects**: A user's book instance — has `topic` (replaces `{tema}` placeholder), `lastAccessedAt` (updated on GET, drives dashboard ordering), optional `generationSystemPromptId` FK, and links to a `book_template`.
 - **book_templates**: Has `status` field: `"ready"` (available), `"generating"` (AI is creating template structure), `"failed"` (auto-generation failed). Templates with non-ready status are disabled in the create-project dialog.
@@ -99,8 +99,10 @@ Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serial
 
 - **DB access**: Use `db` from `lib/db/drizzle.ts`. Schema re-exports from `lib/db/schema/`. Queries in `lib/db/queries/`.
 - **API routes**: Next.js 15 `params: Promise<{ id: string }>` async pattern. All routes auth-gate with `createClient()` + `getUser()`.
+- **API verb convention**: POST = create, PUT = full replace, PATCH = partial update. Book/chapter templates use PUT for idempotent create-or-replace semantics (backward compat — not strictly RESTful). Project-scoped routes use POST for creation, PATCH for partial updates where applicable.
+- **Error responses**: All routes return `NextResponse.json({ error: string }, { status: N })`. Validation errors: 400. Auth errors: 401 (no user) or 403 (admin-only). Not found: 404. Conflict (e.g. lock busy): 409. Rate limit: 429. Internal: 500. Success responses: `NextResponse.json(data)` (default 200) or `NextResponse.json(data, { status: 201 })` for resource creation.
 - **No v2 prompt files**: v4 stores prompts in DB. The `lib/prompts/` directory from v2 does NOT exist here. Old imports like `@/lib/prompts/unit-brief-small-book` are dead code.
-- **No v2 voice corpus**: v4 defines style via prompt fields (styleRules, knowledgeAreas), not external corpus files.
+- **No v2 voice corpus**: v4 defines style via prompt content and assembly/critique/correction pipeline, not external corpus files.
 - **No `after()` fragility**: Pipeline runs fully in Trigger.dev, not in Next.js `after()` callbacks.
 
 ### Security Conventions [hard]

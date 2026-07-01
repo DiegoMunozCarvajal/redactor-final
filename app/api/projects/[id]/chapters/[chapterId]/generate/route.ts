@@ -47,13 +47,22 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
-  const effort = body.effort as "off" | "max" | "xhigh" | undefined;
+  const effortRaw = body.effort as string | undefined;
   const skipAssembly = body.skipAssembly === true;
   const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
     ? "sequential"
     : body.assemblyAlgorithm === "halves"
       ? "halves"
       : "merge-sort";
+
+  const VALID_EFFORT_VALUES = ["off", "xhigh", "max"] as const;
+  if (effortRaw !== undefined && !(VALID_EFFORT_VALUES as readonly string[]).includes(effortRaw)) {
+    return NextResponse.json(
+      { error: `invalid effort "${effortRaw}". Valid: ${VALID_EFFORT_VALUES.join(", ")}` },
+      { status: 400 },
+    );
+  }
+  const effort = effortRaw as typeof VALID_EFFORT_VALUES[number] | undefined;
 
   // Serialize rate limit check + generation row insert under advisory lock.
   // Rate limit must be inside the lock to close the TOCTOU window where two

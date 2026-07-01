@@ -51,6 +51,8 @@ export default function CreateTemplatePage() {
       .finally(() => setLoadingMeta(false));
   }, []);
 
+  const MAX_FILE_READ_SIZE = 10 * 1024 * 1024; // 10MB — browser FileReader limit
+
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
@@ -58,6 +60,10 @@ export default function CreateTemplatePage() {
     const readers: Promise<ChapterFile>[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      if (file.size > MAX_FILE_READ_SIZE) {
+        toast.error(`"${file.name}" is too large (max 10MB)`);
+        continue;
+      }
       readers.push(
         new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -157,17 +163,19 @@ export default function CreateTemplatePage() {
               <Link href="/meta-prompts" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
-            <select
-              id="metaPrompt"
+            <Select
               value={selectedMetaPromptId}
-              onChange={(e) => setSelectedMetaPromptId(e.target.value)}
-              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              onValueChange={(v) => setSelectedMetaPromptId(v)}
             >
-              <option value="">Select a meta-prompt...</option>
-              {metaPrompts.map((mp) => (
-                <option key={mp.id} value={mp.id}>{mp.name}</option>
-              ))}
-            </select>
+              <SelectTrigger id="metaPrompt">
+                <SelectValue placeholder="Select a meta-prompt..." />
+              </SelectTrigger>
+              <SelectContent>
+                {metaPrompts.map((mp) => (
+                  <SelectItem key={mp.id} value={mp.id}>{mp.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
 

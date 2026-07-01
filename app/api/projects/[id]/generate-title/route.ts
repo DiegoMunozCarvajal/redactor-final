@@ -59,18 +59,19 @@ export async function POST(
   // Creating a chapterGenerations row (type "title") ensures checkProjectRateLimit
   // counts it — preventing unlimited title generations per project.
   const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale title generation rows BEFORE the rate check.
+    // If a previous title generation crashed (stuck in "generating"),
+    // the stale row would count against the rate limit and block all
+    // future generations permanently. Title gens go directly to
+    // "generating" — no Trigger.dev dispatch to recover them.
+    await cleanupStaleGenerations(projectId, "title", {
+      statuses: ["generating"],
+    });
+
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
-
-    // Clean up stale title generation rows before creating a new one.
-    // Without this, a crashed title generation blocks ALL generation types
-    // for the project permanently (checkProjectRateLimit counts all types).
-    // Title gens go directly to "generating" — no Trigger.dev dispatch.
-    await cleanupStaleGenerations(projectId, "title", {
-      statuses: ["generating"],
-    });
 
     const [gen] = await db
       .insert(chapterGenerations)

@@ -35,13 +35,22 @@ export default function MetaPromptsPage() {
   const [newContent, setNewContent] = useState("");
   const [newUserPrompt, setNewUserPrompt] = useState("");
 
-  const fetchMetaPrompts = useCallback(async () => {
-    const res = await fetch("/api/meta-prompts");
-    if (res.ok) setMetaPrompts(await res.json());
+  const fetchMetaPrompts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/meta-prompts", { signal });
+      if (res.ok) setMetaPrompts(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Could not connect to server");
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchMetaPrompts(); }, [fetchMetaPrompts]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchMetaPrompts(controller.signal);
+    return () => controller.abort();
+  }, [fetchMetaPrompts]);
 
   async function create() {
     if (!newName.trim() || !newContent.trim()) return;

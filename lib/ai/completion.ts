@@ -55,14 +55,14 @@ export interface CompletionOptions<T extends z.ZodType> {
   signal?: AbortSignal;
 }
 
-function joinSystemPrompts(...blocks: Array<string | undefined>): string {
+export function joinSystemPrompts(...blocks: Array<string | undefined>): string {
   return blocks
     .map((block) => block?.trim() ?? "")
     .filter(Boolean)
     .join("\n\n");
 }
 
-function buildAnthropicSystemPrompt(
+export function buildAnthropicSystemPrompt(
   cachedSystemPrompt: string | undefined,
   systemPrompt: string,
   cacheSystemPrompt?: boolean,
@@ -114,7 +114,7 @@ export interface CompletionResult<T> {
   logId?: string;
 }
 
-function normalizePlainTextContent(content: unknown): string {
+export function normalizePlainTextContent(content: unknown): string {
   if (typeof content === "string") {
     return content;
   }
@@ -157,21 +157,28 @@ function normalizePlainTextContent(content: unknown): string {
   return "";
 }
 
-function getCompletionCostUsd(model: string, usage: ProviderUsage): number {
+export function getCompletionCostUsd(model: string, usage: ProviderUsage): number {
   const pricing = getModelPricing(model);
-  const inputCost = usage.promptTokens * pricing.input;
   const outputCost = usage.completionTokens * pricing.output;
 
   if (getProviderForModel(model) !== "anthropic") {
-    return inputCost + outputCost;
+    return usage.promptTokens * pricing.input + outputCost;
   }
 
+  // Anthropic's `input_tokens` total already includes cache tokens.
+  // Subtract them so we charge cache reads at 10% and cache writes at
+  // 125% of the base input price instead of double-counting.
+  const regularInputTokens = Math.max(
+    0,
+    usage.promptTokens - usage.cacheCreationTokens - usage.cacheReadTokens,
+  );
+  const inputCost = regularInputTokens * pricing.input;
   const cacheCreationCost = usage.cacheCreationTokens * pricing.input * 1.25;
   const cacheReadCost = usage.cacheReadTokens * pricing.input * 0.1;
   return inputCost + outputCost + cacheCreationCost + cacheReadCost;
 }
 
-function getErrorMessage(error: unknown): string {
+export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
@@ -199,7 +206,7 @@ type EffortConfig =
   | { kind: "anthropic"; effort?: "low" | "medium" | "high" | "xhigh" | "max" }
   | { kind: "google"; thinkingBudget?: number };
 
-function mapEffort(effort: ReasoningEffort | undefined, provider: string): EffortConfig {
+export function mapEffort(effort: ReasoningEffort | undefined, provider: string): EffortConfig {
   switch (provider) {
     case "deepseek": {
       if (!effort || effort === "off") return { kind: "deepseek", thinkingDisabled: true };
@@ -530,6 +537,24 @@ async function completeWithGoogle<T extends z.ZodType>(
     const promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
     const completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
     const content = response.text ?? "";
+    const finishReason = response.candidates?.[0]?.finishReason;
+
+    // Detect content-filter blocks before attempting JSON.parse.
+    // Google returns finishReason "SAFETY" (or similar) when its safety
+    // filters block the output — the content will be empty or truncated.
+    if (!content.trim() || finishReason === "SAFETY") {
+      throw new ProviderCallError(
+        "Google model blocked the response due to safety filters.",
+        { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      );
+    }
+
+    if (finishReason === "MAX_TOKENS") {
+      console.warn(
+        "[completeWithGoogle] structured output truncated (MAX_TOKENS). " +
+          `prompt_tokens=${promptTokens} completion_tokens=${completionTokens}`,
+      );
+    }
 
     const usage: ProviderUsage = { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 };
 
@@ -569,6 +594,21 @@ async function completeWithGoogle<T extends z.ZodType>(
     const promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
     const completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
     const content = response.text ?? "";
+    const finishReason = response.candidates?.[0]?.finishReason;
+
+    if (!content.trim() || finishReason === "SAFETY") {
+      throw new ProviderCallError(
+        "Google model blocked the response due to safety filters.",
+        { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      );
+    }
+
+    if (finishReason === "MAX_TOKENS") {
+      console.warn(
+        "[completeWithGoogle] output truncated (MAX_TOKENS). " +
+          `prompt_tokens=${promptTokens} completion_tokens=${completionTokens}`,
+      );
+    }
 
     return {
       data: content as z.infer<T>,
@@ -633,40 +673,35 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
   let completionTokens = 0;
 
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const deepseekParams: Record<string, unknown> = {
+    // Build the base params with proper OpenAI types.  Only `extra_body`
+    // (thinking config) and a wider `reasoning_effort` value need a cast
+    // because the OpenAI SDK types don't include DeepSeek extensions.
+    const params: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
       model,
       max_completion_tokens: maxTokens,
-      messages: userMessages,
+      messages: userMessages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       response_format: { type: "json_object" },
     };
-    // Temperature has no effect when thinking is enabled in V4.
-    // Only include it when thinking is disabled.
+
     if (!thinkingEnabled) {
-      deepseekParams.temperature = effectiveTemperature;
-    }
-    // thinkingEnabled = schema ? false : !effortConfig.thinkingDisabled
-    // Use direct property check to preserve TypeScript discriminated union narrowing.
-    if (!effortConfig.thinkingDisabled && !schema) {
-      deepseekParams.reasoning_effort = effortConfig.reasoningEffort;
-      deepseekParams.extra_body = { thinking: { type: "enabled" } };
-    } else {
-      deepseekParams.extra_body = { thinking: { type: "disabled" } };
+      (params as unknown as Record<string, unknown>).temperature = effectiveTemperature;
     }
 
-    const response = await deepseekClient.chat.completions.create(
-      deepseekParams as unknown as Parameters<typeof deepseekClient.chat.completions.create>[0],
+    // thinkingEnabled is always false here (schema is truthy in this
+    // branch), so we always disable thinking.  Keep the guard for
+    // clarity and future refactoring safety.
+    (params as unknown as Record<string, unknown>).extra_body = {
+      thinking: { type: "disabled" },
+    };
+
+    const response = (await deepseekClient.chat.completions.create(
+      params,
       { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) },
-    );
+    )) as OpenAI.ChatCompletion;
 
-    // response typing lost due to cast — restore it
-    if (Symbol.asyncIterator in response) {
-      throw new Error("DeepSeek returned unexpected stream");
-    }
-    const chatCompletion = response as OpenAI.ChatCompletion;
-
-    promptTokens = chatCompletion.usage?.prompt_tokens ?? 0;
-    completionTokens = chatCompletion.usage?.completion_tokens ?? 0;
-    const choice = chatCompletion.choices[0];
+    promptTokens = response.usage?.prompt_tokens ?? 0;
+    completionTokens = response.usage?.completion_tokens ?? 0;
+    const choice = response.choices[0];
     const usage: ProviderUsage = { promptTokens, completionTokens, cacheCreationTokens: 0, cacheReadTokens: 0 };
     const rawText = (choice?.message?.content ?? "").trim();
 

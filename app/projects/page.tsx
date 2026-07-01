@@ -21,6 +21,7 @@ import { StatsCard } from "@/components/patterns/stats-card";
 import { BookOpen, Clock, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
+import { toast } from "sonner";
 
 interface ProjectData {
   id: string;
@@ -85,7 +86,7 @@ export default function ProjectsPage() {
     const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
-      alert(err.error ?? "Failed to delete");
+      toast.error(err.error ?? "Failed to delete");
     }
     fetchProjects();
   }

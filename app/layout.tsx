@@ -66,6 +66,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${meslo.variable} ${lora.variable} ${geistSans.variable}`}
     >
       <body className="bg-background text-foreground">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var d=localStorage.getItem("ui-density");if(d==="compact"){document.documentElement.classList.add("density-compact")}}catch(e){}`,
+          }}
+        />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <div className="flex min-h-screen">
             <Sidebar />

@@ -100,9 +100,9 @@ function parsePathname(pathname: string): PathSegment[] {
 }
 
 // Fetch a name by API call
-async function fetchName(url: string): Promise<string | null> {
+async function fetchName(url: string, signal?: AbortSignal): Promise<string | null> {
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal });
     if (!res.ok) return null;
     const data = await res.json();
     return data.title ?? data.name ?? null;
@@ -111,17 +111,17 @@ async function fetchName(url: string): Promise<string | null> {
   }
 }
 
-async function fetchChapterLabel(parentId: string, chapterId: string, parentType: "projects" | "templates"): Promise<string | null> {
+async function fetchChapterLabel(parentId: string, chapterId: string, parentType: "projects" | "templates", signal?: AbortSignal): Promise<string | null> {
   try {
     if (parentType === "projects") {
-      const res = await fetch(`/api/projects/${parentId}/chapters/${chapterId}`);
+      const res = await fetch(`/api/projects/${parentId}/chapters/${chapterId}`, { signal });
       if (!res.ok) return null;
       const data = await res.json();
       const chapter = data.chapter;
       if (!chapter) return null;
       return `Capítulo ${chapter.chapterNumber ?? chapter.position}`;
     } else {
-      const res = await fetch(`/api/books/${parentId}/chapters`);
+      const res = await fetch(`/api/books/${parentId}/chapters`, { signal });
       if (!res.ok) return null;
       const chapters = await res.json();
       const chapter = Array.isArray(chapters) ? chapters.find((c: { id: string; position: number }) => c.id === chapterId) : null;
@@ -133,9 +133,9 @@ async function fetchChapterLabel(parentId: string, chapterId: string, parentType
   }
 }
 
-async function fetchPromptLabel(projectId: string, chapterId: string, promptId: string): Promise<string | null> {
+async function fetchPromptLabel(projectId: string, chapterId: string, promptId: string, signal?: AbortSignal): Promise<string | null> {
   try {
-    const res = await fetch(`/api/projects/${projectId}/prompts?chapterId=${chapterId}`);
+    const res = await fetch(`/api/projects/${projectId}/prompts?chapterId=${chapterId}`, { signal });
     if (!res.ok) return null;
     const prompts = await res.json();
     const prompt = Array.isArray(prompts) ? prompts.find((p: { id: string; title: string }) => p.id === promptId) : null;
@@ -220,25 +220,26 @@ export function Sidebar() {
 
     if (toFetch.length === 0 && toFetchChapter.length === 0 && toFetchPrompt.length === 0) return;
 
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
 
     const urlPromises = toFetch.map(async ({ key, url }) => {
-      const label = await fetchName(url);
+      const label = await fetchName(url, signal);
       return { key, label };
     });
 
     const chapterPromises = toFetchChapter.map(async ({ key, parentId, chapterId, parentType }) => {
-      const label = await fetchChapterLabel(parentId, chapterId, parentType);
+      const label = await fetchChapterLabel(parentId, chapterId, parentType, signal);
       return { key, label };
     });
 
     const promptPromises = toFetchPrompt.map(async ({ key, projectId: pid, chapterId, promptId }) => {
-      const label = await fetchPromptLabel(pid, chapterId, promptId);
+      const label = await fetchPromptLabel(pid, chapterId, promptId, signal);
       return { key, label };
     });
 
     Promise.all([...urlPromises, ...chapterPromises, ...promptPromises]).then((results) => {
-      if (cancelled) return;
+      if (signal.aborted) return;
       setResolvedLabels((prev) => {
         const next = { ...prev };
         for (const { key, label } of results) {
@@ -251,7 +252,7 @@ export function Sidebar() {
       });
     });
 
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [pathname]);
 
   const toggleCollapsed = useCallback(() => {
@@ -437,7 +438,6 @@ function SidebarContent({
             className={cn(
               "flex items-center rounded-md transition-colors text-sm font-medium",
               collapsed ? "justify-center px-0 py-2" : "px-3 py-2 gap-3",
-              item.depth && !collapsed ? `pl-${3 + (item.depth ?? 0) * 4}` : "",
               item.active
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-accent/50"

@@ -48,7 +48,8 @@ export async function GET(
         ? and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, projectId))
         : eq(prompts.projectId, projectId),
     )
-    .orderBy(asc(prompts.position));
+    .orderBy(asc(prompts.position))
+    .limit(200);
 
   return NextResponse.json(promptList);
 }
@@ -107,6 +108,12 @@ export async function POST(
       { error: "title max 500 chars, content/userPrompt max 100KB each" },
       { status: 400 },
     );
+  }
+
+  for (const flag of [["isAssembly", isAssembly], ["isCritique", isCritique], ["isCorrector", isCorrector]] as const) {
+    if (flag[1] !== undefined && typeof flag[1] !== "boolean") {
+      return NextResponse.json({ error: `${flag[0]} must be a boolean` }, { status: 400 });
+    }
   }
 
   // Verify chapter belongs to project

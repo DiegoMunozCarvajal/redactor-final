@@ -9,6 +9,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 
 export const generateCritique = task({
   id: "generate-critique",
+  maxDuration: 300, // 5 minutes — single LLM call
   retry: {
     maxAttempts: 3,
     factor: 2,

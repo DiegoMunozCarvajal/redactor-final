@@ -2,8 +2,11 @@ import { db } from "@/lib/db/drizzle";
 import { lockClient } from "@/lib/db/lock-pool";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray, lt, type SQL } from "drizzle-orm";
+import { STALE_TIMEOUT_MS } from "@/lib/constants";
 
-export const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+// Re-export for backward compat — trigger tasks and API routes import this.
+export { STALE_TIMEOUT_MS };
+
 const MAX_GENERATIONS_PER_WINDOW = 1;
 
 /**

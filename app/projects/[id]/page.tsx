@@ -129,12 +129,13 @@ interface ProjectData {
     }
   }
 
-  // Sync topic from project data when it loads/changes
+  // Sync topic from project data when it loads/changes, but NOT while
+  // the user is actively editing — polling would overwrite their input.
   useEffect(() => {
-    if (project) {
+    if (project && !editingTopic) {
       setEditTopic(project.topic ?? "");
     }
-  }, [project]);
+  }, [project, editingTopic]);
 
   async function deleteChapter(chapterId: string) {
     if (!project) return;

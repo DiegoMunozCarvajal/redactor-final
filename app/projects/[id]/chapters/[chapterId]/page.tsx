@@ -208,6 +208,8 @@ export default function ChapterPage() {
   }>>({});
   const [showPromptVersions, setShowPromptVersions] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const assemblyFetchRef = useRef(false);
+  const critiqueFetchRef = useRef(false);
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
@@ -559,28 +561,33 @@ export default function ChapterPage() {
     }
   }
 
-  // Initialize prompt form data when prompts load
+  // Initialize prompt form data when prompts load.  Only update state
+  // when new prompt IDs appear — avoids re-rendering all prompt cards on
+  // every poll cycle when nothing actually changed.
   useEffect(() => {
     setPromptFormData(prev => {
+      let hasNew = false;
       const next = { ...prev };
       for (const p of prompts) {
         if (!next[p.id]) {
-          next[p.id] = {
-            content: p.content,
-          };
+          hasNew = true;
+          next[p.id] = { content: p.content };
         }
       }
-      return next;
+      return hasNew ? next : prev;
     });
   }, [prompts]);
 
-  // Poll if any generation is in progress (skip stale generations > 30 min old)
+  // Poll if any generation is in progress (skip stale generations > 30 min old).
+  // Uses a ref for the polling condition so the interval isn't recreated every
+  // poll cycle when `data` (a new object each fetch) changes.
+  const shouldPollRef = useRef(false);
+  shouldPollRef.current = Boolean(
+    getActiveGeneration(data?.generations ?? [], Date.now(), STALE_MS),
+  ) || assembling;
+
   useEffect(() => {
-    if (!data) return;
-    const hasInFlightGeneration = Boolean(
-      getActiveGeneration(data.generations, Date.now(), STALE_MS),
-    );
-    if (!hasInFlightGeneration && !assembling) return;
+    if (!shouldPollRef.current) return;
 
     const interval = setInterval(() => {
       if (fetchingRef.current) return;
@@ -588,7 +595,7 @@ export default function ChapterPage() {
       fetchChapter().finally(() => { fetchingRef.current = false; });
     }, 3000);
     return () => clearInterval(interval);
-  }, [assembling, data, fetchChapter]);
+  }, [assembling, fetchChapter]);
 
   if (loading) {
     return (
@@ -767,28 +774,34 @@ export default function ChapterPage() {
     }
     setSelectedFragments(sel);
 
-    // If no embedded assembly prompt, fetch assembly prompts for the picker
-    if (!assemblyPrompt) {
+    // If no embedded assembly prompt, fetch assembly prompts for the picker.
+    // Guard against double-click races with a ref.
+    if (!assemblyPrompt && !assemblyFetchRef.current) {
+      assemblyFetchRef.current = true;
       fetch("/api/prompt-library?category=assembly")
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data)) setAssemblyPromptList(data);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { assemblyFetchRef.current = false; });
     }
 
     setAssemblyModalOpen(true);
   }
 
   function openCritiqueModal() {
-    // Fetch critique prompts for the picker if not loaded
-    if (critiquePromptList.length === 0) {
+    // Fetch critique prompts for the picker if not loaded.
+    // Guard against double-click races with a ref.
+    if (critiquePromptList.length === 0 && !critiqueFetchRef.current) {
+      critiqueFetchRef.current = true;
       fetch("/api/prompt-library?category=critique")
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data)) setCritiquePromptList(data);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { critiqueFetchRef.current = false; });
     }
     setCritiqueModalOpen(true);
   }
@@ -1129,8 +1142,9 @@ export default function ChapterPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (fragment?.content) {
-                            navigator.clipboard.writeText(fragment.content);
-                            toast.success("Fragment copied");
+                            navigator.clipboard.writeText(fragment.content)
+                              .then(() => toast.success("Fragment copied"))
+                              .catch(() => toast.error("Clipboard access denied"));
                           }
                         }}
                         disabled={!fragment?.content}
@@ -1386,8 +1400,9 @@ export default function ChapterPage() {
                   variant="ghost"
                   className="h-7 text-xs"
                   onClick={() => {
-                    navigator.clipboard.writeText(selectedAssemblyVersion.assembledContent ?? "");
-                    toast.success("Content copied");
+                    navigator.clipboard.writeText(selectedAssemblyVersion.assembledContent ?? "")
+                      .then(() => toast.success("Content copied"))
+                      .catch(() => toast.error("Clipboard access denied"));
                   }}
                 >
                   <Copy className="h-3 w-3 mr-1" /> Copy
@@ -1505,8 +1520,9 @@ export default function ChapterPage() {
                   variant="ghost"
                   className="h-7 text-xs"
                   onClick={() => {
-                    navigator.clipboard.writeText(selectedCritique.assembledContent ?? "");
-                    toast.success("Critique copied");
+                    navigator.clipboard.writeText(selectedCritique.assembledContent ?? "")
+                      .then(() => toast.success("Critique copied"))
+                      .catch(() => toast.error("Clipboard access denied"));
                   }}
                 >
                   <Copy className="h-3 w-3 mr-1" /> Copy
@@ -1659,16 +1675,19 @@ export default function ChapterPage() {
                 {assemblyPromptList.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Loading assembly prompts…</p>
                 ) : (
-                  <select
+                  <Select
                     value={assemblyPromptId}
-                    onChange={(e) => setAssemblyPromptId(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    onValueChange={(v) => setAssemblyPromptId(v)}
                   >
-                    <option value="">Select an assembly prompt…</option>
-                    {assemblyPromptList.map((ap) => (
-                      <option key={ap.id} value={ap.id}>{ap.name}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select an assembly prompt…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assemblyPromptList.map((ap) => (
+                        <SelectItem key={ap.id} value={ap.id}>{ap.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             )}
@@ -1855,16 +1874,19 @@ export default function ChapterPage() {
               {critiquePromptList.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No critique prompts available. Create one in the Critique Prompts section.</p>
               ) : (
-                <select
+                <Select
                   value={critiquePromptId}
-                  onChange={(e) => setCritiquePromptId(e.target.value)}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  onValueChange={(v) => setCritiquePromptId(v)}
                 >
-                  <option value="">Select a critique prompt…</option>
-                  {critiquePromptList.map((cp) => (
-                    <option key={cp.id} value={cp.id}>{cp.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a critique prompt…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {critiquePromptList.map((cp) => (
+                      <SelectItem key={cp.id} value={cp.id}>{cp.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>

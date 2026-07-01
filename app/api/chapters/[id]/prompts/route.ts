@@ -34,8 +34,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!title || !content) {
     return NextResponse.json({ error: "title and content are required" }, { status: 400 });
   }
+  if (typeof title !== "string" || title.length > 500) {
+    return NextResponse.json({ error: "title must be a string under 500 characters" }, { status: 400 });
+  }
   if (typeof content !== "string" || content.length > 20000) {
     return NextResponse.json({ error: "content too long" }, { status: 400 });
+  }
+  for (const flag of [["isAssembly", isAssembly], ["isCritique", isCritique], ["isCorrector", isCorrector]] as const) {
+    if (flag[1] !== undefined && typeof flag[1] !== "boolean") {
+      return NextResponse.json({ error: `${flag[0]} must be a boolean` }, { status: 400 });
+    }
   }
 
   const existing = await db

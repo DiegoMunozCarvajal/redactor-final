@@ -208,6 +208,10 @@ export async function POST(
           promptTitle: cpName,
           model: resolvedModel,
           critiqueGenerationId,
+          // Preserve inline prompt content for audit trail.
+          // When promptId === "inline", future reviewers need to know
+          // what correction instructions were actually sent to the LLM.
+          ...(correctorPrompt && { promptContent: correctorPrompt.content }),
         },
       })
       .returning();

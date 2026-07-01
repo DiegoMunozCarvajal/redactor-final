@@ -17,6 +17,7 @@ import { runSettledWithConcurrency } from "@/lib/promise-pool";
 
 export const generateChapter = task({
   id: "generate-chapter",
+  maxDuration: 600, // 10 minutes — chapter generation can make multiple LLM calls
   retry: {
     maxAttempts: 3,
     factor: 2,

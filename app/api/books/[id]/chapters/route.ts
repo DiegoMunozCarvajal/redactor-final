@@ -28,7 +28,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         isNull(chapters.projectId),
       ),
     )
-    .orderBy(asc(chapters.position));
+    .orderBy(asc(chapters.position))
+    .limit(200);
   return NextResponse.json(result);
 }
 
@@ -43,10 +44,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({}));
   const { title, position } = body;
 
-  if (position !== undefined && (position < 0 || position > 1000))
-    return NextResponse.json({ error: "position must be 0-1000" }, { status: 400 });
+  if (position !== undefined && (typeof position !== "number" || position < 0 || position > 1000))
+    return NextResponse.json({ error: "position must be a number between 0-1000" }, { status: 400 });
 
-  if (!title) return NextResponse.json({ error: "title is required" }, { status: 400 });
+  if (typeof title !== "string" || !title.trim())
+    return NextResponse.json({ error: "title is required" }, { status: 400 });
 
   const existing = await db
     .select({ count: sql<number>`count(*)::int` })

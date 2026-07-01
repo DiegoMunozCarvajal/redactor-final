@@ -11,11 +11,10 @@ function getStoredDensity(): Density {
 }
 
 export function useDensity() {
-  const [density, setDensityState] = useState<Density>("relaxed");
-
-  useEffect(() => {
-    setDensityState(getStoredDensity());
-  }, []);
+  // Lazy initializer reads localStorage once on first client render,
+  // avoiding the flash-of-wrong-density that happens with a "relaxed"
+  // default + useEffect update.
+  const [density, setDensityState] = useState<Density>(() => getStoredDensity());
 
   const setDensity = useCallback((d: Density) => {
     setDensityState(d);
@@ -32,7 +31,8 @@ export function useDensity() {
     setDensity(density === "relaxed" ? "compact" : "relaxed");
   }, [density, setDensity]);
 
-  // Sync on mount
+  // Ensure the CSS class is present on mount (the blocking <script> in
+  // layout.tsx sets it before first paint, but this is the React-side backup).
   useEffect(() => {
     if (getStoredDensity() === "compact") {
       document.documentElement.classList.add("density-compact");

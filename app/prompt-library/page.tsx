@@ -50,15 +50,22 @@ function PromptLibraryContent() {
 
   const currentTab = TAB_OPTIONS.find((t) => t.value === activeTab) ?? TAB_OPTIONS[0];
 
-  const fetchItems = useCallback(async () => {
-    const res = await fetch(`/api/prompt-library?category=${activeTab}`);
-    if (res.ok) setItems(await res.json());
+  const fetchItems = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/prompt-library?category=${activeTab}`, { signal });
+      if (res.ok) setItems(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Could not connect to server");
+    }
     setLoading(false);
   }, [activeTab]);
 
   useEffect(() => {
     setLoading(true);
-    fetchItems();
+    const controller = new AbortController();
+    fetchItems(controller.signal);
+    return () => controller.abort();
   }, [fetchItems]);
 
   function onTabChange(value: string) {

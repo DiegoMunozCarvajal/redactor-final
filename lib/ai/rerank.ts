@@ -69,7 +69,7 @@ export async function rerank(
     if (err instanceof Error && err.name === "AbortError") {
       console.warn("[rerank] Cohere call timed out after", RERANK_TIMEOUT_MS, "ms");
     } else {
-      console.warn("[rerank] Cohere call failed:", err);
+      console.warn("[rerank] Cohere call failed:", err instanceof Error ? err.message : String(err));
     }
     return documents.map((_, i) => ({ index: i, score: null }));
   } finally {

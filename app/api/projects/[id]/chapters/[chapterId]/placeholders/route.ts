@@ -86,6 +86,16 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}));
   const definitions: Record<string, string | null> = body.placeholders ?? {};
 
+  // Validate definition lengths before any DB writes
+  for (const [name, def] of Object.entries(definitions)) {
+    if (typeof def === "string" && def.length > 10_000) {
+      return NextResponse.json(
+        { error: `definition for "${name}" exceeds 10,000 characters` },
+        { status: 400 },
+      );
+    }
+  }
+
   // Batch upsert placeholder definitions using ON CONFLICT to avoid N+1 updates
   const entries = Object.entries(definitions);
   if (entries.length > 0) {

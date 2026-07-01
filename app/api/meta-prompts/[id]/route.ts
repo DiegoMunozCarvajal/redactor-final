@@ -34,6 +34,16 @@ export async function PUT(
   const body = await req.json().catch(() => ({}));
   const { name, description, content, userPrompt } = body;
 
+  if (name !== undefined && typeof name !== "string") {
+    return NextResponse.json({ error: "name must be a string" }, { status: 400 });
+  }
+  if (content !== undefined && (typeof content !== "string" || content.length > 20000)) {
+    return NextResponse.json({ error: "content must be a string and under 20000 characters" }, { status: 400 });
+  }
+  if (userPrompt !== undefined && (typeof userPrompt !== "string" || userPrompt.length > 20000)) {
+    return NextResponse.json({ error: "userPrompt must be a string and under 20000 characters" }, { status: 400 });
+  }
+
   const [updated] = await db
     .update(metaPrompts)
     .set({

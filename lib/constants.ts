@@ -45,3 +45,7 @@ export const ACCEPTED_FILE_TYPES = [
 // UUID v4 format validation
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Stale timeout for generation cleanup — 30 minutes.
+// Used by rate-limit, trigger tasks, and API routes.
+export const STALE_TIMEOUT_MS = 30 * 60 * 1000;
+

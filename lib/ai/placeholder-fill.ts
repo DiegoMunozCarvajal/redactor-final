@@ -27,7 +27,7 @@ export interface PlaceholderFillEvent {
 // Default model for generation if none specified
 const DEFAULT_MODEL = DEFAULT_GENERATION_MODEL;
 
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   // Phase 1: Direct parse — works for well-formed JSON
   try {
     return JSON.parse(text.trim());
@@ -107,7 +107,7 @@ function extractJson(text: string): unknown {
 }
 
 // Placeholder names that resolve directly from project data (no LLM)
-function resolveDirectly(
+export function resolveDirectly(
   name: string,
   projectTopic: string | null,
 ): string | null {
@@ -124,7 +124,7 @@ function resolveDirectly(
 /** Build a search query from placeholder metadata, not just the placeholder name.
  *  Uses `function` as primary intent descriptor — it explains what content the
  *  placeholder needs, which yields better search results than underscore_names. */
-function buildSearchQuery(ph: PlaceholderDef, projectTopic: string | null): string {
+export function buildSearchQuery(ph: PlaceholderDef, projectTopic: string | null): string {
   const topic = projectTopic ?? "";
 
   if (ph.function && ph.function.length > 0) {
@@ -284,7 +284,7 @@ const MAX_WORDS_FACTUAL = 250;
 const MAX_WORDS_NARRATIVE = 400;
 const MAX_WORDS_STYLISTIC = 100;
 
-function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
+export function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
   // Match whole-word/phrase patterns to avoid false positives.
   // "caso" alone is excluded — too broad (appears in "en caso de", "hacer caso", etc.).
   // Use specific phrases: "caso de estudio", "caso real", "caso concreto", etc.
@@ -303,7 +303,7 @@ function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
   return narrativePatterns.some((pattern) => pattern.test(text));
 }
 
-function validateDefinition(
+export function validateDefinition(
   definition: string,
   placeholderName: string,
   ph: PlaceholderDef,
@@ -317,7 +317,7 @@ function validateDefinition(
   //    Uses Unicode-aware word boundaries (u flag) to handle accented characters.
   const escaped = placeholderName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const namePattern = new RegExp(
-    `\\b${escaped.replace(/_/g, "[_\\\\s]+")}\\b`,
+    `\\b${escaped.replace(/_/g, String.raw`[_\s]+`)}\\b`,
     "iu",
   );
   if (namePattern.test(definition)) {

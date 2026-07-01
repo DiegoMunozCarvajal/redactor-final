@@ -4,7 +4,13 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/db/schema", () => ({}));
 
-import { sanitizeValue, applyPlaceholders } from "@/lib/generate";
+import {
+  sanitizeValue,
+  applyPlaceholders,
+  generateChapterAssemblyHierarchical,
+  generateChapterAssemblyHalves,
+  generateChapterAssemblySequential,
+} from "@/lib/generate";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 
 describe("sanitizeValue", () => {
@@ -106,5 +112,94 @@ describe("resolvePlaceholdersDirect", () => {
     );
     expect(result.resolved["TEMA"]).toBe("historia del arte");
     expect(result.unresolved.sort()).toEqual(["EJEMPLO_HISTORICO", "FUENTE", "LECTOR_OBJETIVO"]);
+  });
+});
+
+describe("applyPlaceholders edge cases", () => {
+  it("falls back to projectTopic for {tema} when not in placeholders", () => {
+    const result = applyPlaceholders("Habla sobre {tema}", { OTRO: "x" }, "Historia");
+    expect(result).toContain("<<TEMA>>Historia<</TEMA>>");
+  });
+
+  it("does not use projectTopic when tema IS in placeholders", () => {
+    const result = applyPlaceholders(
+      "{tema}",
+      { tema: "placeholder value" },
+      "project topic",
+    );
+    expect(result).toContain("placeholder value");
+    expect(result).not.toContain("project topic");
+  });
+
+  it("escapes $ in replacement values", () => {
+    const result = applyPlaceholders("{COST}", { COST: "$100" });
+    // $ should be escaped to $$ so it's not interpreted as a replacement pattern
+    expect(result).toContain("$100");
+  });
+
+  it("matches case-insensitively", () => {
+    const result = applyPlaceholders("{TEMA} {Tema} {tema}", { tema: "x" });
+    const matches = result.match(/<<TEMA>>x<<\/TEMA>>/g);
+    expect(matches).toHaveLength(3);
+  });
+});
+
+describe("assembly algorithms — no-LLM paths", () => {
+  const dummyPrompt = { content: "assemble" };
+  const emptyPlaceholders: Record<string, string> = {};
+
+  describe("generateChapterAssemblyHierarchical", () => {
+    it("throws on empty fragments", async () => {
+      await expect(
+        generateChapterAssemblyHierarchical(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+      ).rejects.toThrow("No fragments to assemble");
+    });
+
+    it("returns single fragment as-is", async () => {
+      const r = await generateChapterAssemblyHierarchical(
+        dummyPrompt,
+        [{ content: "solo" }],
+        emptyPlaceholders,
+        "deepseek-v4-pro",
+      );
+      expect(r.text).toBe("solo");
+      expect(r.usage.inputTokens).toBe(0);
+    });
+  });
+
+  describe("generateChapterAssemblyHalves", () => {
+    it("throws on empty fragments", async () => {
+      await expect(
+        generateChapterAssemblyHalves(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+      ).rejects.toThrow("No fragments to assemble");
+    });
+
+    it("returns single fragment as-is", async () => {
+      const r = await generateChapterAssemblyHalves(
+        dummyPrompt,
+        [{ content: "uno" }],
+        emptyPlaceholders,
+        "deepseek-v4-pro",
+      );
+      expect(r.text).toBe("uno");
+    });
+  });
+
+  describe("generateChapterAssemblySequential", () => {
+    it("throws on empty fragments", async () => {
+      await expect(
+        generateChapterAssemblySequential(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+      ).rejects.toThrow("No fragments to assemble");
+    });
+
+    it("returns single fragment as-is", async () => {
+      const r = await generateChapterAssemblySequential(
+        dummyPrompt,
+        [{ content: "uno" }],
+        emptyPlaceholders,
+        "deepseek-v4-pro",
+      );
+      expect(r.text).toBe("uno");
+    });
   });
 });

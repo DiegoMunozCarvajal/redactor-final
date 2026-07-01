@@ -42,7 +42,7 @@ export function validateCSRF(request: NextRequest): boolean {
   // If no explicit ALLOWED_ORIGINS configured, fall back to exact hostname match
   if (host) {
     try {
-      return new URL(origin).hostname === host;
+      return new URL(origin).hostname === host.split(":")[0];
     } catch {
       return false;
     }

@@ -184,18 +184,21 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
             {critiqueGenerations.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-sm font-medium">Critique to Apply</h4>
-                <select
+                <Select
                   value={selectedCritiqueGenId}
-                  onChange={(e) => setSelectedCritiqueGenId(e.target.value)}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  onValueChange={(v) => setSelectedCritiqueGenId(v)}
                 >
-                  <option value="">Select a critique…</option>
-                  {critiqueGenerations.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.generationMetadata?.promptTitle ?? "Critique"} — {g.completedAt ? new Date(g.completedAt).toLocaleString() : ""}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a critique…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {critiqueGenerations.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.generationMetadata?.promptTitle ?? "Critique"} — {g.completedAt ? new Date(g.completedAt).toLocaleString() : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -213,16 +216,19 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
                 {correctorPromptList.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No corrector prompts available. Create one in the Correctores section.</p>
                 ) : (
-                  <select
+                  <Select
                     value={correctorPromptId}
-                    onChange={(e) => setCorrectorPromptId(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    onValueChange={(v) => setCorrectorPromptId(v)}
                   >
-                    <option value="">Select a corrector prompt…</option>
-                    {correctorPromptList.map((cp) => (
-                      <option key={cp.id} value={cp.id}>{cp.name}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a corrector prompt…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {correctorPromptList.map((cp) => (
+                        <SelectItem key={cp.id} value={cp.id}>{cp.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             )}

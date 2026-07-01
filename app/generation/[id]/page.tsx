@@ -32,18 +32,27 @@ export default function GenerationEditPage() {
   const [content, setContent] = useState("");
   const [isDefault, setIsDefault] = useState(false);
 
-  const fetchPrompt = useCallback(async () => {
-    const res = await fetch(`/api/generation-prompts/${params.id}`);
-    if (!res.ok) { router.push("/generation"); return; }
-    const data = await res.json();
-    setPrompt(data);
-    setName(data.name);
-    setContent(data.content);
-    setIsDefault(data.isDefault);
+  const fetchPrompt = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/generation-prompts/${params.id}`, { signal });
+      if (!res.ok) { router.push("/generation"); return; }
+      const data = await res.json();
+      setPrompt(data);
+      setName(data.name);
+      setContent(data.content);
+      setIsDefault(data.isDefault);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Could not connect to server");
+    }
     setLoading(false);
   }, [params.id, router]);
 
-  useEffect(() => { fetchPrompt(); }, [fetchPrompt]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchPrompt(controller.signal);
+    return () => controller.abort();
+  }, [fetchPrompt]);
 
   async function save() {
     if (!name.trim() || !content.trim()) return;

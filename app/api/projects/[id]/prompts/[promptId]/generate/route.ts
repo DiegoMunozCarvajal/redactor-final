@@ -71,14 +71,10 @@ export async function POST(
   // insert a "generating" row, and both fire LLM calls — doubling cost.
   // The lock is released before the LLM call so UI-driven parallelism works.
   const lockResult = await withProjectLock(projectId, async () => {
-    const rateLimit = await checkProjectRateLimit(projectId);
-    if (!rateLimit.allowed) {
-      return { rateLimited: true as const, retryAfter: rateLimit.retryAfter };
-    }
-
-    // Clean up stale generation rows for this prompt before creating a new one.
-    // Checks both "pending" (Trigger.dev never picked it up) and "generating"
-    // (crashed mid-execution). Stale pending rows block the rate limiter forever.
+    // Clean up stale generation rows for this prompt BEFORE the rate check.
+    // If a previous prompt generation crashed (stuck in "pending" or
+    // "generating"), the stale row would count against the rate limit and
+    // block all future generations permanently — cleanup must run first.
     const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
     const [staleRunning] = await db
       .select({ id: chapterGenerations.id })
@@ -99,6 +95,11 @@ export async function POST(
         .update(chapterGenerations)
         .set({ status: "failed", error: "Stale generation (timed out after 30 minutes)" })
         .where(eq(chapterGenerations.id, staleRunning.id));
+    }
+
+    const rateLimit = await checkProjectRateLimit(projectId);
+    if (!rateLimit.allowed) {
+      return { rateLimited: true as const, retryAfter: rateLimit.retryAfter };
     }
 
     const [gen] = await db
@@ -146,36 +147,43 @@ export async function POST(
       ...(effort !== undefined ? { effort } : {}),
     });
 
-    const [fragment] = await db
-      .insert(fragments)
-      .values({
-        chapterGenerationId: gen.id,
-        projectPromptId: prompt.id,
-        position: prompt.position,
-        content: result.text,
-        modelUsed: result.model,
-        tokensUsed:
-          (result.usage?.inputTokens ?? 0) +
-          (result.usage?.outputTokens ?? 0),
-        metadata: { provider: getProviderForModel(result.model) },
-      })
-      .returning();
+    // Fragment insert + generation completion must be atomic.
+    // If the insert succeeds but the update fails, the fragment is
+    // orphaned and the generation stays in "generating" indefinitely.
+    const [fragment] = await db.transaction(async (tx) => {
+      const [f] = await tx
+        .insert(fragments)
+        .values({
+          chapterGenerationId: gen.id,
+          projectPromptId: prompt.id,
+          position: prompt.position,
+          content: result.text,
+          modelUsed: result.model,
+          tokensUsed:
+            (result.usage?.inputTokens ?? 0) +
+            (result.usage?.outputTokens ?? 0),
+          metadata: { provider: getProviderForModel(result.model) },
+        })
+        .returning();
 
-    await db
-      .update(chapterGenerations)
-      .set({
-        status: "completed",
-        generationMetadata: {
-          type: "prompt",
-          promptId: prompt.id,
-          promptTitle: prompt.title,
-          model: result.model,
-          provider: getProviderForModel(result.model),
-          ...(effort ? { effort } : {}),
-        },
-        completedAt: new Date(),
-      })
-      .where(eq(chapterGenerations.id, gen.id));
+      await tx
+        .update(chapterGenerations)
+        .set({
+          status: "completed",
+          generationMetadata: {
+            type: "prompt",
+            promptId: prompt.id,
+            promptTitle: prompt.title,
+            model: result.model,
+            provider: getProviderForModel(result.model),
+            ...(effort ? { effort } : {}),
+          },
+          completedAt: new Date(),
+        })
+        .where(eq(chapterGenerations.id, gen.id));
+
+      return [f];
+    });
 
     logAudit({
       userId: user.id,

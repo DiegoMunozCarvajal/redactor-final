@@ -35,9 +35,9 @@ export default function GenerationPage() {
   const [newContent, setNewContent] = useState("");
   const [newDefault, setNewDefault] = useState(false);
 
-  const fetchPrompts = useCallback(async () => {
+  const fetchPrompts = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch("/api/generation-prompts");
+      const res = await fetch("/api/generation-prompts", { signal });
       if (res.ok) {
         setPrompts(await res.json());
         setError(null);
@@ -45,14 +45,19 @@ export default function GenerationPage() {
         setError("Failed to load generation prompts");
         toast.error("Failed to load generation prompts");
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError("Could not connect to server");
       toast.error("Could not connect to server");
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchPrompts(); }, [fetchPrompts]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchPrompts(controller.signal);
+    return () => controller.abort();
+  }, [fetchPrompts]);
 
   async function create() {
     if (!newName.trim() || !newContent.trim()) return;
@@ -145,7 +150,7 @@ export default function GenerationPage() {
       {error && prompts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
           <p className="text-destructive font-medium">{error}</p>
-          <Button variant="outline" onClick={fetchPrompts}>Retry</Button>
+          <Button variant="outline" onClick={() => fetchPrompts()}>Retry</Button>
         </div>
       ) : prompts.length === 0 ? (
         <EmptyState icon={Sparkles} title="No generation prompts" description="Create your first system prompt for fragment generation." />
@@ -154,7 +159,7 @@ export default function GenerationPage() {
           {error && (
             <div className="flex items-center justify-between px-4 py-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
               <span>{error} — showing cached data</span>
-              <Button variant="outline" size="sm" onClick={fetchPrompts}>Retry</Button>
+              <Button variant="outline" size="sm" onClick={() => fetchPrompts()}>Retry</Button>
             </div>
           )}
           {prompts.map((p) => (

@@ -119,7 +119,7 @@ export default function TemplateDetailPage() {
     });
 
     if (!res.ok) {
-      fetchTemplate();
+      fetchTemplate().catch(() => toast.error("Failed to revert reorder"));
       toast.error("Error reordering chapters");
     }
   }

@@ -54,7 +54,8 @@ export async function GET(
     })
     .from(sources)
     .where(eq(sources.projectId, projectId))
-    .orderBy(asc(sources.createdAt));
+    .orderBy(asc(sources.createdAt))
+    .limit(200);
 
   return NextResponse.json(rows);
 }

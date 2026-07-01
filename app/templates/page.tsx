@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { ResourceCard } from "@/components/patterns/resource-card";
 import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
 import { Plus, BookOpen } from "lucide-react";
+import { toast } from "sonner";
 
 interface Template {
   id: string;
@@ -23,14 +24,20 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const fetchTemplates = useCallback(async () => {
-    const res = await fetch("/api/books");
-    if (res.ok) setTemplates(await res.json());
+  const fetchTemplates = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/books", { signal });
+      if (res.ok) setTemplates(await res.json());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchTemplates();
+    const controller = new AbortController();
+    fetchTemplates(controller.signal);
+    return () => controller.abort();
   }, [fetchTemplates]);
 
   async function deleteTemplate(id: string) {
@@ -44,7 +51,7 @@ export default function TemplatesPage() {
     const res = await fetch(`/api/books/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
-      alert(err.error ?? "Failed to delete");
+      toast.error(err.error ?? "Failed to delete");
       return;
     }
     fetchTemplates();
