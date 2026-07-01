@@ -88,7 +88,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   if (result && result.count > 0) {
     return NextResponse.json(
-      { error: `Cannot delete: template is used by ${result.count} project(s). Delete those projects first.` },
+      { error: "Template is in use and cannot be deleted. Remove associated projects first." },
       { status: 409 },
     );
   }

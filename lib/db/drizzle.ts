@@ -29,4 +29,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const db = drizzle(client, { schema });
+// NOTE: `client` is only imported by rate-limit.ts, which has migrated to a
+// dedicated lock pool (lib/db/lock-pool.ts). The raw pool export remains for
+// backwards compatibility but new consumers should use the lock pool for
+// advisory lock operations or the `db` barrel for normal queries.
 export { client };

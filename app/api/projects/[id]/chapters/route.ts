@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts, chapterPlaceholders } from "@/lib/db/schema";
+import { projects, chapters } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
+import { copyTemplatePromptsToChapter } from "@/lib/db/queries/copy-template-prompts";
 
 export async function POST(
   req: NextRequest,
@@ -75,50 +76,9 @@ export async function POST(
       })
       .returning();
 
-    // Copy prompts from template chapter if selected
+    // Copy prompts and placeholders from template chapter if selected
     if (templateChapterId) {
-      const templatePrompts = await tx
-        .select()
-        .from(prompts)
-        .where(eq(prompts.chapterId, templateChapterId))
-        .orderBy(asc(prompts.position));
-
-      if (templatePrompts.length > 0) {
-        await tx.insert(projectPrompts).values(
-          templatePrompts.map((p) => ({
-            projectId,
-            chapterId: ch.id,
-            position: p.position,
-            isAssembly: p.isAssembly,
-            isCritique: p.isCritique,
-            isCorrector: p.isCorrector,
-            title: p.title,
-            content: p.content,
-            userPrompt: p.userPrompt,
-            function: p.function,
-            notes: p.notes,
-            sourceContext: p.sourceContext,
-          })),
-        );
-
-        // Copy template chapter placeholders to the new chapter
-        const templatePlaceholders = await tx
-          .select()
-          .from(chapterPlaceholders)
-          .where(eq(chapterPlaceholders.chapterId, templateChapterId));
-
-        if (templatePlaceholders.length > 0) {
-          await tx.insert(chapterPlaceholders).values(
-            templatePlaceholders.map((ph) => ({
-              chapterId: ch.id,
-              name: ph.name,
-              function: ph.function,
-              notes: ph.notes,
-              definition: null, // fresh project, no pre-filled definitions
-            })),
-          );
-        }
-      }
+      await copyTemplatePromptsToChapter(tx, templateChapterId, projectId, ch.id);
     }
 
     return ch;

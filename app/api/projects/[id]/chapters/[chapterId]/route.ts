@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -83,11 +83,11 @@ export async function GET(
         content: fragments.content,
         modelUsed: fragments.modelUsed,
         tokensUsed: fragments.tokensUsed,
-        isAssembly: projectPrompts.isAssembly,
+        isAssembly: prompts.isAssembly,
         createdAt: fragments.createdAt,
       })
       .from(fragments)
-      .leftJoin(projectPrompts, eq(fragments.projectPromptId, projectPrompts.id))
+      .leftJoin(prompts, eq(fragments.projectPromptId, prompts.id))
       .where(inArray(fragments.chapterGenerationId, genIds))
       .orderBy(asc(fragments.position));
   }
@@ -201,7 +201,7 @@ export async function DELETE(
   // leave orphaned generations or prompts without a chapter.
   await db.transaction(async (tx) => {
     await tx.delete(chapterGenerations).where(eq(chapterGenerations.chapterId, chapterId));
-    await tx.delete(projectPrompts).where(eq(projectPrompts.chapterId, chapterId));
+    await tx.delete(prompts).where(and(eq(prompts.chapterId, chapterId), isNotNull(prompts.projectId)));
     await tx.delete(chapters).where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)));
   });
   return NextResponse.json({ ok: true });

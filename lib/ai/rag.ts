@@ -17,6 +17,13 @@ export interface RetrievedChunk {
   rerankScore: number | null;
 }
 
+/**
+ * Retrieve relevant source chunks via vector search + Cohere rerank.
+ *
+ * IMPORTANT: Callers MUST verify the user owns `projectId` before calling this
+ * function. This function trusts its caller for authorization — it does not
+ * independently verify project ownership.
+ */
 export async function retrieveContext(
   query: string,
   projectId: string,

@@ -34,15 +34,14 @@ projects ──< chapter_generations ──< fragments
 
 - **book_templates**: A book structure — name + description. Admin creates via UI.
 - **chapters**: Belongs to a template or project, ordered by `position`. Has CHECK constraint: `book_template_id IS NOT NULL OR project_id IS NOT NULL`.
-- **prompts**: Template-level prompts. Each has `isAssembly`, `isCritique`, `isCorrector` boolean flags (mutually exclusive in practice), `content` with `{tema}` placeholder, `userPrompt` (optional user-visible prompt text), `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
-- **projectPrompts**: Project-scoped copies of template prompts. Created when a template is applied to a project.
+- **prompts**: Unified chapter prompts table. `projectId=NULL` = template prompt, `projectId` set = project prompt. Each has `isAssembly`, `isCritique`, `isCorrector` boolean flags (mutually exclusive in practice), `content` with `{tema}` placeholder, `userPrompt` (optional user-visible prompt text), `styleRules`, `knowledgeAreas`, `suggestedLength`, `sourceContext` (original source material for domain context — never copied verbatim), `function` (semantic label for placeholder routing), `notes` (guidance for placeholder fill LLM). Stored in DB — not code. Admin edits via `/admin/books/`.
+- **projectPrompts**: REMOVED — merged into `prompts` table. `projectId` column distinguishes project prompts from template prompts.
 - **projects**: A user's book instance — has `topic` (replaces `{tema}` placeholder), `lastAccessedAt` (updated on GET, drives dashboard ordering), optional `generationSystemPromptId` FK, and links to a `book_template`.
 - **book_templates**: Has `status` field: `"ready"` (available), `"generating"` (AI is creating template structure), `"failed"` (auto-generation failed). Templates with non-ready status are disabled in the create-project dialog.
 - **chapterGenerations**: Per-chapter generation execution. Status: pending → generating → assembling → completed/failed. Created per-chapter, not per-book. Distinguished by `generationMetadata.type`: `null` (original assembly), `"critique"` (AI critique output), `"correction"` (corrected chapter text).
-- **fragments**: Individual AI responses for each prompt in a chapter generation.
+- **fragments**: Individual AI responses for each prompt in a chapter generation. Has `projectPromptId` FK → `prompts.id`.
 - **chapterPlaceholders**: Dynamic `{name}` tokens extracted from prompts, with optional AI-filled definitions. Unique per (chapterId, name).
-- **critiquePrompts**: Template-level critique prompts. Stored in DB, admin-editable. Define what aspects to analyze in assembled chapters.
-- **correctorPrompts**: Template-level corrector prompts. Define how to apply critique feedback to generate corrected versions.
+- **prompt_library**: Unified admin-editable prompt library. `category` column distinguishes: `"assembly"`, `"critique"`, `"corrector"`. Replaces former `assemblyPrompts`, `critiquePrompts`, and `correctorPrompts` tables. CRUD via `/api/prompt-library` with `?category=` filter.
 - **generationSystemPrompts**: Configurable system prompts for content generation. FK on `projects.generationSystemPromptId`.
 
 ### Book Generation Pipeline
@@ -107,7 +106,7 @@ Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serial
 ### Security Conventions [hard]
 
 - **Auth gates by route type**:
-  - Global prompt CRUD (assembly/meta/critique/corrector prompts) → `requireAdmin()` from `lib/auth/admin.ts`. Returns `{ authorized: true, user }` or `{ authorized: false, response }`.
+  - Global prompt CRUD (prompt_library, meta-prompts, generation-prompts) → `requireAdmin()` from `lib/auth/admin.ts`. Returns `{ authorized: true, user }` or `{ authorized: false, response }`.
   - Project-scoped routes → `createClient()` + `getUser()`, then verify `project.userId === user.id`.
   - Admin-only + project-scoped in same route (e.g. version restore) → resolve resource type first, gate accordingly.
 - **CSRF**: All mutation routes (POST, PUT, PATCH, DELETE) must call `csrfCheck(req)` as the FIRST check, before auth. Return its error response if non-null.
@@ -135,7 +134,7 @@ Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serial
 ### Data Integrity Conventions [hard]
 
 - **Multi-table inserts**: Use `db.transaction(async (tx) => { ... })`. Don't insert source then chunks separately — chunk failure leaves orphaned `processed=true` source.
-- **Template prompt copy**: When copying `prompts` → `projectPrompts`, preserve ALL fields: `isAssembly`, `isCritique`, `isCorrector`, `title`, `content`, `userPrompt`, `function`, `notes`, `sourceContext`. Both `app/api/projects/route.ts` and `app/api/projects/[id]/chapters/route.ts` must stay in sync.
+- **Template prompt copy**: Use `copyTemplatePromptsToChapter()` from `lib/db/queries/copy-template-prompts.ts`. This shared function handles prompt + placeholder copying so API routes don't need to stay in sync. For batch placeholder copies across multiple chapters, use `copyTemplatePlaceholdersBatch()`.
 - **Template rebuild**: When regenerating template prompts on retry, delete existing prompts + insert new ones + upsert placeholders atomically in one `db.transaction`. `onConflictDoNothing` keeps stale prompts from prior partial attempts.
 - **Placeholder hash**: Must include both `content` and `userPrompt` for stale detection. Select `{ content, userPrompt }`, hash `[p.content, p.userPrompt].filter(Boolean).join("")`.
 
@@ -145,7 +144,7 @@ Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serial
 - **Assembly prompt**: `isAssembly = true`. One per chapter. Runs after all content fragments complete.
 - **Critique prompt**: `isCritique = true`. Used by critique pipeline. NOT content.
 - **Corrector prompt**: `isCorrector = true`. Used by correction pipeline. NOT content.
-- **`promptVersions.promptId`**: No FK constraint. References either `prompts.id` (template) or `projectPrompts.id` (project). Always resolve by checking both tables. Template → require admin. Project → verify project owner.
+- **`promptVersions.promptId`**: References `prompts.id` (both template and project prompts). Template prompts (`projectId=NULL`) → require admin. Project prompts (`projectId` set) → verify project owner.
 
 ### State Machine Conventions [hard]
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts, chapterGenerations, fragments } from "@/lib/db/schema";
+import { projects, prompts, chapterGenerations, fragments } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, lt, sql } from "drizzle-orm";
+import { eq, and, lt, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { STALE_TIMEOUT_MS, checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
 import { generatePromptContent } from "@/lib/generate";
@@ -40,8 +40,8 @@ export async function POST(
   // Load the prompt, verifying it belongs to this project
   const [prompt] = await db
     .select()
-    .from(projectPrompts)
-    .where(and(eq(projectPrompts.projectId, projectId), eq(projectPrompts.id, promptId)))
+    .from(prompts)
+    .where(and(eq(prompts.projectId, projectId), eq(prompts.id, promptId)))
     .limit(1);
   if (!prompt) {
     return NextResponse.json({ error: "prompt not found" }, { status: 404 });
@@ -77,6 +77,8 @@ export async function POST(
     }
 
     // Clean up stale generation rows for this prompt before creating a new one.
+    // Checks both "pending" (Trigger.dev never picked it up) and "generating"
+    // (crashed mid-execution). Stale pending rows block the rate limiter forever.
     const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
     const [staleRunning] = await db
       .select({ id: chapterGenerations.id })
@@ -85,7 +87,7 @@ export async function POST(
         and(
           eq(chapterGenerations.projectId, projectId),
           eq(chapterGenerations.chapterId, prompt.chapterId),
-          eq(chapterGenerations.status, "generating"),
+          inArray(chapterGenerations.status, ["pending", "generating"]),
           sql`${chapterGenerations.generationMetadata}->>'type' = 'prompt'`,
           sql`${chapterGenerations.generationMetadata}->>'promptId' = ${promptId}`,
           lt(chapterGenerations.createdAt, staleCutoff),

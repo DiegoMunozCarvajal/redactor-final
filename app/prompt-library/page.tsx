@@ -1,31 +1,43 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/patterns/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ResourceCard } from "@/components/patterns/resource-card";
 import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
-import { Loader2, Plus, Puzzle } from "lucide-react";
+import { Loader2, Plus, Puzzle, MessageSquareQuote, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
-interface AssemblyPrompt {
+interface PromptLibraryItem {
   id: string;
+  category: string;
   name: string;
   description: string | null;
   content: string;
   userPrompt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
-export default function AssembliesPage() {
+const TAB_OPTIONS = [
+  { value: "assembly", label: "Assembly", icon: Puzzle, description: "Assembly prompts merge content fragments into a unified chapter." },
+  { value: "critique", label: "Critique", icon: MessageSquareQuote, description: "Critique prompts analyze assembled chapter content and provide structured feedback." },
+  { value: "corrector", label: "Corrector", icon: Wrench, description: "Corrector prompts apply critique findings to fix continuity and language issues in chapters." },
+] as const;
+
+function PromptLibraryContent() {
   const router = useRouter();
-  const [assemblies, setAssemblies] = useState<AssemblyPrompt[]>([]);
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "assembly";
+
+  const [items, setItems] = useState<PromptLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -34,21 +46,31 @@ export default function AssembliesPage() {
   const [newContent, setNewContent] = useState("");
   const [newUserPrompt, setNewUserPrompt] = useState("");
 
-  const fetchAssemblies = useCallback(async () => {
-    const res = await fetch("/api/assembly-prompts");
-    if (res.ok) setAssemblies(await res.json());
-    setLoading(false);
-  }, []);
+  const currentTab = TAB_OPTIONS.find((t) => t.value === activeTab) ?? TAB_OPTIONS[0];
 
-  useEffect(() => { fetchAssemblies(); }, [fetchAssemblies]);
+  const fetchItems = useCallback(async () => {
+    const res = await fetch(`/api/prompt-library?category=${activeTab}`);
+    if (res.ok) setItems(await res.json());
+    setLoading(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchItems();
+  }, [fetchItems]);
+
+  function onTabChange(value: string) {
+    setLoading(true);
+    router.push(`/prompt-library?tab=${value}`);
+  }
 
   async function create() {
     if (!newName.trim() || !newContent.trim()) return;
     setCreating(true);
-    const res = await fetch("/api/assembly-prompts", {
+    const res = await fetch("/api/prompt-library", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null, content: newContent, userPrompt: newUserPrompt.trim() || null }),
+      body: JSON.stringify({ category: activeTab, name: newName.trim(), description: newDescription.trim() || null, content: newContent, userPrompt: newUserPrompt.trim() || null }),
     });
     if (res.ok) {
       setCreateOpen(false);
@@ -57,8 +79,8 @@ export default function AssembliesPage() {
       setNewContent("");
       setNewUserPrompt("");
       router.refresh();
-      fetchAssemblies();
-      toast.success("Assembly prompt created");
+      fetchItems();
+      toast.success(`${currentTab.label} prompt created`);
     } else {
       const err = await res.json().catch(() => ({}));
       toast.error(err.error ?? "Error creating");
@@ -66,16 +88,16 @@ export default function AssembliesPage() {
     setCreating(false);
   }
 
-  async function deleteAssembly(id: string) {
-    if (!confirm("Delete this assembly prompt?")) return;
-    const res = await fetch(`/api/assembly-prompts/${id}`, { method: "DELETE" });
+  async function deleteItem(id: string) {
+    if (!confirm(`Delete this ${currentTab.label.toLowerCase()} prompt?`)) return;
+    const res = await fetch(`/api/prompt-library/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Failed to delete" }));
       toast.error(err.error ?? "Failed to delete");
       return;
     }
-    fetchAssemblies();
-    toast.success("Assembly prompt deleted");
+    fetchItems();
+    toast.success(`${currentTab.label} prompt deleted`);
   }
 
   if (loading) {
@@ -89,28 +111,28 @@ export default function AssembliesPage() {
   return (
     <div className="py-6">
       <PageHeader
-        breadcrumbs={[{ label: "Assembly Prompts" }]}
-        title="Assembly Prompts"
+        breadcrumbs={[{ label: "Prompt Library" }]}
+        title="Prompt Library"
       >
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4" /> New Assembly Prompt</Button>
+            <Button><Plus className="h-4 w-4" /> New {currentTab.label} Prompt</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create Assembly Prompt</DialogTitle>
+              <DialogTitle>Create {currentTab.label} Prompt</DialogTitle>
               <DialogDescription>
-                Assembly prompts merge content fragments into a unified chapter.
+                {currentTab.description}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Default Chapter Assembly" />
+                <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={`e.g. Default Chapter ${currentTab.label}`} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="desc">Description (optional)</Label>
-                <Input id="desc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="When to use this assembly style" />
+                <Input id="desc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="When to use this prompt" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="content">System Prompt</Label>
@@ -130,27 +152,50 @@ export default function AssembliesPage() {
         </Dialog>
       </PageHeader>
 
-      {assemblies.length === 0 ? (
+      <Tabs value={activeTab} onValueChange={onTabChange} className="mt-6">
+        <TabsList>
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              <tab.icon className="h-4 w-4 mr-2" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      {items.length === 0 ? (
         <EmptyState
-          icon={Puzzle}
-          title="No assembly prompts yet"
-          description="Create your first assembly prompt to merge content fragments into unified chapters."
+          icon={currentTab.icon}
+          title={`No ${currentTab.label.toLowerCase()} prompts yet`}
+          description={`Create your first ${currentTab.label.toLowerCase()} prompt to get started.`}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {assemblies.map((ap) => (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-6">
+          {items.map((item) => (
             <ResourceCard
-              key={ap.id}
-              href={`/assemblies/${ap.id}`}
-              title={ap.name}
-              description={ap.description}
-              onDelete={() => deleteAssembly(ap.id)}
+              key={item.id}
+              href={`/prompt-library/${item.id}`}
+              title={item.name}
+              description={item.description}
+              onDelete={() => deleteItem(item.id)}
             >
-              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{ap.content.slice(0, 120)}</p>
+              {item.userPrompt ? (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">User: {item.userPrompt.slice(0, 120)}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{item.content.slice(0, 120)}</p>
+              )}
             </ResourceCard>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+export default function PromptLibraryPage() {
+  return (
+    <Suspense>
+      <PromptLibraryContent />
+    </Suspense>
   );
 }

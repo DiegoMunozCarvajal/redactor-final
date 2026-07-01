@@ -11,10 +11,16 @@ export default defineConfig({
     environment: "node",
     include: ["**/*.test.ts"],
     pool: "forks",
+    setupFiles: ["./vitest.setup.ts"],
     poolOptions: {
       forks: {
         execArgv: ["--no-deprecation"],
       },
+    },
+    env: {
+      // Test defaults. Override with TEST_DATABASE_URL for DB-dependent tests.
+      NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
+      NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
     },
   },
 });

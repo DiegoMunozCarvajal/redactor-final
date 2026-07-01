@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
@@ -42,13 +42,13 @@ export async function GET(
 
   const promptList = await db
     .select()
-    .from(projectPrompts)
+    .from(prompts)
     .where(
       chapterId
-        ? eq(projectPrompts.chapterId, chapterId)
-        : eq(projectPrompts.projectId, projectId),
+        ? and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, projectId))
+        : eq(prompts.projectId, projectId),
     )
-    .orderBy(asc(projectPrompts.position));
+    .orderBy(asc(prompts.position));
 
   return NextResponse.json(promptList);
 }
@@ -111,13 +111,13 @@ export async function POST(
   // Get max position for this chapter
   const existing = await db
     .select()
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId))
-    .orderBy(asc(projectPrompts.position));
+    .from(prompts)
+    .where(eq(prompts.chapterId, chapterId))
+    .orderBy(asc(prompts.position));
   const maxPos = existing.reduce((max, p) => Math.max(max, p.position), -1);
 
   const [prompt] = await db
-    .insert(projectPrompts)
+    .insert(prompts)
     .values({
       projectId,
       chapterId,
@@ -133,9 +133,9 @@ export async function POST(
 
   // Sync placeholders
   const allPrompts = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+    .from(prompts)
+    .where(eq(prompts.chapterId, chapterId));
   await syncChapterPlaceholders(
     chapterId,
     allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),

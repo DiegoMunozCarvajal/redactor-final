@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { prompts, projectPrompts, projects, promptVersions } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { prompts, projects, promptVersions } from "@/lib/db/schema";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -23,13 +23,12 @@ export async function POST(
 
   if (!version) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // promptVersions.promptId can reference either prompts.id (template) or
-  // projectPrompts.id (project-scoped). Try template first, then project.
-  // Template prompts require admin; project prompts require project ownership.
+  // promptVersions.promptId references prompts.id (template or project-scoped).
+  // Template prompts (projectId IS NULL) require admin; project prompts (projectId IS NOT NULL) require project ownership.
   const [templatePrompt] = await db
     .select()
     .from(prompts)
-    .where(eq(prompts.id, version.promptId))
+    .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
     .limit(1);
 
   if (templatePrompt) {
@@ -47,7 +46,7 @@ export async function POST(
     const [restored] = await db
       .update(prompts)
       .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
-      .where(eq(prompts.id, version.promptId))
+      .where(and(eq(prompts.id, version.promptId), isNull(prompts.projectId)))
       .returning();
 
     if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });
@@ -57,14 +56,14 @@ export async function POST(
   // Try project-scoped prompt — verify project ownership
   const [projectPrompt] = await db
     .select({
-      id: projectPrompts.id,
-      title: projectPrompts.title,
-      content: projectPrompts.content,
-      userPrompt: projectPrompts.userPrompt,
-      projectId: projectPrompts.projectId,
+      id: prompts.id,
+      title: prompts.title,
+      content: prompts.content,
+      userPrompt: prompts.userPrompt,
+      projectId: prompts.projectId,
     })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.id, version.promptId))
+    .from(prompts)
+    .where(and(eq(prompts.id, version.promptId), isNotNull(prompts.projectId)))
     .limit(1);
 
   if (projectPrompt) {
@@ -75,7 +74,7 @@ export async function POST(
     const [project] = await db
       .select({ userId: projects.userId })
       .from(projects)
-      .where(eq(projects.id, projectPrompt.projectId))
+      .where(eq(projects.id, projectPrompt.projectId!))
       .limit(1);
     if (!project || project.userId !== user.id) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -89,9 +88,9 @@ export async function POST(
     });
 
     const [restored] = await db
-      .update(projectPrompts)
+      .update(prompts)
       .set({ title: version.title, content: version.content, userPrompt: version.userPrompt })
-      .where(eq(projectPrompts.id, version.promptId))
+      .where(and(eq(prompts.id, version.promptId), isNotNull(prompts.projectId)))
       .returning();
 
     if (!restored) return NextResponse.json({ error: "prompt not found" }, { status: 404 });

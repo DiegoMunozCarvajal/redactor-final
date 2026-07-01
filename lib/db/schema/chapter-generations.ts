@@ -48,8 +48,17 @@ export const chapterGenerations = pgTable(
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Generated column: generation_metadata->>'type'. Populated by DB, not application code.
+    // Allows indexing the JSONB type field for efficient filtering.
+    genType: text("gen_type"),
   },
-  (table) => [index("idx_chapter_generations_project").on(table.projectId, table.chapterId)],
+  (table) => [
+    index("idx_chapter_generations_project").on(table.projectId, table.chapterId),
+    // Rate-limit queries filter on (projectId, status, createdAt)
+    index("idx_chapter_generations_rate_limit").on(table.projectId, table.status, table.createdAt),
+    // Content lookup for critique/correction: latest completed per chapter
+    index("idx_chapter_generations_content_lookup").on(table.projectId, table.chapterId, table.status, table.completedAt),
+  ],
 );
 
 export type ChapterGeneration = typeof chapterGenerations.$inferSelect;

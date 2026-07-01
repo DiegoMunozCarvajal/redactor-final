@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   projects,
-  projectPrompts,
+  prompts,
   chapterPlaceholders,
   chapters,
 } from "@/lib/db/schema";
@@ -54,10 +54,10 @@ export async function POST(
   const effort = body.effort as ReasoningEffort | undefined;
 
   const promptRows = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt, sourceContext: projectPrompts.sourceContext })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId))
-    .orderBy(asc(projectPrompts.position));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt, sourceContext: prompts.sourceContext })
+    .from(prompts)
+    .where(and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, projectId)))
+    .orderBy(asc(prompts.position));
   const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
   const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 

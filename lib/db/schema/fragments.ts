@@ -1,6 +1,6 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { chapterGenerations } from "./chapter-generations";
-import { projectPrompts } from "./project-prompts";
+import { prompts } from "./prompts";
 
 export const fragments = pgTable(
   "fragments",
@@ -11,7 +11,7 @@ export const fragments = pgTable(
       .references(() => chapterGenerations.id, { onDelete: "cascade" }),
     projectPromptId: uuid("project_prompt_id")
       .notNull()
-      .references(() => projectPrompts.id, { onDelete: "cascade" }),
+      .references(() => prompts.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     content: text("content"),
     metadata: jsonb("metadata"),

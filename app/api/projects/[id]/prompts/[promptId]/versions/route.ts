@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts, promptVersions } from "@/lib/db/schema";
+import { projects, prompts, promptVersions } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -26,9 +26,9 @@ export async function GET(
   // Verify prompt belongs to this project before listing versions.
   // promptVersions.promptId has no FK — an arbitrary UUID could leak metadata.
   const [prompt] = await db
-    .select({ id: projectPrompts.id })
-    .from(projectPrompts)
-    .where(and(eq(projectPrompts.id, promptId), eq(projectPrompts.projectId, projectId)))
+    .select({ id: prompts.id })
+    .from(prompts)
+    .where(and(eq(prompts.id, promptId), eq(prompts.projectId, projectId)))
     .limit(1);
   if (!prompt)
     return NextResponse.json({ error: "prompt not found" }, { status: 404 });
@@ -41,7 +41,8 @@ export async function GET(
     })
     .from(promptVersions)
     .where(eq(promptVersions.promptId, promptId))
-    .orderBy(desc(promptVersions.createdAt));
+    .orderBy(desc(promptVersions.createdAt))
+    .limit(50);
 
   return NextResponse.json(versions);
 }

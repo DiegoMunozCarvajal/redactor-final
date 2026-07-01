@@ -1,5 +1,16 @@
 import { NextRequest } from "next/server";
 
+// Warn at startup if CSRF origin check is misconfigured in production.
+// Without NEXT_PUBLIC_SITE_URL, the fallback hostname check may reject
+// legitimate requests if Host/Origin headers don't match exactly.
+if (process.env.NODE_ENV === "production" && !process.env.NEXT_PUBLIC_SITE_URL) {
+  console.warn(
+    "[csrf] NEXT_PUBLIC_SITE_URL is not set. CSRF origin validation will fall back " +
+    "to hostname matching, which may reject requests with port mismatches or " +
+    "proxied connections. Set NEXT_PUBLIC_SITE_URL to your production URL.",
+  );
+}
+
 const ALLOWED_ORIGINS = [
   process.env.NEXT_PUBLIC_SITE_URL,
   `https://${process.env.NEXT_PUBLIC_SITE_URL?.replace(/^https?:\/\//, "")}`,

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, projectPrompts, chapterPlaceholders, assemblyPrompts, bookTemplates } from "@/lib/db/schema";
+import { projects, chapters, prompts, chapterPlaceholders, promptLibrary, bookTemplates } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { extractPlaceholders } from "@/lib/placeholders";
+import { copyTemplatePromptsToChapter, copyTemplatePlaceholdersBatch } from "@/lib/db/queries/copy-template-prompts";
 
 export async function GET() {
   const supabase = await createClient();
@@ -24,7 +25,10 @@ export async function GET() {
     })
     .from(projects)
     .leftJoin(chapters, eq(chapters.projectId, projects.id))
-    .leftJoin(chapterGenerations, eq(chapterGenerations.chapterId, chapters.id))
+    .leftJoin(chapterGenerations, and(
+      eq(chapterGenerations.chapterId, chapters.id),
+      sql`${chapterGenerations.generationMetadata}->>'type' IS DISTINCT FROM 'title'`,
+    ))
     .where(eq(projects.userId, user.id))
     .groupBy(projects.id)
     .orderBy(sql`${projects.lastAccessedAt} DESC NULLS LAST`, desc(projects.createdAt));
@@ -116,72 +120,19 @@ export async function POST(req: NextRequest) {
 
           chapterIdMap.set(chapter.id, projectChapter.id);
 
-          const templatePrompts = await tx
-            .select()
-            .from(prompts)
-            .where(eq(prompts.chapterId, chapter.id))
-            .orderBy(asc(prompts.position));
-
-          if (templatePrompts.length > 0) {
-            await tx.insert(projectPrompts).values(
-              templatePrompts.map((prompt) => ({
-                projectId: p.id,
-                chapterId: projectChapter.id,
-                position: prompt.position,
-                isAssembly: prompt.isAssembly,
-                isCritique: prompt.isCritique,
-                isCorrector: prompt.isCorrector,
-                title: prompt.title,
-                content: prompt.content,
-                userPrompt: prompt.userPrompt,
-                function: prompt.function,
-                notes: prompt.notes,
-                sourceContext: prompt.sourceContext,
-              })),
-            );
-          }
+          await copyTemplatePromptsToChapter(tx, chapter.id, p.id, projectChapter.id);
         }
 
-        // Copy template chapter placeholders to project chapters (names only, no definitions).
-        // Lowercase names to canonical form and deduplicate by (chapterId, lowerName).
-        const allTemplateChapterIds = templateChapters.map((tc) => tc.id);
-        if (allTemplateChapterIds.length > 0) {
-          const templatePlaceholders = await tx
-            .select()
-            .from(chapterPlaceholders)
-            .where(inArray(chapterPlaceholders.chapterId, allTemplateChapterIds));
-
-          // Group by (projectChapterId, lowerName) — first function/notes wins
-          const grouped = new Map<string, { chapterId: string; name: string; function: string | null; notes: string | null }>();
-          for (const ph of templatePlaceholders) {
-            const projectChapterId = chapterIdMap.get(ph.chapterId);
-            if (!projectChapterId) continue;
-            const key = `${projectChapterId}:${ph.name.toLowerCase()}`;
-            if (!grouped.has(key)) {
-              grouped.set(key, {
-                chapterId: projectChapterId,
-                name: ph.name.toLowerCase(),
-                function: ph.function,
-                notes: ph.notes,
-              });
-            }
-          }
-
-          if (grouped.size > 0) {
-            await tx
-              .insert(chapterPlaceholders)
-              .values([...grouped.values()])
-              .onConflictDoNothing();
-          }
-        }
+        // Copy template chapter placeholders to project chapters
+        await copyTemplatePlaceholdersBatch(tx, chapterIdMap);
 
         // Sync placeholders from project prompts — catch any {tokens} in prompt
         // content that weren't already in the template's chapterPlaceholders table
         for (const projectChapterId of [...chapterIdMap.values()]) {
           const ppContents = await tx
-            .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-            .from(projectPrompts)
-            .where(eq(projectPrompts.chapterId, projectChapterId));
+            .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+            .from(prompts)
+            .where(and(eq(prompts.chapterId, projectChapterId), eq(prompts.projectId, p.id)));
           const contents = ppContents.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]);
           const detected = extractPlaceholders(contents);
           if (detected.length > 0) {
@@ -237,9 +188,9 @@ export async function POST(req: NextRequest) {
         // Sync placeholders from global assembly prompt to all new project chapters
         if (assemblyPromptId) {
           const [globalAp] = await tx
-            .select({ content: assemblyPrompts.content, userPrompt: assemblyPrompts.userPrompt })
-            .from(assemblyPrompts)
-            .where(eq(assemblyPrompts.id, assemblyPromptId))
+            .select({ content: promptLibrary.content, userPrompt: promptLibrary.userPrompt })
+            .from(promptLibrary)
+            .where(and(eq(promptLibrary.id, assemblyPromptId), eq(promptLibrary.category, "assembly")))
             .limit(1);
           if (globalAp) {
             const apContents = [globalAp.content, globalAp.userPrompt].filter(

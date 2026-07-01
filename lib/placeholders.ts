@@ -143,7 +143,10 @@ export async function syncChapterPlaceholders(
 
 export async function getChapterPlaceholders(chapterId: string, projectTopic?: string | null): Promise<Record<string, string>> {
   const rows = await db
-    .select()
+    .select({
+      name: chapterPlaceholders.name,
+      definition: chapterPlaceholders.definition,
+    })
     .from(chapterPlaceholders)
     .where(eq(chapterPlaceholders.chapterId, chapterId))
     .orderBy(asc(chapterPlaceholders.name));

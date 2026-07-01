@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { title, content, userPrompt, position, isAssembly, isCritique, isCorrector } = body;
 
   if (!title || !content) {

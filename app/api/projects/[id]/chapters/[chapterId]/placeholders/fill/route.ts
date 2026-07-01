@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   projects,
-  projectPrompts,
+  prompts,
   chapterPlaceholders,
   chapters,
+  chapterGenerations,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, lt, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { checkProjectRateLimit, withProjectLock } from "@/lib/api/rate-limit";
+import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
@@ -54,17 +55,39 @@ export async function POST(
   const model = (body.model as string) || undefined;
   const effort = body.effort as ReasoningEffort | undefined;
 
-  // Rate limit: prevent fills from racing with in-flight generations.
-  // Note: the lock serializes the rate check but NOT the SSE fill work (which
-  // runs asynchronously after the response starts). Full serialization would
-  // require a different mechanism — the project ownership check is the primary
-  // guard against credit exhaustion by third parties.
+  // Rate limit: insert a generation row inside the lock so
+  // checkProjectRateLimit counts fill operations alongside other generations.
+  // Update to completed/failed after the SSE stream finishes.
   const lockResult = await withProjectLock(projectId, async () => {
+    // Clean up stale fill generations before rate check (same pattern as critique/correct routes)
+    const staleThreshold = new Date(Date.now() - STALE_TIMEOUT_MS);
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "stale — cleaned up before new fill run" })
+      .where(
+        and(
+          eq(chapterGenerations.projectId, projectId),
+          eq(chapterGenerations.chapterId, chapterId),
+          inArray(chapterGenerations.status, ["pending", "generating"]),
+          sql`${chapterGenerations.generationMetadata}->>'type' = 'fill'`,
+          lt(chapterGenerations.createdAt, staleThreshold),
+        ),
+      );
+
     const rateCheck = await checkProjectRateLimit(projectId);
     if (!rateCheck.allowed) {
       return { rateLimited: true as const, retryAfter: rateCheck.retryAfter };
     }
-    return { rateLimited: false as const };
+    const [gen] = await db
+      .insert(chapterGenerations)
+      .values({
+        projectId,
+        chapterId,
+        status: "generating",
+        generationMetadata: { type: "fill" },
+      })
+      .returning();
+    return { rateLimited: false as const, gen };
   });
 
   if (!lockResult.locked) {
@@ -81,6 +104,8 @@ export async function POST(
     );
   }
 
+  const fillGen = lockResult.result.gen;
+
   // Load placeholders with metadata
   const placeholderRows = await db
     .select()
@@ -94,10 +119,10 @@ export async function POST(
 
   // Load prompt contents (content + userPrompt) and source contexts for context
   const promptRows = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt, sourceContext: projectPrompts.sourceContext })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId))
-    .orderBy(asc(projectPrompts.position));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt, sourceContext: prompts.sourceContext })
+    .from(prompts)
+    .where(and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, projectId)))
+    .orderBy(asc(prompts.position));
 
   const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
   const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
@@ -154,7 +179,17 @@ export async function POST(
               );
           }
         }
+        // Mark fill generation as completed
+        await db
+          .update(chapterGenerations)
+          .set({ status: "completed", completedAt: new Date() })
+          .where(eq(chapterGenerations.id, fillGen.id));
       } catch (err) {
+        // Mark fill generation as failed
+        await db
+          .update(chapterGenerations)
+          .set({ status: "failed", error: sanitizeError(err) })
+          .where(eq(chapterGenerations.id, fillGen.id));
         const errorEvent = { type: "error", error: sanitizeError(err) };
         controller.enqueue(
           encoder.encode(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`),

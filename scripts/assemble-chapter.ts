@@ -39,7 +39,7 @@ async function main() {
   const frags = await sql`
     SELECT f.id, f.content, pp.title as prompt_title
     FROM fragments f
-    LEFT JOIN project_prompts pp ON f.project_prompt_id = pp.id
+    LEFT JOIN prompts pp ON f.project_prompt_id = pp.id
     WHERE f.id = ANY(${sql.array(fragmentIds)}::uuid[])
     ORDER BY f.position
   `;
@@ -67,7 +67,7 @@ async function main() {
   }
 
   const [assemblyPrompt] = await sql`
-    SELECT content, user_prompt FROM assembly_prompts WHERE id = ${project.assembly_prompt_id}::uuid
+    SELECT content, user_prompt FROM prompt_library WHERE id = ${project.assembly_prompt_id}::uuid AND category = 'assembly'
   `;
 
   if (!assemblyPrompt) {

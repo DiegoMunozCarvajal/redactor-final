@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, projectPrompts, promptVersions, fragments } from "@/lib/db/schema";
+import { projects, prompts, promptVersions, fragments } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
@@ -33,11 +33,11 @@ export async function PUT(
 
   const [existing] = await db
     .select()
-    .from(projectPrompts)
+    .from(prompts)
     .where(
       and(
-        eq(projectPrompts.id, promptId),
-        eq(projectPrompts.projectId, projectId),
+        eq(prompts.id, promptId),
+        eq(prompts.projectId, projectId),
       ),
     )
     .limit(1);
@@ -63,7 +63,7 @@ export async function PUT(
   }
 
   const [updated] = await db
-    .update(projectPrompts)
+    .update(prompts)
     .set({
       ...(title !== undefined && { title }),
       ...(content !== undefined && { content }),
@@ -73,15 +73,15 @@ export async function PUT(
       ...(isCritique !== undefined && { isCritique }),
       ...(isCorrector !== undefined && { isCorrector }),
     })
-    .where(eq(projectPrompts.id, promptId))
+    .where(eq(prompts.id, promptId))
     .returning();
 
   // Sync placeholders
   if (updated) {
     const allPrompts = await db
-      .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-      .from(projectPrompts)
-      .where(eq(projectPrompts.chapterId, updated.chapterId));
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+      .from(prompts)
+      .where(eq(prompts.chapterId, updated.chapterId));
     await syncChapterPlaceholders(
       updated.chapterId,
       allPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),
@@ -119,11 +119,11 @@ export async function DELETE(
 
   const [existing] = await db
     .select()
-    .from(projectPrompts)
+    .from(prompts)
     .where(
       and(
-        eq(projectPrompts.id, promptId),
-        eq(projectPrompts.projectId, projectId),
+        eq(prompts.id, promptId),
+        eq(prompts.projectId, projectId),
       ),
     )
     .limit(1);
@@ -132,13 +132,13 @@ export async function DELETE(
   }
 
   await db.delete(fragments).where(eq(fragments.projectPromptId, promptId));
-  await db.delete(projectPrompts).where(eq(projectPrompts.id, promptId));
+  await db.delete(prompts).where(eq(prompts.id, promptId));
 
   // Sync placeholders
   const remainingPrompts = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, existing.chapterId));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+    .from(prompts)
+    .where(eq(prompts.chapterId, existing.chapterId));
   await syncChapterPlaceholders(
     existing.chapterId,
     remainingPrompts.flatMap((p) => [p.content, p.userPrompt].filter(Boolean) as string[]),

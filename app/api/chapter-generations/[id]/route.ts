@@ -102,5 +102,9 @@ export async function PATCH(
     .where(and(...whereConditions))
     .returning();
 
+  if (!updated) {
+    return NextResponse.json({ error: "conflict" }, { status: 409 });
+  }
+
   return NextResponse.json(updated);
 }

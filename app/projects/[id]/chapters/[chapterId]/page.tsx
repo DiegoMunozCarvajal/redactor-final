@@ -270,7 +270,7 @@ export default function ChapterPage() {
 
   const fetchAssemblyLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch("/api/assembly-prompts", { signal });
+      const res = await fetch("/api/prompt-library?category=assembly", { signal });
       if (signal?.aborted) return;
       if (res.ok) {
         const data = await res.json();
@@ -281,7 +281,7 @@ export default function ChapterPage() {
 
   const fetchCritiqueLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch("/api/critique-prompts", { signal });
+      const res = await fetch("/api/prompt-library?category=critique", { signal });
       if (signal?.aborted) return;
       if (res.ok) {
         const data = await res.json();
@@ -292,7 +292,7 @@ export default function ChapterPage() {
 
   const fetchCorrectorLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch("/api/corrector-prompts", { signal });
+      const res = await fetch("/api/prompt-library?category=corrector", { signal });
       if (signal?.aborted) return;
       if (res.ok) {
         const data = await res.json();
@@ -645,7 +645,7 @@ export default function ChapterPage() {
     setSelectingAssembly(true);
     try {
       // Fetch the library prompt
-      const res = await fetch(`/api/assembly-prompts/${libraryId}`);
+      const res = await fetch(`/api/prompt-library/${libraryId}`);
       if (!res.ok) {
         toast.error("Failed to load assembly prompt");
         return;
@@ -681,7 +681,7 @@ export default function ChapterPage() {
   async function handleSelectCritiquePrompt(libraryId: string) {
     setSelectingCritique(true);
     try {
-      const res = await fetch(`/api/critique-prompts/${libraryId}`);
+      const res = await fetch(`/api/prompt-library/${libraryId}`);
       if (!res.ok) {
         toast.error("Failed to load critique prompt");
         return;
@@ -716,7 +716,7 @@ export default function ChapterPage() {
   async function handleSelectCorrectorPrompt(libraryId: string) {
     setSelectingCorrector(true);
     try {
-      const res = await fetch(`/api/corrector-prompts/${libraryId}`);
+      const res = await fetch(`/api/prompt-library/${libraryId}`);
       if (!res.ok) {
         toast.error("Failed to load corrector prompt");
         return;
@@ -761,7 +761,7 @@ export default function ChapterPage() {
 
     // If no embedded assembly prompt, fetch assembly prompts for the picker
     if (!assemblyPrompt) {
-      fetch("/api/assembly-prompts")
+      fetch("/api/prompt-library?category=assembly")
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data)) setAssemblyPromptList(data);
@@ -775,7 +775,7 @@ export default function ChapterPage() {
   function openCritiqueModal() {
     // Fetch critique prompts for the picker if not loaded
     if (critiquePromptList.length === 0) {
-      fetch("/api/critique-prompts")
+      fetch("/api/prompt-library?category=critique")
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data)) setCritiquePromptList(data);

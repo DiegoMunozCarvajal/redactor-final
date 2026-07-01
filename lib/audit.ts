@@ -9,7 +9,15 @@ interface AuditEntry {
   metadata?: Record<string, unknown>;
 }
 
+// Exported for monitoring: increments on every audit write failure.
+// Operational tooling can read this to detect silent audit loss.
+export const auditMetrics = {
+  failures: 0,
+  total: 0,
+};
+
 export async function logAudit(entry: AuditEntry): Promise<void> {
+  auditMetrics.total++;
   try {
     await db.insert(auditLogs).values({
       userId: entry.userId,
@@ -19,7 +27,8 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
       metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
     });
   } catch {
+    auditMetrics.failures++;
     // Logging should never break the main flow
-    console.error("[audit] Failed to write audit log:", entry);
+    console.error("[audit] Failed to write audit log:", entry.action, entry.resourceType, entry.resourceId);
   }
 }

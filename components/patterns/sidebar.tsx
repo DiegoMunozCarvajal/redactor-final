@@ -14,8 +14,6 @@ import {
   FileText,
   Wand2,
   Puzzle,
-  MessageSquareQuote,
-  Wrench,
   Sparkles,
 } from "lucide-react";
 import { useDensity } from "@/lib/hooks/use-density";
@@ -36,9 +34,7 @@ const STATIC_ITEMS: NavItem[] = [
   { href: "/projects", label: "Projects", icon: BookOpen },
   { href: "/templates", label: "Templates", icon: Layers },
   { href: "/meta-prompts", label: "Meta-Prompts", icon: Wand2 },
-  { href: "/assemblies", label: "Assembly", icon: Puzzle },
-  { href: "/critiques", label: "Critique", icon: MessageSquareQuote },
-  { href: "/correctores", label: "Correctores", icon: Wrench },
+  { href: "/prompt-library", label: "Prompt Library", icon: Puzzle },
   { href: "/generation", label: "Generation", icon: Sparkles },
 ];
 

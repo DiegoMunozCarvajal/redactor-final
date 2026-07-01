@@ -2,17 +2,18 @@ import { task } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 import {
   chapterGenerations,
-  projectPrompts,
   fragments,
   projects,
   chapters,
-  assemblyPrompts,
+  prompts,
+  promptLibrary,
 } from "@/lib/db/schema";
 import { eq, asc, and, inArray } from "drizzle-orm";
 import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders, syncChapterPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
+import { runSettledWithConcurrency } from "@/lib/promise-pool";
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -124,14 +125,14 @@ export const generateChapter = task({
     // Load project prompts for this chapter
     const promptList = await db
       .select()
-      .from(projectPrompts)
+      .from(prompts)
       .where(
         and(
-          eq(projectPrompts.projectId, projectId),
-          eq(projectPrompts.chapterId, gen.chapterId),
+          eq(prompts.projectId, projectId),
+          eq(prompts.chapterId, gen.chapterId),
         ),
       )
-      .orderBy(asc(projectPrompts.position));
+      .orderBy(asc(prompts.position));
 
     const contentPrompts = promptList.filter(
       (p) => !p.isAssembly && !p.isCritique && !p.isCorrector,
@@ -158,8 +159,11 @@ export const generateChapter = task({
     if (effectiveAssemblyPromptId) {
       const [globalAp] = await db
         .select()
-        .from(assemblyPrompts)
-        .where(eq(assemblyPrompts.id, effectiveAssemblyPromptId))
+        .from(promptLibrary)
+        .where(and(
+          eq(promptLibrary.id, effectiveAssemblyPromptId),
+          eq(promptLibrary.category, 'assembly'),
+        ))
         .limit(1);
       if (globalAp) {
         assemblyPrompt = {
@@ -233,12 +237,12 @@ export const generateChapter = task({
             id: fragments.id,
             content: fragments.content,
             position: fragments.position,
-            promptTitle: projectPrompts.title,
+            promptTitle: prompts.title,
           })
           .from(fragments)
           .leftJoin(
-            projectPrompts,
-            eq(fragments.projectPromptId, projectPrompts.id),
+            prompts,
+            eq(fragments.projectPromptId, prompts.id),
           )
           .where(inArray(fragments.id, fragmentIds))
           .orderBy(asc(fragments.position));
@@ -256,37 +260,53 @@ export const generateChapter = task({
           });
         }
       } else {
-        // Normal mode: generate content for each content prompt
-        for (const prompt of contentPrompts) {
-          const result = await generatePromptContent({
-            prompt,
-            placeholders,
-            projectTopic: project.topic,
-            projectId,
-            ...(model ? { model } : {}),
-            ...(effort !== undefined ? { effort } : {}),
-          });
-
-          await db
-            .insert(fragments)
-            .values({
-              chapterGenerationId: generationId,
-              projectPromptId: prompt.id,
-              position: prompt.position,
-              content: result.text,
-              modelUsed: result.model,
-              tokensUsed:
-                (result.usage?.inputTokens ?? 0) +
-                (result.usage?.outputTokens ?? 0),
-              metadata: result.provider
-                ? { provider: result.provider }
-                : undefined,
+        // Generate content fragments in parallel with bounded concurrency.
+        // Each fragment is independent — no shared state beyond the DB insert.
+        const PARALLEL_FRAGMENTS = 3;
+        const results = await runSettledWithConcurrency(
+          contentPrompts,
+          PARALLEL_FRAGMENTS,
+          async (prompt) => {
+            const result = await generatePromptContent({
+              prompt,
+              placeholders,
+              projectTopic: project.topic,
+              projectId,
+              ...(model ? { model } : {}),
+              ...(effort !== undefined ? { effort } : {}),
             });
 
-          fragmentContents.push({
-            title: prompt.title,
-            content: result.text,
-          });
+            await db
+              .insert(fragments)
+              .values({
+                chapterGenerationId: generationId,
+                projectPromptId: prompt.id,
+                position: prompt.position,
+                content: result.text,
+                modelUsed: result.model,
+                tokensUsed:
+                  (result.usage?.inputTokens ?? 0) +
+                  (result.usage?.outputTokens ?? 0),
+                metadata: result.provider
+                  ? { provider: result.provider }
+                  : undefined,
+              });
+
+            return {
+              title: prompt.title,
+              content: result.text,
+            };
+          },
+        );
+
+        // Preserve original order — results array matches input array index
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          if (r.status === "fulfilled") {
+            fragmentContents.push(r.value);
+          } else {
+            throw r.reason;
+          }
         }
 
         // Transition generating → assembling
@@ -312,6 +332,7 @@ export const generateChapter = task({
           undefined,
           effort,
           undefined,
+          project.topic ?? null,
         );
 
         await db

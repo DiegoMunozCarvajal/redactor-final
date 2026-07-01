@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, chapterPlaceholders, generationSystemPrompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
@@ -29,18 +29,37 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // Load project-scoped chapters
+  // Load project-scoped chapters — only fields needed for the dashboard listing
   const chapterList = await db
-    .select()
+    .select({
+      id: chapters.id,
+      position: chapters.position,
+      title: chapters.title,
+    })
     .from(chapters)
     .where(eq(chapters.projectId, project.id))
     .orderBy(asc(chapters.position));
 
-  // Load latest generation per chapter in a single query (was N+1)
+  // Load latest generation per chapter in a single query (was N+1).
+  // Exclude title generations — they have no assembledContent and inflate completed counts.
+  // Select only needed columns; assembledContent can be 50-200KB per row.
   const allGenerations = await db
-    .select()
+    .select({
+      id: chapterGenerations.id,
+      projectId: chapterGenerations.projectId,
+      chapterId: chapterGenerations.chapterId,
+      status: chapterGenerations.status,
+      generationMetadata: chapterGenerations.generationMetadata,
+      assemblyMetadata: chapterGenerations.assemblyMetadata,
+      error: chapterGenerations.error,
+      createdAt: chapterGenerations.createdAt,
+      completedAt: chapterGenerations.completedAt,
+    })
     .from(chapterGenerations)
-    .where(eq(chapterGenerations.projectId, project.id))
+    .where(and(
+      eq(chapterGenerations.projectId, project.id),
+      sql`${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('title', 'prompt')`,
+    ))
     .orderBy(desc(chapterGenerations.createdAt));
 
   // Group by chapterId — since ordered by createdAt DESC, first match is latest
@@ -147,28 +166,35 @@ export async function PATCH(
         .from(chapters)
         .where(eq(chapters.projectId, id));
 
-      for (const ch of projectChapterIds) {
-        // Fetch all placeholders for this chapter to find tema variants
-        const phRows = await tx
-          .select({ name: chapterPlaceholders.name })
+      const chapterIds = projectChapterIds.map((ch) => ch.id);
+
+      if (chapterIds.length > 0) {
+        // Fetch all placeholders for all project chapters in a single query
+        const allPhRows = await tx
+          .select({ chapterId: chapterPlaceholders.chapterId, name: chapterPlaceholders.name })
           .from(chapterPlaceholders)
-          .where(eq(chapterPlaceholders.chapterId, ch.id));
+          .where(inArray(chapterPlaceholders.chapterId, chapterIds));
 
-        const temaVariantNames = phRows
-          .filter((ph) => {
-            const segments = ph.name.toLowerCase().split("_");
-            return segments.includes("tema") || segments.includes("topic");
-          })
-          .map((ph) => ph.name);
+        // Group tema-variant placeholders by chapter
+        const updatesByChapter = new Map<string, string[]>();
+        for (const ph of allPhRows) {
+          const segments = ph.name.toLowerCase().split("_");
+          if (segments.includes("tema") || segments.includes("topic")) {
+            const names = updatesByChapter.get(ph.chapterId) ?? [];
+            names.push(ph.name);
+            updatesByChapter.set(ph.chapterId, names);
+          }
+        }
 
-        if (temaVariantNames.length > 0) {
+        // Batch update all tema variants
+        for (const [chId, names] of updatesByChapter) {
           await tx
             .update(chapterPlaceholders)
             .set({ definition: topic })
             .where(
               and(
-                eq(chapterPlaceholders.chapterId, ch.id),
-                inArray(chapterPlaceholders.name, temaVariantNames),
+                eq(chapterPlaceholders.chapterId, chId),
+                inArray(chapterPlaceholders.name, names),
               ),
             );
         }

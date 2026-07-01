@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, projectPrompts, assemblyPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, prompts, promptLibrary } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -91,9 +91,9 @@ export async function POST(
   // Priority: explicit assemblyPromptId > project default > chapter embedded.
   if (assemblyPromptId) {
     const [ap] = await db
-      .select({ id: assemblyPrompts.id })
-      .from(assemblyPrompts)
-      .where(eq(assemblyPrompts.id, assemblyPromptId))
+      .select({ id: promptLibrary.id })
+      .from(promptLibrary)
+      .where(and(eq(promptLibrary.id, assemblyPromptId), eq(promptLibrary.category, "assembly")))
       .limit(1);
 
     if (!ap) {
@@ -105,12 +105,13 @@ export async function POST(
   } else if (!project.assemblyPromptId) {
     // No explicit prompt and no project default — must have chapter-level
     const [embedded] = await db
-      .select({ id: projectPrompts.id })
-      .from(projectPrompts)
+      .select({ id: prompts.id })
+      .from(prompts)
       .where(
         and(
-          eq(projectPrompts.chapterId, chapterId),
-          eq(projectPrompts.isAssembly, true),
+          eq(prompts.chapterId, chapterId),
+          eq(prompts.projectId, projectId),
+          eq(prompts.isAssembly, true),
         ),
       )
       .limit(1);
@@ -133,9 +134,9 @@ export async function POST(
   const effectiveAssemblyPromptId = assemblyPromptId ?? project.assemblyPromptId;
   if (effectiveAssemblyPromptId) {
     const [ap] = await db
-      .select({ content: assemblyPrompts.content, userPrompt: assemblyPrompts.userPrompt })
-      .from(assemblyPrompts)
-      .where(eq(assemblyPrompts.id, effectiveAssemblyPromptId))
+      .select({ content: promptLibrary.content, userPrompt: promptLibrary.userPrompt })
+      .from(promptLibrary)
+      .where(and(eq(promptLibrary.id, effectiveAssemblyPromptId), eq(promptLibrary.category, "assembly")))
       .limit(1);
     if (ap) {
       apContent = ap.content;
@@ -143,12 +144,13 @@ export async function POST(
     }
   } else {
     const [embedded] = await db
-      .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-      .from(projectPrompts)
+      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+      .from(prompts)
       .where(
         and(
-          eq(projectPrompts.chapterId, chapterId),
-          eq(projectPrompts.isAssembly, true),
+          eq(prompts.chapterId, chapterId),
+          eq(prompts.projectId, projectId),
+          eq(prompts.isAssembly, true),
         ),
       )
       .limit(1);

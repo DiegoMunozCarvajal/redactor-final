@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterPlaceholders, projectPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterPlaceholders, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { hashPromptContents } from "@/lib/placeholder-utils";
 
@@ -42,10 +42,10 @@ export async function GET(
 
   // Compute current prompts hash for stale detection
   const promptRows = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId))
-    .orderBy(asc(projectPrompts.position));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+    .from(prompts)
+    .where(and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, id)))
+    .orderBy(asc(prompts.position));
 
   const currentPromptsHash = hashPromptContents(promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("")));
 
@@ -86,19 +86,23 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}));
   const definitions: Record<string, string | null> = body.placeholders ?? {};
 
-  await db.transaction(async (tx) => {
-    for (const [name, definition] of Object.entries(definitions)) {
-      await tx
-        .update(chapterPlaceholders)
-        .set({ definition })
-        .where(
-          and(
-            eq(chapterPlaceholders.chapterId, chapterId),
-            eq(chapterPlaceholders.name, name),
-          ),
-        );
-    }
-  });
+  // Batch upsert placeholder definitions using ON CONFLICT to avoid N+1 updates
+  const entries = Object.entries(definitions);
+  if (entries.length > 0) {
+    await db
+      .insert(chapterPlaceholders)
+      .values(
+        entries.map(([name, definition]) => ({
+          chapterId,
+          name,
+          definition,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
+        set: { definition: sql`excluded.definition` },
+      });
+  }
 
   // Return updated list with current prompts hash for consistency with GET
   const rows = await db
@@ -108,10 +112,10 @@ export async function PATCH(
     .orderBy(asc(chapterPlaceholders.name));
 
   const promptRows = await db
-    .select({ content: projectPrompts.content, userPrompt: projectPrompts.userPrompt })
-    .from(projectPrompts)
-    .where(eq(projectPrompts.chapterId, chapterId))
-    .orderBy(asc(projectPrompts.position));
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+    .from(prompts)
+    .where(and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, id)))
+    .orderBy(asc(prompts.position));
 
   const currentPromptsHash = hashPromptContents(promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("")));
 

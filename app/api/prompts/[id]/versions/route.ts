@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { promptVersions, projectPrompts, projects, prompts } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { promptVersions, projects, prompts } from "@/lib/db/schema";
+import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
 
@@ -36,17 +36,18 @@ export async function GET(
       })
       .from(promptVersions)
       .where(eq(promptVersions.promptId, id))
-      .orderBy(desc(promptVersions.createdAt));
+      .orderBy(desc(promptVersions.createdAt))
+      .limit(50);
 
     return NextResponse.json(versions);
   }
 
   // Try project-scoped prompt — verify ownership
   const [owned] = await db
-    .select({ id: projectPrompts.id })
-    .from(projectPrompts)
-    .innerJoin(projects, eq(projectPrompts.projectId, projects.id))
-    .where(and(eq(projectPrompts.id, id), eq(projects.userId, user.id)))
+    .select({ id: prompts.id })
+    .from(prompts)
+    .innerJoin(projects, eq(prompts.projectId, projects.id))
+    .where(and(eq(prompts.id, id), isNotNull(prompts.projectId), eq(projects.userId, user.id)))
     .limit(1);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
@@ -58,7 +59,8 @@ export async function GET(
     })
     .from(promptVersions)
     .where(eq(promptVersions.promptId, id))
-    .orderBy(desc(promptVersions.createdAt));
+    .orderBy(desc(promptVersions.createdAt))
+    .limit(50);
 
   return NextResponse.json(versions);
 }

@@ -395,13 +395,19 @@ export function PlaceholderFillSection({
                       <Sparkles className="h-2.5 w-2.5" />
                     </Button>
                   )}
-                  {state.provider && ["rag", "semantic-scholar", "web"].includes(state.provider) && (
+                  {state.provider && (
                     <span className={`text-[9px] px-1 py-0.5 rounded flex-shrink-0 ${
                       state.provider === "rag"
                         ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
                         : state.provider === "semantic-scholar"
                           ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
-                          : "bg-muted text-muted-foreground"
+                          : state.provider === "llm"
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            : state.provider === "direct"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                              : state.provider === "reused"
+                                ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
+                                : "bg-muted text-muted-foreground"
                     }`}>
                       {state.provider === "rag"
                         ? state.ragChunks
@@ -409,7 +415,13 @@ export function PlaceholderFillSection({
                           : "RAG"
                         : state.provider === "semantic-scholar"
                           ? "Semantic Scholar"
-                          : "Web"}
+                          : state.provider === "llm"
+                            ? "LLM"
+                            : state.provider === "direct"
+                              ? "Direct"
+                              : state.provider === "reused"
+                                ? "Reused"
+                                : state.provider}
                     </span>
                   )}
                   {state.status === "filled" && !isEditing && (

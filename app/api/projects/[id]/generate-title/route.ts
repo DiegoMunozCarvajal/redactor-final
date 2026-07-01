@@ -101,10 +101,11 @@ export async function POST(
     result = await generatePromptContent({
       prompt: {
         content:
-          'Genera un título y subtítulo atractivo para un libro sobre {tema}. Responde en formato JSON: { "title": "...", "subtitle": "..." }',
+          'Genera un título y subtítulo atractivo para un libro sobre {tema}.',
       },
       placeholders,
       projectTopic: project.topic,
+      schema: titleResponseSchema,
     });
   } catch (err) {
     const message = sanitizeError(err);

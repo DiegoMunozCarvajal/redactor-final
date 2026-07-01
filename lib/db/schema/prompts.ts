@@ -1,8 +1,10 @@
 import { boolean, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { chapters } from "./chapters";
+import { projects } from "./projects";
 
 export const prompts = pgTable("prompts", {
   id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
   chapterId: uuid("chapter_id")
     .notNull()
     .references(() => chapters.id, { onDelete: "cascade" }),

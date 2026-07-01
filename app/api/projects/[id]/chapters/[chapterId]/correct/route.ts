@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, correctorPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, desc, lt, sql } from "drizzle-orm";
+import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
@@ -60,6 +60,23 @@ export async function POST(
     );
   }
 
+  // Validate inline corrector prompt if provided
+  if (correctorPrompt != null) {
+    if (typeof correctorPrompt.content !== "string" || correctorPrompt.content.length > 100_000) {
+      return NextResponse.json(
+        { error: "correctorPrompt.content must be a string under 100KB" },
+        { status: 400 },
+      );
+    }
+    if (correctorPrompt.userPrompt !== undefined && correctorPrompt.userPrompt !== null &&
+        (typeof correctorPrompt.userPrompt !== "string" || correctorPrompt.userPrompt.length > 50_000)) {
+      return NextResponse.json(
+        { error: "correctorPrompt.userPrompt must be a string under 50KB" },
+        { status: 400 },
+      );
+    }
+  }
+
   if (!critiqueGenerationId) {
     return NextResponse.json(
       { error: "critiqueGenerationId is required" },
@@ -111,7 +128,7 @@ export async function POST(
           eq(chapterGenerations.projectId, projectId),
           eq(chapterGenerations.chapterId, chapterId),
           eq(chapterGenerations.status, "completed"),
-          sql`(${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' != 'critique')`,
+          sql`(${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('critique', 'title', 'prompt'))`,
         ),
       )
       .orderBy(desc(chapterGenerations.completedAt))
@@ -138,8 +155,8 @@ export async function POST(
   } else {
     const [cp] = await db
       .select()
-      .from(correctorPrompts)
-      .where(eq(correctorPrompts.id, correctorPromptId!))
+      .from(promptLibrary)
+      .where(and(eq(promptLibrary.id, correctorPromptId!), eq(promptLibrary.category, "corrector")))
       .limit(1);
 
     if (!cp) {
@@ -170,7 +187,9 @@ export async function POST(
 
   const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
 
-  // Clean up stale correction rows before creating a new one
+  // Clean up stale correction rows before creating a new one.
+  // Checks both "pending" (Trigger.dev never picked it up) and "generating"
+  // (crashed mid-execution). Stale pending rows block the rate limiter forever.
   const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
   const [staleRunning] = await db
     .select({ id: chapterGenerations.id })
@@ -179,7 +198,7 @@ export async function POST(
       and(
         eq(chapterGenerations.projectId, projectId),
         eq(chapterGenerations.chapterId, chapterId),
-        eq(chapterGenerations.status, "generating"),
+        inArray(chapterGenerations.status, ["pending", "generating"]),
         sql`${chapterGenerations.generationMetadata}->>'type' = 'correction'`,
         lt(chapterGenerations.createdAt, staleCutoff),
       ),

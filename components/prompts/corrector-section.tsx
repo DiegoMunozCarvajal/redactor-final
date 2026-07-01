@@ -76,7 +76,7 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
   useEffect(() => {
     if (!modalOpen) return;
     if (correctorPromptList.length === 0) {
-      fetch("/api/corrector-prompts")
+      fetch("/api/prompt-library?category=corrector")
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data)) setCorrectorPromptList(data);

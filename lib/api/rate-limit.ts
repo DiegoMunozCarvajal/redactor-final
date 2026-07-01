@@ -1,4 +1,5 @@
-import { db, client } from "@/lib/db/drizzle";
+import { db } from "@/lib/db/drizzle";
+import { lockClient } from "@/lib/db/lock-pool";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
@@ -19,14 +20,10 @@ export async function withProjectLock<T>(
 ): Promise<{ locked: false } | { locked: true; result: T }> {
   const [key1, key2] = projectIdToLockKey(projectId);
 
-  // Reserve a dedicated connection so the advisory lock binds to a distinct
-  // PostgreSQL session. Without this, max:1 pools share a single session and
-  // pg_try_advisory_lock is reentrant — two requests would both "acquire" it.
-  //
-  // Connection pool max is 3 (dev) / 2 (prod). Each concurrent lock attempt
-  // reserves one connection. We must release it on ALL paths to avoid pool
-  // exhaustion.
-  const reserved = await client.reserve();
+  // Reserve a connection from the dedicated lock pool so the advisory lock
+  // binds to a distinct PostgreSQL session. The main application pool is
+  // unaffected — lock operations never compete with normal DB queries.
+  const reserved = await lockClient.reserve();
 
   try {
     const [row] = await reserved.unsafe(

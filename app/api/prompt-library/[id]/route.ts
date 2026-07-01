@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { assemblyPrompts } from "@/lib/db/schema";
+import { promptLibrary } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -14,7 +14,7 @@ export async function GET(
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
-  const [row] = await db.select().from(assemblyPrompts).where(eq(assemblyPrompts.id, id)).limit(1);
+  const [row] = await db.select().from(promptLibrary).where(eq(promptLibrary.id, id)).limit(1);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   return NextResponse.json(row);
@@ -32,28 +32,36 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const { name, description, content, userPrompt } = body;
+  const { name, description, content, userPrompt, category } = body;
+
+  if (content !== undefined && (typeof content !== "string" || content.length > 100_000)) {
+    return NextResponse.json({ error: "content too long" }, { status: 400 });
+  }
+  if (userPrompt !== undefined && (typeof userPrompt !== "string" || userPrompt.length > 50_000)) {
+    return NextResponse.json({ error: "userPrompt too long" }, { status: 400 });
+  }
 
   const [updated] = await db
-    .update(assemblyPrompts)
+    .update(promptLibrary)
     .set({
       ...(name !== undefined ? { name } : {}),
       ...(description !== undefined ? { description } : {}),
       ...(content !== undefined ? { content } : {}),
       ...(userPrompt !== undefined ? { userPrompt } : {}),
+      ...(category !== undefined ? { category } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(assemblyPrompts.id, id))
+    .where(eq(promptLibrary.id, id))
     .returning();
 
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
     userId: admin.user.id,
-    action: "assembly_prompt.update",
-    resourceType: "assembly_prompt",
+    action: "prompt_library.update",
+    resourceType: "prompt_library",
     resourceId: updated.id,
-    metadata: { name: updated.name },
+    metadata: { name: updated.name, category: updated.category },
   });
 
   return NextResponse.json(updated);
@@ -70,15 +78,15 @@ export async function DELETE(
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
-  const [deleted] = await db.delete(assemblyPrompts).where(eq(assemblyPrompts.id, id)).returning();
+  const [deleted] = await db.delete(promptLibrary).where(eq(promptLibrary.id, id)).returning();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
     userId: admin.user.id,
-    action: "assembly_prompt.delete",
-    resourceType: "assembly_prompt",
+    action: "prompt_library.delete",
+    resourceType: "prompt_library",
     resourceId: deleted.id,
-    metadata: { name: deleted.name },
+    metadata: { name: deleted.name, category: deleted.category },
   });
 
   return NextResponse.json({ success: true });
