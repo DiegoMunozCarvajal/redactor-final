@@ -345,6 +345,7 @@ async function generateAndValidate(
   ph: PlaceholderDef,
   effort?: ReasoningEffort,
   temperature?: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   // First attempt
   const result = await generateCompletion({
@@ -353,6 +354,7 @@ async function generateAndValidate(
     userPrompt,
     ...(effort !== undefined ? { effort } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
+    ...(signal ? { signal } : {}),
   });
 
   const parsed = extractJson(result.data as string) as Record<string, unknown>;
@@ -380,6 +382,7 @@ async function generateAndValidate(
     systemPrompt: INDIVIDUAL_FILL_SYSTEM_PROMPT,
     userPrompt: retryUserPrompt,
     ...(effort !== undefined ? { effort } : {}),
+    ...(signal ? { signal } : {}),
     temperature: 0.2,  // always lower temp on retry for stricter adherence
   });
 
@@ -431,6 +434,7 @@ export async function fillOnePlaceholder(
   /** Source context for each prompt (same index as promptContents). Used to
    *  understand the original material without copying it. Null entries allowed. */
   sourceContexts?: (string | null)[],
+  signal?: AbortSignal,
 ): Promise<FillOneResult> {
   // Phase 0: Direct resolution
   const direct = resolveDirectly(ph.name, projectTopic);
@@ -593,6 +597,7 @@ Responde ÚNICAMENTE con JSON: {"definition": "tu definición (extensión según
     ph,
     effort,
     temperature,
+    signal,
   );
 
   return {
@@ -638,6 +643,7 @@ export async function* fillPlaceholdersSequential(
         temperature,
         currentChapterId,
         sourceContexts,
+        signal,
       );
 
       if (result.definition) {

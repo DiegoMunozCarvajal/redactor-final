@@ -124,6 +124,7 @@ export async function POST(
       undefined,
       chapterId,
       sourceContexts,
+      req.signal,
     );
 
     // Persist definition to DB

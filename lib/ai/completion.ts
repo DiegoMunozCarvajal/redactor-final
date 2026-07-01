@@ -50,6 +50,8 @@ export interface CompletionOptions<T extends z.ZodType> {
     stage: TrackedStage;
     unitId?: string;
   };
+  /** External abort signal (e.g., client disconnect). Combined with stage timeout. */
+  signal?: AbortSignal;
 }
 
 function joinSystemPrompts(...blocks: Array<string | undefined>): string {
@@ -418,6 +420,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
   schema: T | undefined,
   effortConfig: EffortConfig & { kind: "openai" },
   client?: OpenAI,
+  signal?: AbortSignal,
 ): Promise<ProviderResult<z.infer<T>>> {
   const openaiClient = client ?? getOpenAIClient();
   const modelDef = requireModelDefinition(model);
@@ -454,7 +457,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
           schema: jsonSchema as Record<string, unknown>,
         },
       },
-    }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
@@ -491,7 +494,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
       ...(reasoningActive
         ? { reasoning_effort: effortConfig.reasoningEffort } as Record<string, unknown>
         : {}),
-    }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
@@ -536,6 +539,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
   effortConfig: EffortConfig & { kind: "anthropic" },
   cacheSystemPrompt?: boolean,
   temperature?: number,
+  signal?: AbortSignal,
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getAnthropicClient();
   const systemParam = buildAnthropicSystemPrompt(
@@ -576,7 +580,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
         },
       ],
       tool_choice: { type: "tool" as const, name: "respond" },
-    }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
     const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -621,7 +625,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
         : !ANTHROPIC_MODELS_WITHOUT_TEMPERATURE.has(model) && temperature !== undefined
           ? { temperature }
           : {}),
-    }, { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
     const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -660,6 +664,7 @@ async function completeWithGoogle<T extends z.ZodType>(
   maxTokens: number | undefined,
   schema: T | undefined,
   effortConfig: EffortConfig & { kind: "google" },
+  signal?: AbortSignal,
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getGoogleClient();
   const systemPrompt = messages.find((m) => m.role === "system")?.content ?? "";
@@ -749,6 +754,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
   schema: T | undefined,
   effortConfig: EffortConfig & { kind: "deepseek" },
   client?: OpenAI,
+  signal?: AbortSignal,
 ): Promise<ProviderResult<z.infer<T>>> {
   const deepseekClient = client ?? getDeepSeekClient();
 
@@ -774,7 +780,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
     return completeWithOpenAI(messages, model, effectiveTemperature, maxTokens, undefined, {
       kind: "openai" as const,
       reasoningEffort,
-    }, deepseekClient);
+    }, deepseekClient, signal);
   }
 
   const rawSchema = zodToJsonSchema(schema, {
@@ -813,7 +819,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
 
     const response = await deepseekClient.chat.completions.create(
       deepseekParams as unknown as Parameters<typeof deepseekClient.chat.completions.create>[0],
-      { signal: AbortSignal.timeout(STAGE_TIMEOUT_MS) },
+      { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) },
     );
 
     // response typing lost due to cast — restore it
@@ -912,12 +918,18 @@ export async function generateCompletion<T extends z.ZodType>(
     temperature = 0.7,
     maxTokens,
     effort,
+    signal: externalSignal,
   } = options;
   requireModelDefinition(model);
 
   const startTime = Date.now();
   const provider = getProviderForModel(model);
   const effortConfig = mapEffort(effort, provider);
+
+  // Combine external signal (e.g. client disconnect) with stage timeout
+  const signal = externalSignal
+    ? AbortSignal.any([externalSignal, AbortSignal.timeout(STAGE_TIMEOUT_MS)])
+    : undefined;
 
   const fullSystemPrompt = joinSystemPrompts(cachedSystemPrompt, systemPrompt);
   const messages: Array<{ role: "system" | "user"; content: string }> = [
@@ -940,24 +952,30 @@ export async function generateCompletion<T extends z.ZodType>(
           effortConfig as EffortConfig & { kind: "anthropic" },
           options.cacheSystemPrompt,
           temperature,
+          signal,
         );
         break;
       case "google":
         result = await completeWithGoogle(
           messages, model, temperature, maxTokens, schema,
           effortConfig as EffortConfig & { kind: "google" },
+          signal,
         );
         break;
       case "openai":
         result = await completeWithOpenAI(
           messages, model, temperature, maxTokens, schema,
           effortConfig as EffortConfig & { kind: "openai" },
+          undefined,
+          signal,
         );
         break;
       case "deepseek":
         result = await completeWithDeepSeekStructured(
           messages, model, temperature, maxTokens, schema,
           effortConfig as EffortConfig & { kind: "deepseek" },
+          undefined,
+          signal,
         );
         break;
       default:
