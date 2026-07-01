@@ -52,7 +52,7 @@ import { enUS } from "date-fns/locale";
 import { MODELS_BY_STAGE } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
-import { CorrectorSection } from "@/components/prompts/corrector-section";
+import { CorrectorSection, CorrectionDiff } from "@/components/prompts/corrector-section";
 import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
@@ -1356,6 +1356,11 @@ export default function ChapterPage() {
             <CardContent className="pt-4">
               <div className="flex flex-wrap items-center gap-2 mb-3 text-[10px] text-muted-foreground">
                 {statusBadge(selectedAssemblyVersion.status)}
+                {selectedAssemblyVersion.generationMetadata?.type === "correction" && (
+                  <Badge variant="default" className="text-[10px] h-4 px-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    Corrected
+                  </Badge>
+                )}
                 {selectedAssemblyVersionNumber > 0 && (
                   <Badge variant="secondary">v{selectedAssemblyVersionNumber}</Badge>
                 )}
@@ -1371,7 +1376,7 @@ export default function ChapterPage() {
                   className="h-7 text-xs"
                   onClick={() => {
                     navigator.clipboard.writeText(selectedAssemblyVersion.assembledContent ?? "");
-                    toast.success("Assembly copied");
+                    toast.success("Content copied");
                   }}
                 >
                   <Copy className="h-3 w-3 mr-1" /> Copy
@@ -1380,15 +1385,19 @@ export default function ChapterPage() {
 
               <dl className="grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4 mb-4">
                 <div>
-                  <dt className="text-muted-foreground">Algorithm</dt>
+                  <dt className="text-muted-foreground">Type</dt>
                   <dd className="font-medium">
-                    {selectedAssemblyVersion.assemblyMetadata?.algorithm ?? "Unknown"}
+                    {selectedAssemblyVersion.generationMetadata?.type === "correction" ? "Correction" : "Assembly"}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Assembly Prompt</dt>
+                  <dt className="text-muted-foreground">
+                    {selectedAssemblyVersion.generationMetadata?.type === "correction" ? "Corrector Prompt" : "Assembly Prompt"}
+                  </dt>
                   <dd className="font-medium">
-                    {selectedAssemblyVersion.assemblyMetadata?.promptTitle ?? "Unknown"}
+                    {selectedAssemblyVersion.generationMetadata?.type === "correction"
+                      ? (selectedAssemblyVersion.generationMetadata?.promptTitle ?? "Unknown")
+                      : (selectedAssemblyVersion.assemblyMetadata?.promptTitle ?? "Unknown")}
                     {selectedAssemblyVersion.assemblyMetadata?.promptSource ? (
                       <span className="ml-1 text-muted-foreground">
                         ({selectedAssemblyVersion.assemblyMetadata.promptSource})
@@ -1399,13 +1408,19 @@ export default function ChapterPage() {
                 <div>
                   <dt className="text-muted-foreground">Model</dt>
                   <dd className="font-medium">
-                    {selectedAssemblyVersion.assemblyMetadata?.model ?? "Unknown"}
+                    {selectedAssemblyVersion.generationMetadata?.model
+                      ?? selectedAssemblyVersion.assemblyMetadata?.model
+                      ?? "Unknown"}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Fragments</dt>
+                  <dt className="text-muted-foreground">
+                    {selectedAssemblyVersion.generationMetadata?.type === "correction" ? "Algorithm" : "Fragments"}
+                  </dt>
                   <dd className="font-medium">
-                    {selectedAssemblyVersion.assemblyMetadata?.fragmentCount ?? "Unknown"}
+                    {selectedAssemblyVersion.generationMetadata?.type === "correction"
+                      ? (selectedAssemblyVersion.assemblyMetadata?.algorithm ?? "correction")
+                      : (selectedAssemblyVersion.assemblyMetadata?.fragmentCount ?? "Unknown")}
                   </dd>
                 </div>
               </dl>
@@ -1415,6 +1430,14 @@ export default function ChapterPage() {
                   {selectedAssemblyVersion.assembledContent!}
                 </ReactMarkdown>
               </div>
+
+              {selectedAssemblyVersion.generationMetadata?.type === "correction"
+                && typeof (selectedAssemblyVersion.assemblyMetadata as Record<string, unknown> | null)?.correctionRaw === "string"
+                && (
+                  <CorrectionDiff
+                    raw={((selectedAssemblyVersion.assemblyMetadata as Record<string, unknown>).correctionRaw as string)}
+                  />
+                )}
             </CardContent>
           </Card>
         </div>

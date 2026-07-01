@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Wrench, Copy, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import type { ModelDefinition } from "@/lib/ai/providers";
 import { AVAILABLE_MODELS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
@@ -54,26 +53,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-function statusBadge(status: string) {
-  const colors: Record<string, string> = {
-    completed: "bg-success/10 text-success",
-    failed: "bg-destructive/10 text-destructive",
-    generating: "bg-info/10 text-info",
-    pending: "bg-muted text-muted-foreground",
-  };
-  return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>
-      {status}
-    </span>
-  );
-}
-
 export function CorrectorSection({ projectId, chapterId, generations, hasAssembly, onGenerationCreated, projectCorrectorPromptId, projectCorrectorPromptContent, projectCorrectorPromptUserPrompt, modalOpen, onOpenChange }: Props) {
   const [correctorPromptId, setCorrectorPromptId] = useState(projectCorrectorPromptId ?? "");
   const [correctorPromptList, setCorrectorPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [correcting, setCorrecting] = useState(false);
   const [correctorModel, setCorrectorModel] = useState(DEFAULT_MODEL);
-  const [selectedGenerationId, setSelectedGenerationId] = useState<string | undefined>();
 
   // Sync project-level corrector prompt ID when it changes
   useEffect(() => {
@@ -81,14 +65,6 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
       setCorrectorPromptId(projectCorrectorPromptId);
     }
   }, [projectCorrectorPromptId]);
-
-  // Correction generations
-  const correctionGenerations = generations.filter(
-    (g) => g.generationMetadata?.type === "correction" && g.status === "completed" && g.assembledContent,
-  );
-  const selectedCorrection = selectedGenerationId
-    ? correctionGenerations.find((g) => g.id === selectedGenerationId) ?? correctionGenerations[0]
-    : correctionGenerations[0] ?? null;
 
   // Critique generations (needed to select which critique to apply)
   const critiqueGenerations = generations.filter(
@@ -161,96 +137,6 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
 
   return (
     <>
-      {/* Correction Results */}
-      {selectedCorrection && (
-        <div className="space-y-3 mb-8">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Correction Results
-            </h2>
-            {correctionGenerations.length > 1 && (
-              <div className="flex items-center gap-1.5">
-                <History className="h-3.5 w-3.5 text-muted-foreground" />
-                {correctionGenerations.map((gen, index) => {
-                  const versionNumber = correctionGenerations.length - index;
-                  return (
-                    <button
-                      key={gen.id}
-                      type="button"
-                      onClick={() => setSelectedGenerationId(gen.id)}
-                      className={`h-7 rounded-md px-2 text-[10px] transition-colors ${
-                        gen.id === selectedCorrection.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground hover:bg-muted/70"
-                      }`}
-                    >
-                      v{versionNumber}{index === 0 ? " Latest" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <Card className="border-success/20">
-            <CardContent className="pt-4">
-              <div className="flex flex-wrap items-center gap-2 mb-3 text-[10px] text-muted-foreground">
-                {statusBadge(selectedCorrection.status)}
-                {selectedCorrection.generationMetadata?.promptTitle && (
-                  <span className="bg-muted px-1.5 py-0.5 rounded">
-                    {selectedCorrection.generationMetadata.promptTitle}
-                  </span>
-                )}
-                {selectedCorrection.completedAt && (
-                  <span>
-                    {new Date(selectedCorrection.completedAt).toLocaleString()}
-                  </span>
-                )}
-                <div className="flex-1" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    navigator.clipboard.writeText(selectedCorrection.assembledContent ?? "");
-                    toast.success("Correction copied");
-                  }}
-                >
-                  <Copy className="h-3 w-3 mr-1" /> Copy
-                </Button>
-              </div>
-
-              <dl className="grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-2 lg:grid-cols-3 mb-4">
-                <div>
-                  <dt className="text-muted-foreground">Corrector Prompt</dt>
-                  <dd className="font-medium">
-                    {selectedCorrection.generationMetadata?.promptTitle ?? "Unknown"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Model</dt>
-                  <dd className="font-medium">
-                    {selectedCorrection.generationMetadata?.model ?? "Unknown"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Type</dt>
-                  <dd className="font-medium">Correction</dd>
-                </div>
-              </dl>
-
-              <pre className="whitespace-pre-wrap text-sm leading-relaxed bg-muted/30 p-4 rounded-md max-h-96 overflow-y-auto">
-                {selectedCorrection.assembledContent!}
-              </pre>
-
-              {selectedCorrection.assemblyMetadata?.correctionRaw && (
-                <CorrectionDiff raw={selectedCorrection.assemblyMetadata.correctionRaw} />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* Corrector Modal */}
       <Dialog open={modalOpen} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-lg">
@@ -375,7 +261,7 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
 }
 
 /** Extracts <correcciones> from the raw output and renders a collapsible diff */
-function CorrectionDiff({ raw }: { raw: string }) {
+export function CorrectionDiff({ raw }: { raw: string }) {
   const [open, setOpen] = useState(false);
 
   const corrections = useMemo(() => {
