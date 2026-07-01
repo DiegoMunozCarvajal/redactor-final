@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { chapters } from "@/lib/db/schema";
 import { csrfCheck } from "@/lib/api/csrf";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 
@@ -25,9 +25,8 @@ export async function POST(
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id: bookTemplateId } = await params;
 

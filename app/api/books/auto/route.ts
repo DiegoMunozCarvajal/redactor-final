@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { bookTemplates, chapters } from "@/lib/db/schema";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/admin";
 import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateTemplate } from "@/trigger/generate-template";
@@ -13,9 +13,8 @@ export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const body = await req.json().catch(() => ({}));
   const { name, description, metaPromptId, chapters: chapterList, model, effort } = body;
@@ -87,7 +86,7 @@ export async function POST(req: NextRequest) {
     });
 
     logAudit({
-      userId: user.id,
+      userId: admin.user.id,
       action: "template.auto_create",
       resourceType: "book_template",
       resourceId: template.template.id,

@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { chapters, projects } from "@/lib/db/schema";
-import { createClient } from "@/lib/supabase/server";
+import { chapters } from "@/lib/db/schema";
+import { requireAdmin } from "@/lib/auth/admin";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 
-// GET is intentionally open to all authenticated users — chapter details must be
-// visible when browsing templates for project creation.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
   const [chapter] = await db.select().from(chapters).where(eq(chapters.id, id)).limit(1);
@@ -25,29 +22,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
-  // Ownership check: project-scoped chapters must belong to the user
+  // Admin can edit any chapter — no ownership check needed
   const [existing] = await db
-    .select({ projectId: chapters.projectId })
+    .select({ id: chapters.id })
     .from(chapters)
     .where(eq(chapters.id, id))
     .limit(1);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (existing.projectId) {
-    const [project] = await db
-      .select({ userId: projects.userId })
-      .from(projects)
-      .where(eq(projects.id, existing.projectId))
-      .limit(1);
-    if (!project || project.userId !== user.id) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-  }
 
   const body = await req.json().catch(() => ({}));
   const { title, position } = body;
@@ -61,7 +47,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!chapter) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "chapter.update",
     resourceType: "chapter",
     resourceId: chapter.id,
@@ -75,34 +61,23 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const csrfError = csrfCheck(_req);
   if (csrfError) return csrfError;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin.authorized) return admin.response;
 
   const { id } = await params;
 
-  // Ownership check: project-scoped chapters must belong to the user
+  // Admin can delete any chapter — no ownership check needed
   const [existing] = await db
-    .select({ projectId: chapters.projectId })
+    .select({ id: chapters.id })
     .from(chapters)
     .where(eq(chapters.id, id))
     .limit(1);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (existing.projectId) {
-    const [project] = await db
-      .select({ userId: projects.userId })
-      .from(projects)
-      .where(eq(projects.id, existing.projectId))
-      .limit(1);
-    if (!project || project.userId !== user.id) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-  }
 
   await db.delete(chapters).where(eq(chapters.id, id));
 
   logAudit({
-    userId: user.id,
+    userId: admin.user.id,
     action: "chapter.delete",
     resourceType: "chapter",
     resourceId: id,
