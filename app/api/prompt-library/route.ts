@@ -46,6 +46,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Validate required content markers per category so the LLM actually
+  // receives the material it needs (fragments, chapter text, critique text).
+  // Runtime fallbacks exist in lib/generate.ts, but save-time validation
+  // catches missing markers early and avoids silent empty outputs.
+  const MARKERS_BY_CATEGORY: Record<string, RegExp> = {
+    assembly: /\{\{SECCIONES_GENERADAS\}\}|\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/,
+    critique: /\{\{CONTENIDO_CAPITULO\}\}|\[PEGAR AQUÍ EL CAPÍTULO A CRITICAR\]|\[PEGAR AQUÍ EL CAPÍTULO COMPLETO\]/,
+    corrector: /\{\{CONTENIDO_CAPITULO\}\}|\{\{CONTENIDO_CRITICA\}\}/,
+  };
+  const markerRegex = MARKERS_BY_CATEGORY[category];
+  const checkText = [content, userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0).join("\n");
+  if (markerRegex && !markerRegex.test(checkText)) {
+    return NextResponse.json(
+      { error: `prompt content must include a content marker for category "${category}". See prompt library docs for required markers.` },
+      { status: 400 },
+    );
+  }
+
   const [row] = await db
     .insert(promptLibrary)
     .values({ category, name, description: description ?? null, content, userPrompt: userPrompt ?? null })

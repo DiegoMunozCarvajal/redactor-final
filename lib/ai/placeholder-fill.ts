@@ -6,8 +6,19 @@ import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 import { db } from "@/lib/db";
 import { chapterPlaceholders, chapters } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
+import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
 
 export type { SearchResult };
+
+/** Escape user-generated text for safe insertion inside XML-like prompt tags.
+ *  Prevents RAG/snippet content containing `</content>` or `</research_results>`
+ *  from breaking prompt framing or injecting instructions into downstream LLM calls. */
+function escapeXmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 export interface PlaceholderFillEvent {
   type: "placeholder" | "done" | "error" | "cancelled";
@@ -306,6 +317,15 @@ export function validateDefinition(
   placeholderName: string,
   ph: PlaceholderDef,
 ): ValidationResult {
+  // 0. Blocklist — fastest check, strongest signal. Must pass before structural checks.
+  const blocklistHits = checkBlocklist(definition);
+  if (blocklistHits.length > 0) {
+    return {
+      ok: false,
+      reason: `Contenido protegido detectado: ${blocklistHits.slice(0, 3).join(", ")}`,
+    };
+  }
+
   // 1. Minimum length — catch truncated extractions
   if (definition.length < MIN_DEFINITION_LENGTH) {
     return { ok: false, reason: `Definition too short (${definition.length} chars, min ${MIN_DEFINITION_LENGTH})` };
@@ -356,24 +376,46 @@ async function generateAndValidate(
   });
 
   const parsed = extractJson(result.data as string) as Record<string, unknown>;
-  const definition = (parsed.definition as string) ?? "";
+  const definition = String(parsed.definition ?? "");
 
   if (!definition) {
     throw new Error(`No definition generated for {${ph.name}}`);
   }
 
+  // Single validation path: structure + blocklist (unified in validateDefinition)
   const validation = validateDefinition(definition, ph.name, ph);
+  if (validation.ok) {
+    try {
+      assertOriginalEnough(definition, { stage: "placeholder-def", throwOnFail: true });
+      return definition;
+    } catch (err) {
+      if (err instanceof OriginalityError) {
+        console.warn(
+          `[placeholder-fill] Corpus check failed for {${ph.name}}: ${err.message}. Retrying.`,
+        );
+        // Fall through to retry with contamination hint
+      } else {
+        throw err;
+      }
+    }
+  }
 
-  if (validation.ok) return definition;
-
-  // Retry once with stricter prompt
+  // Retry once with message adapted to failure type.
+  // When validation.ok is true but we're here → corpus check failed → contamination.
+  const reason = validation.ok
+    ? "Contenido protegido detectado en verificación de corpus"
+    : (validation.reason ?? "validación");
+  const isContamination = validation.ok || reason.includes("Contenido protegido");
   console.warn(
-    `[placeholder-fill] Validation failed for {${ph.name}}: ${validation.reason}. Retrying with stricter prompt.`,
+    `[placeholder-fill] Validation failed for {${ph.name}}: ${reason}. Retrying.`,
   );
 
+  const retryHint = isContamination
+    ? `Debes crear una definición completamente original. NO uses conceptos, metáforas ni ejemplos de obras protegidas. Usa ejemplos y analogías propias.`
+    : `Corrige el problema y responde de nuevo.`;
+
   const retryUserPrompt = userPrompt +
-    `\n\n⚠️ TU RESPUESTA ANTERIOR FUE RECHAZADA. Razón: ${validation.reason}. ` +
-    `Corrige el problema y responde de nuevo ÚNICAMENTE con JSON: {"definition": "..."}`;
+    `\n\n⚠️ TU RESPUESTA ANTERIOR FUE RECHAZADA. Razón: ${reason}. ${retryHint} Responde ÚNICAMENTE con JSON: {"definition": "..."}`;
 
   const retryResult = await generateCompletion({
     model,
@@ -381,18 +423,35 @@ async function generateAndValidate(
     userPrompt: retryUserPrompt,
     ...(effort !== undefined ? { effort } : {}),
     ...(signal ? { signal } : {}),
-    temperature: 0.2,  // always lower temp on retry for stricter adherence
+    temperature: 0.2,
   });
 
   const retryParsed = extractJson(retryResult.data as string) as Record<string, unknown>;
-  const retryDefinition = (retryParsed.definition as string) ?? definition;
+  const retryDefinition = String(retryParsed.definition ?? "");
 
-  // On retry failure, log but don't throw — partial definition better than none
+  if (!retryDefinition) {
+    console.warn(`[placeholder-fill] No definition on retry for {${ph.name}}. Blocking.`);
+    return "";
+  }
+
   const retryValidation = validateDefinition(retryDefinition, ph.name, ph);
   if (!retryValidation.ok) {
     console.warn(
-      `[placeholder-fill] Retry also failed validation for {${ph.name}}: ${retryValidation.reason}. Using definition anyway.`,
+      `[placeholder-fill] ⛔ Retry also failed for {${ph.name}}: ${retryValidation.reason}. Blocking definition.`,
     );
+    return "";
+  }
+
+  try {
+    assertOriginalEnough(retryDefinition, { stage: "placeholder-def", throwOnFail: true });
+  } catch (err) {
+    if (err instanceof OriginalityError) {
+      console.warn(
+        `[placeholder-fill] ⛔ Retry corpus check also failed for {${ph.name}}: ${err.message}. Blocking definition.`,
+      );
+      return "";
+    }
+    throw err;
   }
 
   return retryDefinition;
@@ -477,18 +536,21 @@ export async function fillOnePlaceholder(
     .join("\n\n");
 
   // Build source context section from the original material that inspired each prompt.
-  // This gives the LLM domain knowledge without permission to copy verbatim.
+  // Only included for RAG and Semantic Scholar providers (where external research context
+  // benefits from domain orientation). Omitted for "llm" provider — showing the LLM what
+  // NOT to copy forces it to process the copyrighted text, contaminating its output.
   let sourceContextSection = "";
-  const hasSourceContext = sourceContexts && sourceContexts.some((s) => s?.trim());
+  const includeSourceContext = provider === "rag" || provider === "semantic-scholar";
+  const hasSourceContext = includeSourceContext && sourceContexts && sourceContexts.some((s) => s?.trim());
   if (hasSourceContext) {
     const entries = sourceContexts!
       .map((s, i) => {
         if (!s?.trim()) return null;
-        return `Fuente original del Prompt ${i + 1}:\n${s.slice(0, 5000)}${s.length > 5000 ? "..." : ""}`;
+        return `Fuente original del Prompt ${i + 1}:\n${s.slice(0, 300)}${s.length > 300 ? "..." : ""}`;
       })
       .filter(Boolean);
     if (entries.length > 0) {
-      sourceContextSection = `\n## 📄 Fuentes originales de los prompts\n\nEstos fragmentos son el texto fuente que inspiró la creación de los prompts del capítulo. **Úsalos SOLO para entender el contexto y el dominio del material original.** NO copies frases textuales, metáforas, ejemplos ni historias de estas fuentes. Si la fuente contiene casos concretos, generalízalos o crea otros distintos que ilustren el mismo principio sin calcar la narrativa.\n\n${entries.join("\n\n---\n\n")}`;
+      sourceContextSection = `\n## 📄 Contexto de dominio (no copies — solo para entender el tema)\n\n${entries.join("\n\n---\n\n")}`;
     }
   }
 
@@ -532,14 +594,14 @@ export async function fillOnePlaceholder(
   let researchSection = "";
   if (ragContext) {
     const strippedRag = ragContext.replace(/^## (?:Source Material|Documentos subidos)\n?\n?/, "");
-    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${strippedRag}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
+    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${escapeXmlText(strippedRag)}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
   } else if (sources.length > 0) {
     researchSection = `\n## Research Results (Semantic Scholar · papers académicos)\n\n<research_results source="${provider}">`;
     for (let idx = 0; idx < sources.length; idx++) {
       const s = sources[idx];
-      researchSection += `\n<result id="${idx + 1}">\n<content>${s.title}\n${s.snippet}</content>`;
+      researchSection += `\n<result id="${idx + 1}">\n<content>${escapeXmlText(s.title)}\n${escapeXmlText(s.snippet)}</content>`;
       if (s.url) {
-        researchSection += `\n<url>${s.url}</url>`;
+        researchSection += `\n<url>${escapeXmlText(s.url)}</url>`;
       }
       researchSection += "\n</result>";
     }

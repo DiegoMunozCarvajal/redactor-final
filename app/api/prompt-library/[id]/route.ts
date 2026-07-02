@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { promptLibrary, projects } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -33,6 +33,15 @@ export async function PUT(
   if (!admin.authorized) return admin.response;
 
   const { id } = await params;
+
+  // Fetch existing row for marker validation
+  const [existing] = await db
+    .select()
+    .from(promptLibrary)
+    .where(eq(promptLibrary.id, id))
+    .limit(1);
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+
   const body = await req.json().catch(() => ({}));
   const { name, description, content, userPrompt, category } = body;
 
@@ -42,11 +51,36 @@ export async function PUT(
   if (userPrompt !== undefined && (typeof userPrompt !== "string" || userPrompt.length > 50_000)) {
     return NextResponse.json({ error: "userPrompt too long" }, { status: 400 });
   }
+
+  const effectiveCategory = category ?? existing.category;
   if (category !== undefined && !["assembly", "critique", "corrector"].includes(category)) {
     return NextResponse.json(
       { error: "category must be one of: assembly, critique, corrector" },
       { status: 400 },
     );
+  }
+
+  // Validate required content markers per category so the LLM actually
+  // receives the material it needs. Check against the merged content
+  // (new values + existing values for fields not being updated).
+  const MARKERS_BY_CATEGORY: Record<string, RegExp> = {
+    assembly: /\{\{SECCIONES_GENERADAS\}\}|\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/,
+    critique: /\{\{CONTENIDO_CAPITULO\}\}|\[PEGAR AQUÍ EL CAPÍTULO A CRITICAR\]|\[PEGAR AQUÍ EL CAPÍTULO COMPLETO\]/,
+    corrector: /\{\{CONTENIDO_CAPITULO\}\}|\{\{CONTENIDO_CRITICA\}\}/,
+  };
+  const markerRegex = MARKERS_BY_CATEGORY[effectiveCategory];
+  if (markerRegex) {
+    const effectiveContent = content !== undefined ? content : existing.content;
+    const effectiveUserPrompt = userPrompt !== undefined ? userPrompt : existing.userPrompt;
+    const checkText = [effectiveContent, effectiveUserPrompt]
+      .filter((s): s is string => typeof s === "string" && s.length > 0)
+      .join("\n");
+    if (!markerRegex.test(checkText)) {
+      return NextResponse.json(
+        { error: `prompt content must include a content marker for category "${effectiveCategory}". See prompt library docs for required markers.` },
+        { status: 400 },
+      );
+    }
   }
 
   const [updated] = await db

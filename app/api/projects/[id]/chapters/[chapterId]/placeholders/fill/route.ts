@@ -54,6 +54,9 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = (body.model as string) || undefined;
   const effort = body.effort as ReasoningEffort | undefined;
+  // Default to true — protect manually-edited definitions from being overwritten.
+  // Set to false only when user explicitly requests a full re-fill.
+  const onlyMissingOrStale = body.onlyMissingOrStale !== false;
 
   // Rate limit: insert a generation row inside the lock so
   // checkProjectRateLimit counts fill operations alongside other generations.
@@ -129,15 +132,52 @@ export async function POST(
   // Compute prompts hash for stale detection — includes userPrompt changes
   const promptsHash = hashPromptContents(promptContents);
 
+  // Filter out placeholders that already have a fresh definition
+  // when onlyMissingOrStale is true (default). Protects manually-edited
+  // definitions from being overwritten by a bulk fill-all operation.
+  const toFill = onlyMissingOrStale
+    ? placeholderRows.filter((p) => {
+        if (!p.definition) return true; // Missing — always fill
+        const meta = p.fillMetadata as { promptsHash?: string } | null;
+        if (!meta?.promptsHash) return true; // No hash — fill (stale detection impossible)
+        return meta.promptsHash !== promptsHash; // Stale — prompts changed, re-fill
+      })
+    : placeholderRows;
+
   // Build placeholder defs for the sequential pipeline
-  const placeholderDefs = placeholderRows.map((p) => ({
+  const placeholderDefs = toFill.map((p) => ({
     name: p.name,
     function: p.function,
     notes: p.notes,
   }));
 
+  // If all placeholders already have fresh definitions, skip the fill entirely.
+  if (placeholderDefs.length === 0) {
+    await db
+      .update(chapterGenerations)
+      .set({ status: "completed", error: "all placeholders already filled", completedAt: new Date() })
+      .where(eq(chapterGenerations.id, fillGen.id));
+    return NextResponse.json({ message: "all placeholders already filled", skipped: true });
+  }
+
   // Stream results via SSE as each placeholder completes
   const encoder = new TextEncoder();
+
+  // Guarantee DB cleanup on client abort or request teardown.
+  // If the server dies mid-stream without this, the generation row
+  // stays "generating" until the 30-min stale sweep.
+  const markFailedOnAbort = async () => {
+    try {
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: "Request aborted (client disconnect or timeout)" })
+        .where(and(eq(chapterGenerations.id, fillGen.id), eq(chapterGenerations.status, "generating")));
+    } catch {
+      // Best-effort — ignore if DB is unreachable during teardown
+    }
+  };
+  req.signal.addEventListener("abort", markFailedOnAbort, { once: true });
+
   const stream = new ReadableStream({
     async start(controller) {
       let hadError = false;

@@ -41,7 +41,7 @@ interface Props {
   projectId: string;
   chapterId: string;
   placeholders: ChapterPlaceholder[];
-  onSaveDefinition: (name: string, definition: string) => Promise<void>;
+  onSaveDefinition: (name: string, definition: string | null) => Promise<void>;
   onFillComplete?: () => void | Promise<void>;
   currentPromptsHash?: string;
 }
@@ -49,7 +49,7 @@ interface Props {
 type FillStatus = "pending" | "generating" | "filled" | "error";
 
 interface PlaceholderState {
-  definition: string;
+  definition: string | null;
   status: FillStatus;
   sources: SearchResult[];
   ragChunks?: number;
@@ -272,7 +272,7 @@ export function PlaceholderFillSection({
   function startEdit(name: string) {
     const state = getState(name);
     setEditingName(name);
-    setEditValue(state.definition);
+    setEditValue(state.definition ?? "");
     setTimeout(() => editRef.current?.focus(), 0);
   }
 
@@ -283,17 +283,17 @@ export function PlaceholderFillSection({
       ...prev,
       [editingName]: {
         ...getState(editingName),
-        definition: trimmed,
+        definition: trimmed || null,
         status: trimmed ? "filled" : "pending",
       },
     }));
     setEditingName(null);
-    if (trimmed) {
-      try {
-        await onSaveDefinition(editingName, trimmed);
-      } catch {
-        toast.error("Error saving definition");
-      }
+    try {
+      // Always persist — pass empty string to clear, actual value otherwise.
+      // The API supports null definition and treats empty string as clear.
+      await onSaveDefinition(editingName, trimmed || null);
+    } catch {
+      toast.error("Error saving definition");
     }
   }
 

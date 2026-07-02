@@ -119,31 +119,10 @@ export async function POST(
   const MAX_CHUNKS = 200;
   const MAX_SOURCES_PER_PROJECT = 50;
 
-  // Lock project and check source quota BEFORE chunking/embedding (expensive API calls)
-  // so over-quota users don't waste paid embeddings.  The insert transaction below has
-  // its own check as defense-in-depth against the TOCTOU window between here and insert.
-  const quotaResult = await db.transaction(async (tx) => {
-    await tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .for("update");
-
-    const [{ count: sourceCount }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(sources)
-      .where(eq(sources.projectId, projectId));
-
-    return { overQuota: sourceCount >= MAX_SOURCES_PER_PROJECT };
-  });
-
-  if (quotaResult.overQuota) {
-    return NextResponse.json(
-      { error: `max ${MAX_SOURCES_PER_PROJECT} sources per project` },
-      { status: 400 },
-    );
-  }
-
+  // Reserve source slot BEFORE chunking/embedding (expensive API calls).
+  // Inserting a pending source atomically reserves quota — concurrent uploads
+  // near the limit can't both pass the check, so paid embeddings are never
+  // wasted on a quota-rejected insert.
   const fileType = ext === "md" ? "markdown" : "text";
 
   // Accept explicit sourceKind from form data, else auto-detect from filename
@@ -166,35 +145,11 @@ export async function POST(
   const cleaned = text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   const citation = cleaned.slice(0, 80) + (cleaned.length > 80 ? "..." : "");
 
-  // Chunk and embed
-  const chunks = chunkText(text);
-  if (chunks.length === 0) {
-    return NextResponse.json({ error: "file has no content to chunk" }, { status: 400 });
-  }
-  if (chunks.length > MAX_CHUNKS) {
-    return NextResponse.json(
-      { error: `file produces ${chunks.length} chunks, max ${MAX_CHUNKS}` },
-      { status: 400 },
-    );
-  }
-
-  let embeddings: number[][];
+  // Reserve a source slot atomically before paying for embeddings.
+  // Source row starts with processed=false; finalized after embeddings succeed.
+  let reservedSourceId: string;
   try {
-    embeddings = await generateEmbeddings(chunks);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[sources] Embedding generation failed:", message);
-    return NextResponse.json(
-      { error: "Failed to generate embeddings" },
-      { status: 500 },
-    );
-  }
-
-  // Insert source and chunks in a transaction so chunk failure
-  // doesn't leave a processed=true source with missing chunks.
-  try {
-    const [inserted] = await db.transaction(async (tx) => {
-      // Lock project row and check source quota atomically
+    const reserved = await db.transaction(async (tx) => {
       await tx
         .select({ id: projects.id })
         .from(projects)
@@ -207,7 +162,7 @@ export async function POST(
         .where(eq(sources.projectId, projectId));
 
       if (sourceCount >= MAX_SOURCES_PER_PROJECT) {
-        throw new Error(`max ${MAX_SOURCES_PER_PROJECT} sources per project`);
+        return { overQuota: true as const, id: null as string | null };
       }
 
       const [src] = await tx
@@ -219,9 +174,67 @@ export async function POST(
           sourceKind,
           extractedText: text,
           citation: citation.slice(0, 500),
+          processed: false,
+          chunkCount: 0,
+        })
+        .returning({ id: sources.id });
+
+      return { overQuota: false as const, id: src.id };
+    });
+
+    if (reserved.overQuota) {
+      return NextResponse.json(
+        { error: `max ${MAX_SOURCES_PER_PROJECT} sources per project` },
+        { status: 400 },
+      );
+    }
+    reservedSourceId = reserved.id!;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[sources] Failed to reserve source slot:", message);
+    return NextResponse.json(
+      { error: "Failed to reserve source slot" },
+      { status: 500 },
+    );
+  }
+
+  // Chunk, embed, and finalize — any failure must clean up the reserved
+  // source row so it doesn't permanently consume quota (orphan).
+  let chunks: string[];
+  let embeddings: number[][];
+  try {
+    chunks = chunkText(text);
+    if (chunks.length === 0) {
+      throw new ValidationError("file has no content to chunk", 400);
+    }
+    if (chunks.length > MAX_CHUNKS) {
+      throw new ValidationError(
+        `file produces ${chunks.length} chunks, max ${MAX_CHUNKS}`,
+        400,
+      );
+    }
+
+    embeddings = await generateEmbeddings(chunks);
+
+    // Finalize the reserved source with embeddings and chunks.
+    // The slot was reserved before embeddings so no concurrent upload
+    // can steal quota after the paid API call.
+    const finalized = await db.transaction(async (tx) => {
+      // Lock the reserved source row to prevent concurrent finalization
+      await tx
+        .select({ id: sources.id })
+        .from(sources)
+        .where(eq(sources.id, reservedSourceId))
+        .for("update");
+
+      // Update the reserved source to processed with actual chunk count
+      const [src] = await tx
+        .update(sources)
+        .set({
           processed: true,
           chunkCount: chunks.length,
         })
+        .where(eq(sources.id, reservedSourceId))
         .returning({ id: sources.id });
 
       // Insert chunks
@@ -243,20 +256,41 @@ export async function POST(
       return [src];
     });
 
+    const src = finalized[0];
+    if (!src) {
+      throw new Error("Source row disappeared between reservation and finalization");
+    }
     return NextResponse.json({
-      id: inserted.id,
+      id: src.id,
       fileName,
       chunkCount: chunks.length,
       sourceKind,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("sources per project")) {
-      return NextResponse.json(
-        { error: message },
-        { status: 400 },
-      );
+    // Clean up the reserved (processed=false) row so it doesn't
+    // permanently consume quota after a chunk/embed/finalize failure.
+    await db
+      .delete(sources)
+      .where(eq(sources.id, reservedSourceId))
+      .catch(() => {}); // Best-effort cleanup
+
+    if (err instanceof ValidationError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[sources] Upload failed:", message);
+    return NextResponse.json(
+      { error: "Failed to process uploaded file" },
+      { status: 500 },
+    );
+  }
+}
+
+class ValidationError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ValidationError";
+    this.status = status;
   }
 }

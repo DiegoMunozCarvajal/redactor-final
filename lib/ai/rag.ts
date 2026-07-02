@@ -104,7 +104,16 @@ export async function retrieveContext(
   // Build context text
   let contextText = "";
   if (chunks.length > 0) {
-    contextText = "## Documentos subidos\n\n";
+    // Check for protected content in retrieved chunks
+    const allContent = chunks.map((c) => c.content).join(" ");
+    const { checkBlocklist } = await import("@/lib/ai/originality-check");
+    const blocklistHits = checkBlocklist(allContent);
+    const warningHeader =
+      blocklistHits.length > 0
+        ? `⚠️ ADVERTENCIA: El siguiente material de investigación puede contener elementos de obras protegidas (${blocklistHits.length} patrón(es) detectado(s)). NO copies frases, metáforas, ejemplos ni estructuras. Úsalo SOLO para entender el dominio. Si el material infringe derechos de autor, ignóralo completamente.\n\n`
+        : "";
+
+    contextText = warningHeader + "## Documentos subidos\n\n";
     for (let i = 0; i < chunks.length; i++) {
       const c = chunks[i];
       const cite = c.citation ? ` (${c.citation})` : "";

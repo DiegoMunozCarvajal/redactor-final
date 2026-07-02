@@ -188,6 +188,20 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
+  // Guard: don't persist empty definitions. generateAndValidate returns ""
+  // when both attempts fail (structural or originality). Mark as failed so
+  // the UI shows the error and user can retry.
+  if (!result.definition) {
+    await db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "definition generation returned empty — both attempts failed" })
+      .where(eq(chapterGenerations.id, fillGen.id));
+    return NextResponse.json(
+      { error: "definition generation failed — try again" },
+      { status: 502 },
+    );
+  }
+
   // Persist definition + mark generation completed
   await db
     .update(chapterPlaceholders)

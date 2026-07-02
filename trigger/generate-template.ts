@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
+import { checkBlocklist } from "@/lib/ai/originality-check";
 
 const placeholderSchema = z.object({
   name: z.string(),
@@ -109,6 +110,26 @@ export const generateTemplate = task({
 
           const blocks = result.data.templates;
 
+          // Check generated blocks for contamination from source material
+          let contaminatedBlocks = 0;
+          for (const block of blocks) {
+            const contentHits = checkBlocklist(block.content);
+            const notesHits = checkBlocklist(block.notes);
+            const sourceContextHits = checkBlocklist(block.sourceContext);
+            const totalHits = contentHits.length + notesHits.length + sourceContextHits.length;
+            if (totalHits > 0) {
+              contaminatedBlocks++;
+              console.warn(
+                `[generate-template] ⚠️  Chapter "${chapter.title}", block "${block.name}": ${totalHits} contamination pattern(s) detected`,
+              );
+            }
+          }
+          if (contaminatedBlocks > 0) {
+            throw new Error(
+              `Template generation for chapter "${chapter.title}" rejected: ${contaminatedBlocks}/${blocks.length} blocks contain protected material references. Review the MetaPrompt or source chapters.`,
+            );
+          }
+
           // Deduplicate placeholders across all blocks in this chapter
           const placeholderMap = new Map<string, { function: string; notes: string }>();
 
@@ -117,6 +138,8 @@ export const generateTemplate = task({
           // retry if inserts fail partway (which onConflictDoNothing couldn't fix).
           await db.transaction(async (tx) => {
             await tx.delete(prompts).where(eq(prompts.chapterId, chapter.chapterId));
+            // Clean up stale placeholders from previous generation attempts
+            await tx.delete(chapterPlaceholders).where(eq(chapterPlaceholders.chapterId, chapter.chapterId));
 
             for (let i = 0; i < blocks.length; i++) {
               const block = blocks[i];
@@ -129,7 +152,7 @@ export const generateTemplate = task({
                 content: block.content,
                 function: block.function,
                 notes: block.notes,
-                sourceContext: block.sourceContext,
+                sourceContext: (block.sourceContext?.slice(0, 300) || null) as string | null,
               });
 
               // Collect placeholders (first seen wins for function/notes)

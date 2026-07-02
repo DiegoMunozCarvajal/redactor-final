@@ -41,6 +41,15 @@ export async function POST(
 
   const { chapters: reordered } = parsed.data;
 
+  // Validate no duplicate positions — the schema only checks type/range.
+  const positionSet = new Set(reordered.map((c) => c.position));
+  if (positionSet.size !== reordered.length) {
+    return NextResponse.json(
+      { error: "duplicate positions are not allowed" },
+      { status: 400 },
+    );
+  }
+
   // Verify all chapter IDs belong to this template
   const chapterIds = reordered.map((c) => c.id);
   const existingChapters = await db
@@ -63,8 +72,24 @@ export async function POST(
     );
   }
 
-  // Update all positions in a single transaction
+  // Two-phase update to avoid unique index conflicts on (bookTemplateId, position):
+  // Phase 1: shift all affected chapters to unique negative positions (no conflicts possible)
+  // Phase 2: set to final target positions
   await db.transaction(async (tx) => {
+    // Lock target chapter rows to serialize concurrent reorders
+    await tx
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(inArray(chapters.id, reordered.map((c) => c.id)))
+      .for("update");
+
+    for (let i = 0; i < reordered.length; i++) {
+      await tx
+        .update(chapters)
+        .set({ position: -(i + 1) })
+        .where(eq(chapters.id, reordered[i].id));
+    }
+
     for (const ch of reordered) {
       await tx
         .update(chapters)

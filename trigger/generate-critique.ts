@@ -1,4 +1,4 @@
-import { task } from "@trigger.dev/sdk";
+import { task, type Context } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -7,9 +7,13 @@ import { getChapterPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 
+/** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
+ *  AbortError fires inside the try/catch before a hard task kill. */
+const LLM_TIMEOUT_MS = 480_000; // 8 minutes
+
 export const generateCritique = task({
   id: "generate-critique",
-  maxDuration: 300, // 5 minutes — single LLM call
+  maxDuration: 600, // 10 minutes — headroom for Opus 4.8 + xhigh thinking
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -25,7 +29,7 @@ export const generateCritique = task({
     projectTopic: string | null;
     model?: string;
     effort?: "off" | "max" | "xhigh";
-  }) => {
+  }, { ctx }: { ctx: Context }) => {
     const {
       generationId,
       chapterId,
@@ -44,10 +48,23 @@ export const generateCritique = task({
       .limit(1);
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
 
-    // Terminal states — skip
-    const terminalStatuses = ["completed", "failed"];
-    if (terminalStatuses.includes(gen.status)) {
+    // Only "completed" is truly terminal. "failed" is NOT terminal —
+    // transient LLM/provider errors should retry. See generate-chapter.ts.
+    if (gen.status === "completed") {
       return;
+    }
+
+    // Handle "failed" status on retry — reset to pending if attempts remain.
+    if (gen.status === "failed") {
+      const maxAttempts = ctx.run.maxAttempts ?? 3;
+      if (ctx.attempt.number >= maxAttempts) {
+        return; // Final attempt already failed — skip
+      }
+      await db
+        .update(chapterGenerations)
+        .set({ status: "pending" })
+        .where(eq(chapterGenerations.id, generationId));
+      gen.status = "pending";
     }
 
     // Stale recovery — if a previous attempt crashed mid-execution, reset to pending
@@ -101,6 +118,7 @@ export const generateCritique = task({
         model,
         effort,
         projectTopic,
+        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       });
 
       await db
@@ -123,9 +141,14 @@ export const generateCritique = task({
         .where(eq(chapterGenerations.id, generationId));
     } catch (err) {
       const message = sanitizeError(err);
+      const maxAttempts = ctx.run.maxAttempts ?? 3;
+      const isLastAttempt = ctx.attempt.number >= maxAttempts;
+
+      // Reset to pending on non-final attempts so Trigger.dev retry
+      // picks up from a clean state rather than seeing "failed".
       await db
         .update(chapterGenerations)
-        .set({ status: "failed", error: message })
+        .set({ status: isLastAttempt ? "failed" : "pending", error: message })
         .where(eq(chapterGenerations.id, generationId));
       throw err;
     }

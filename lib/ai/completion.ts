@@ -8,9 +8,15 @@ import { aiJsonSafeParse } from "ai-json-safe-parse";
 import OpenAI from "openai";
 import { getModelPricing, getProviderForModel, requireModelDefinition } from "./providers";
 import { sanitizeForAnthropic, makeOpenAIStrictSchema } from "./schema-sanitizers";
+import { sanitizeError } from "@/lib/sanitize-error";
 type TrackedStage = string;
 
-const STAGE_TIMEOUT_MS = 900_000; // 15 minutes — Opus 4.8 + thinking can exceed 10m
+/** Per-call LLM timeout. Must stay below every Trigger.dev task maxDuration
+ *  (300–600 s) so AbortError fires inside the try/catch block before the task
+ *  is hard-killed, allowing the catch handler to mark the row "failed" cleanly.
+ *  Opus 4.8 + xhigh thinking can exceed 10 m — if you need longer per-call
+ *  timeouts, raise the task maxDuration first, then bump this. */
+const STAGE_TIMEOUT_MS = 240_000; // 4 minutes — safe below min task maxDuration (300 s)
 
 type ProviderResult<T> = {
   data: T;
@@ -871,7 +877,7 @@ export async function generateCompletion<T extends z.ZodType>(
   } catch (error) {
     console.error(
       "[generateCompletion] Unexpected error:",
-      error instanceof Error ? error.message : "Unknown error",
+      error instanceof Error ? sanitizeError(error) : "Unknown error",
     );
     throw error;
   }

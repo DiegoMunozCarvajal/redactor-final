@@ -79,16 +79,22 @@ interface ProjectData {
     return () => controller.abort();
   }, [fetchProject]);
 
-  // Poll if any chapter is generating
+  // Poll if any chapter is generating (skip stale generations > 30 min old).
   useEffect(() => {
     if (!project) return;
-    const hasGenerating = project.chapters.some(
+    const STALE_MS = 30 * 60 * 1000;
+    const now = Date.now();
+    const hasActive = project.chapters.some(
       (ch) => {
         const status = ch.latestGeneration?.status;
-        return status === "pending" || status === "generating" || status === "assembling";
+        if (status !== "pending" && status !== "generating" && status !== "assembling") return false;
+        // Skip stale — generation was created > 30 min ago, likely crashed.
+        const createdAt = ch.latestGeneration?.createdAt;
+        if (createdAt && now - new Date(createdAt).getTime() > STALE_MS) return false;
+        return true;
       },
     );
-    if (!hasGenerating) return;
+    if (!hasActive) return;
 
     const interval = setInterval(() => {
       if (fetchingRef.current) return;

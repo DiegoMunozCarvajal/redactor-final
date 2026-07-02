@@ -10,6 +10,7 @@ import { generationSystemPrompts, projects } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import type { ZodType } from "zod";
 import { DEFAULT_SYSTEM_PROMPT, STYLE_RULES } from "@/lib/ai/system-prompts";
+import { assertOriginalEnough } from "@/lib/ai/originality-check";
 
 // In-memory cache for the default generation system prompt.
 // Refreshed on each call. TTL of 60s means a default change takes up to 60s
@@ -89,6 +90,8 @@ export interface GeneratePromptParams {
   projectId?: string;
   /** Zod schema for structured output. When set, the LLM returns parsed JSON. */
   schema?: ZodType;
+  /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
+  signal?: AbortSignal;
 }
 
 /** Assembly output scales with fragment count. Each fragment contributes ~2048 tokens.
@@ -118,6 +121,21 @@ export interface GenerateResult {
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Escape user-generated text for safe insertion inside XML-like prompt tags.
+ *  Prevents fragment content containing `</seccion>` or `</content>` from
+ *  breaking prompt framing or injecting instructions into downstream LLM calls. */
+function escapeXmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Escape text for use in XML attribute values (double-quoted). */
+function escapeXmlAttr(text: string): string {
+  return escapeXmlText(text).replace(/"/g, "&quot;");
 }
 
 export function applyPlaceholders(
@@ -170,6 +188,7 @@ export async function generatePromptContent(
     projectTopic,
     projectId,
     schema,
+    signal,
   } = params;
 
   // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
@@ -199,6 +218,7 @@ export async function generatePromptContent(
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(effort !== undefined ? { effort } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   };
 
   let rawText: string;
@@ -217,8 +237,13 @@ export async function generatePromptContent(
     durationMs = result.durationMs;
   }
 
+  // Check generated fragment for contamination. Fail-closed: throw so
+  // Trigger.dev retries (LLM non-determinism → retry often produces clean variant).
+  const text = stripPlaceholderWrappers(rawText);
+  assertOriginalEnough(text, { stage: "fragment", throwOnFail: true });
+
   return {
-    text: stripPlaceholderWrappers(rawText),
+    text,
     model,
     provider: getProviderForModel(model),
     durationMs,
@@ -254,18 +279,25 @@ async function mergeTwoFragments(
   userContent = applyPlaceholders(userContent, placeholders, projectTopic);
 
   // {{SECCIONES_GENERADAS}} → XML format
-  const fragmentsXml = `<secciones>\n<seccion id="1" nombre="${a.title || "Bloque 1"}">\n${a.content}\n</seccion>\n<seccion id="2" nombre="${b.title || "Bloque 2"}">\n${b.content}\n</seccion>\n</secciones>`;
+  const fragmentsXml = `<secciones>\n<seccion id="1" nombre="${escapeXmlAttr(a.title || "Bloque 1")}">\n${escapeXmlText(a.content)}\n</seccion>\n<seccion id="2" nombre="${escapeXmlAttr(b.title || "Bloque 2")}">\n${escapeXmlText(b.content)}\n</seccion>\n</secciones>`;
+  const fragmentsText = `### Fragment 1\n\n${a.content}\n\n---\n\n### Fragment 2\n\n${b.content}`;
+  const assemblyMarkers =
+    /\{\{SECCIONES_GENERADAS\}\}|\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/;
+  const hadAssemblyMarker = assemblyMarkers.test(userContent);
   userContent = userContent.replace(
     /\{\{SECCIONES_GENERADAS\}\}/g,
     fragmentsXml.replace(/\$/g, "$$$$"),
   );
-
   // Legacy markers
-  const fragmentsText = `### Fragment 1\n\n${a.content}\n\n---\n\n### Fragment 2\n\n${b.content}`;
   userContent = userContent.replace(
     /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
     fragmentsText.replace(/\$/g, "$$$$"),
   );
+  // Fallback: if no marker was present, append fragments so the LLM
+  // still sees the material to assemble (prevents silent empty output).
+  if (!hadAssemblyMarker) {
+    userContent += `\n\n---\n\n${fragmentsText}`;
+  }
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(2, model);
 
@@ -357,8 +389,11 @@ export async function generateChapterAssemblyHierarchical(
     currentLevel = nextLevel;
   }
 
+  const hierarchicalText = currentLevel[0].content;
+  assertOriginalEnough(hierarchicalText, { stage: "assembly", throwOnFail: true });
+
   return {
-    text: currentLevel[0].content,
+    text: hierarchicalText,
     model,
     provider: getProviderForModel(model),
     usage: totalUsage,
@@ -458,8 +493,11 @@ export async function generateChapterAssemblyHalves(
   totalUsage.inputTokens += merged.usage.inputTokens;
   totalUsage.outputTokens += merged.usage.outputTokens;
 
+  const halvesText = merged.text;
+  assertOriginalEnough(halvesText, { stage: "assembly", throwOnFail: true });
+
   return {
-    text: merged.text,
+    text: halvesText,
     model,
     provider: getProviderForModel(model),
     usage: totalUsage,
@@ -511,8 +549,11 @@ export async function generateChapterAssemblySequential(
     totalUsage.outputTokens += result.usage.outputTokens;
   }
 
+  const sequentialText = accumulator.content;
+  assertOriginalEnough(sequentialText, { stage: "assembly", throwOnFail: true });
+
   return {
-    text: accumulator.content,
+    text: sequentialText,
     model,
     provider: getProviderForModel(model),
     usage: totalUsage,
@@ -538,7 +579,7 @@ export async function generateChapterAssembly(
   const fragmentsXml = `<secciones>\n${fragments
     .map(
       (f, i) =>
-        `<seccion id="${i + 1}" nombre="${f.title || `Bloque ${i + 1}`}">\n${f.content}\n</seccion>`,
+        `<seccion id="${i + 1}" nombre="${escapeXmlAttr(f.title || `Bloque ${i + 1}`)}">\n${escapeXmlText(f.content)}\n</seccion>`,
     )
     .join("\n")}\n</secciones>`;
 
@@ -561,6 +602,9 @@ export async function generateChapterAssembly(
 
   // {{SECCIONES_GENERADAS}} → XML format with prompt titles
   // Escape $ in replacement to prevent special pattern interpretation ($&, $1, etc.)
+  const assemblyMarkers =
+    /\{\{SECCIONES_GENERADAS\}\}|\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/;
+  const hadAssemblyMarker = assemblyMarkers.test(content);
   content = content.replace(
     /\{\{SECCIONES_GENERADAS\}\}/g,
     fragmentsXml.replace(/\$/g, "$$$$"),
@@ -571,6 +615,11 @@ export async function generateChapterAssembly(
     /\[PEGAR AQUÍ TODOS LOS FRAGMENTOS DEL CAPÍTULO\]|\[PASTE ALL CHAPTER FRAGMENTS HERE\]/g,
     fragmentsText.replace(/\$/g, "$$$$"),
   );
+  // Fallback: if no marker was present, append fragments so the LLM
+  // still sees the material to assemble (prevents silent empty output).
+  if (!hadAssemblyMarker) {
+    content += `\n\n---\n\n${fragmentsText}`;
+  }
 
   const effectiveMaxTokens = maxTokens ?? assemblyMaxTokens(fragments.length, model);
 
@@ -590,8 +639,12 @@ export async function generateChapterAssembly(
     ...(effort !== undefined ? { effort } : {}),
   });
 
+  const assemblyText = stripPlaceholderWrappers(result.data as string);
+
+  assertOriginalEnough(assemblyText, { stage: "assembly", throwOnFail: true });
+
   return {
-    text: stripPlaceholderWrappers(result.data as string),
+    text: assemblyText,
     model,
     provider: getProviderForModel(model),
     durationMs: result.durationMs,
@@ -614,6 +667,8 @@ export interface GenerateCritiqueParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
+  /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
+  signal?: AbortSignal;
 }
 
 /** Critique output scales with content length. Each ~1024 chars contributes ~1024 tokens. */
@@ -633,6 +688,7 @@ export async function generateChapterCritique(
     effort,
     maxTokens,
     projectTopic,
+    signal,
   } = params;
 
   const baseSystemPrompt = critiquePrompt.userPrompt
@@ -650,6 +706,9 @@ export async function generateChapterCritique(
   );
 
   // Replace content placeholder with the actual chapter content
+  const critiqueMarkers =
+    /\{\{CONTENIDO_CAPITULO\}\}|\[PEGAR AQUÍ EL CAPÍTULO A CRITICAR\]|\[PEGAR AQUÍ EL CAPÍTULO COMPLETO\]/g;
+  const hadCritiqueMarker = critiqueMarkers.test(processedUserContent);
   processedUserContent = processedUserContent.replace(
     /\{\{CONTENIDO_CAPITULO\}\}/g,
     chapterContent.replace(/\$/g, "$$$$"),
@@ -658,6 +717,12 @@ export async function generateChapterCritique(
     /\[PEGAR AQUÍ EL CAPÍTULO A CRITICAR\]|\[PEGAR AQUÍ EL CAPÍTULO COMPLETO\]/g,
     chapterContent.replace(/\$/g, "$$$$"),
   );
+  // Fallback: if no marker was present, append chapter content so the LLM
+  // still sees the material to critique (prevents silent empty output).
+  if (!hadCritiqueMarker) {
+    processedUserContent +=
+      `\n\n---\n\n[Capítulo a criticar]\n\n${chapterContent}`;
+  }
 
   const effectiveMaxTokens =
     maxTokens ?? critiqueMaxTokens(chapterContent.length);
@@ -682,10 +747,16 @@ export async function generateChapterCritique(
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   });
 
+  const critiqueText = stripPlaceholderWrappers(result.data as string);
+
+  // Non-blocking: critique is meta-text, not published content
+  assertOriginalEnough(critiqueText, { stage: "critique", throwOnFail: false });
+
   return {
-    text: stripPlaceholderWrappers(result.data as string),
+    text: critiqueText,
     model,
     provider: getProviderForModel(model),
     durationMs: result.durationMs,
@@ -709,6 +780,8 @@ export interface GenerateCorrectionParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
+  /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
+  signal?: AbortSignal;
 }
 
 export async function generateChapterCorrection(
@@ -724,6 +797,7 @@ export async function generateChapterCorrection(
     effort,
     maxTokens,
     projectTopic,
+    signal,
   } = params;
 
   const baseSystemPrompt = correctorPrompt.userPrompt
@@ -741,6 +815,9 @@ export async function generateChapterCorrection(
   );
 
   // Replace content placeholders
+  const correctionMarkers =
+    /\{\{CONTENIDO_CAPITULO\}\}|\{\{CONTENIDO_CRITICA\}\}/g;
+  const hadCorrectionMarker = correctionMarkers.test(processedUserContent);
   processedUserContent = processedUserContent.replace(
     /\{\{CONTENIDO_CAPITULO\}\}/g,
     chapterContent.replace(/\$/g, "$$$$"),
@@ -749,6 +826,12 @@ export async function generateChapterCorrection(
     /\{\{CONTENIDO_CRITICA\}\}/g,
     critiqueContent.replace(/\$/g, "$$$$"),
   );
+  // Fallback: if no marker was present, append chapter + critique content
+  // so the LLM still sees the material to correct (prevents silent empty output).
+  if (!hadCorrectionMarker) {
+    processedUserContent +=
+      `\n\n---\n\n[Capítulo a corregir]\n\n${chapterContent}\n\n[Crítica]\n\n${critiqueContent}`;
+  }
 
   // Correction output scales with input (chapter + critique)
   const inputLength = chapterContent.length + critiqueContent.length;
@@ -774,10 +857,15 @@ export async function generateChapterCorrection(
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   });
 
+  const correctionText = stripPlaceholderWrappers(result.data as string);
+
+  assertOriginalEnough(correctionText, { stage: "correction", throwOnFail: true });
+
   return {
-    text: stripPlaceholderWrappers(result.data as string),
+    text: correctionText,
     model,
     provider: getProviderForModel(model),
     durationMs: result.durationMs,

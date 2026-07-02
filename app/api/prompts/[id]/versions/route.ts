@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { promptVersions, projects, prompts } from "@/lib/db/schema";
-import { eq, and, desc, isNotNull } from "drizzle-orm";
+import { eq, and, desc, isNotNull, isNull } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
 
@@ -16,11 +16,11 @@ export async function GET(
   const { id } = await params;
 
   // promptVersions.promptId can reference either prompts.id (template) or
-  // projectPrompts.id (project). Try template first, then project.
+  // project-scoped prompts.id. Try template first, then project.
   const [templatePrompt] = await db
     .select({ id: prompts.id })
     .from(prompts)
-    .where(eq(prompts.id, id))
+    .where(and(eq(prompts.id, id), isNull(prompts.projectId)))
     .limit(1);
 
   if (templatePrompt) {

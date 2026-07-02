@@ -90,6 +90,19 @@ async function importSources(projectId: string) {
     const citation = extractCitation(file, text);
     const sourceKind = detectSourceKind(file);
 
+    // Check for protected content before ingesting
+    const { checkBlocklist } = await import("../lib/ai/originality-check");
+    const blocklistHits = checkBlocklist(text);
+    if (blocklistHits.length > 0) {
+      console.error(`⛔ ${file}: posible contenido protegido detectado: ${blocklistHits.length} patrón(es)`);
+      console.error(`   Usa --force para importar de todas formas (bajo tu propio riesgo)`);
+      if (!process.argv.includes("--force")) {
+        console.error(`   Omitiendo archivo.`);
+        continue;
+      }
+      console.warn(`   ⚠️  --force activo: importando de todas formas.`);
+    }
+
     // Chunk the text
     const chunks = chunkText(text, CHUNK_WORDS, OVERLAP_WORDS);
     console.log(`    → ${chunks.length} chunks`);

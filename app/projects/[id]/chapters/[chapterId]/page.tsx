@@ -45,7 +45,6 @@ import {
   History,
   Copy,
   Puzzle,
-  MessageSquareQuote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -53,7 +52,7 @@ import { enUS } from "date-fns/locale";
 import { MODELS_BY_STAGE } from "@/lib/ai/providers";
 import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
-import { CorrectorSection, CorrectionDiff } from "@/components/prompts/corrector-section";
+import { CorrectorSection } from "@/components/prompts/corrector-section";
 import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
@@ -184,16 +183,12 @@ export default function ChapterPage() {
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
-  const [critiquePromptId, setCritiquePromptId] = useState<string>("");
-  const [critiquePromptList, setCritiquePromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
-  const [selectingCritique, setSelectingCritique] = useState(false);
   const [critiquing, setCritiquing] = useState(false);
   const [critiqueModel, setCritiqueModel] = useState(DEFAULT_MODEL);
-  const [critiqueModalOpen, setCritiqueModalOpen] = useState(false);
   const [selectedCritiqueGenerationId, setSelectedCritiqueGenerationId] = useState<string | undefined>();
-  const [correctorPromptList, setCorrectorPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
-  const [selectingCorrector, setSelectingCorrector] = useState(false);
-  const [correctorModalOpen, setCorrectorModalOpen] = useState(false);
+  const [correctorModel, setCorrectorModel] = useState(DEFAULT_MODEL);
+  const [correcting, setCorrecting] = useState(false);
+  const [correctionTrigger, setCorrectionTrigger] = useState(0);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
@@ -283,28 +278,6 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, []);
 
-  const fetchCritiqueLibrary = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch("/api/prompt-library?category=critique", { signal });
-      if (signal?.aborted) return;
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setCritiquePromptList(data);
-      }
-    } catch { /* supplementary */ }
-  }, []);
-
-  const fetchCorrectorLibrary = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch("/api/prompt-library?category=corrector", { signal });
-      if (signal?.aborted) return;
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setCorrectorPromptList(data);
-      }
-    } catch { /* supplementary */ }
-  }, []);
-
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
@@ -312,11 +285,9 @@ export default function ChapterPage() {
       fetchPrompts(controller.signal),
       fetchPlaceholders(controller.signal),
       fetchAssemblyLibrary(controller.signal),
-      fetchCritiqueLibrary(controller.signal),
-      fetchCorrectorLibrary(controller.signal),
     ]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary, fetchCritiqueLibrary, fetchCorrectorLibrary]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -693,76 +664,6 @@ export default function ChapterPage() {
     }
   }
 
-  async function handleSelectCritiquePrompt(libraryId: string) {
-    setSelectingCritique(true);
-    try {
-      const res = await fetch(`/api/prompt-library/${libraryId}`);
-      if (!res.ok) {
-        toast.error("Failed to load critique prompt");
-        return;
-      }
-      const cp = await res.json();
-      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapterId: params.chapterId,
-          title: cp.name,
-          content: cp.content,
-          userPrompt: cp.userPrompt ?? null,
-          isCritique: true,
-        }),
-      });
-      if (createRes.ok) {
-        toast.success(`Critique prompt "${cp.name}" added`);
-        fetchPrompts();
-        fetchPlaceholders();
-      } else {
-        const err = await createRes.json().catch(() => ({}));
-        toast.error(err.error ?? "Failed to add critique prompt");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setSelectingCritique(false);
-    }
-  }
-
-  async function handleSelectCorrectorPrompt(libraryId: string) {
-    setSelectingCorrector(true);
-    try {
-      const res = await fetch(`/api/prompt-library/${libraryId}`);
-      if (!res.ok) {
-        toast.error("Failed to load corrector prompt");
-        return;
-      }
-      const cp = await res.json();
-      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapterId: params.chapterId,
-          title: cp.name,
-          content: cp.content,
-          userPrompt: cp.userPrompt ?? null,
-          isCorrector: true,
-        }),
-      });
-      if (createRes.ok) {
-        toast.success(`Corrector prompt "${cp.name}" added`);
-        fetchPrompts();
-        fetchPlaceholders();
-      } else {
-        const err = await createRes.json().catch(() => ({}));
-        toast.error(err.error ?? "Failed to add corrector prompt");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setSelectingCorrector(false);
-    }
-  }
-
   function openAssemblyModal() {
     // Pre-select the latest fragment for each content prompt
     const sel: Record<string, string> = {};
@@ -791,37 +692,31 @@ export default function ChapterPage() {
   }
 
   async function runCritique() {
-    if (critiquePromptId) {
-      // Library prompt selected — use it directly
-    } else if (critiquePrompt) {
-      // Project-level critique prompt exists — send inline
-    } else {
-      toast.error("Select a critique prompt");
+    if (!critiquePrompt) {
+      toast.error("No critique prompt configured");
+      return;
+    }
+    if (!hasAssembly) {
+      toast.error("Assemble the chapter first before running a critique");
       return;
     }
     setCritiquing(true);
     try {
-      const body: Record<string, unknown> = {
-        model: critiqueModel,
-      };
-      if (critiquePromptId) {
-        body.critiquePromptId = critiquePromptId;
-      } else if (critiquePrompt) {
-        body.critiquePrompt = {
-          content: critiquePrompt.content,
-          userPrompt: critiquePrompt.userPrompt ?? null,
-        };
-      }
       const res = await fetch(
         `/api/projects/${params.id}/chapters/${params.chapterId}/critique`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            model: critiqueModel,
+            critiquePrompt: {
+              content: critiquePrompt.content,
+              userPrompt: critiquePrompt.userPrompt ?? null,
+            },
+          }),
         },
       );
       if (res.ok) {
-        setCritiqueModalOpen(false);
         await fetchChapter();
         await fetchPlaceholders();
         toast.success("Critique started");
@@ -889,6 +784,29 @@ export default function ChapterPage() {
   const selectedCritique = selectedCritiqueGenerationId
     ? critiqueGenerations.find((g) => g.id === selectedCritiqueGenerationId) ?? critiqueGenerations[0]
     : critiqueGenerations[0] ?? null;
+
+  // Block critique button when latest content already critiqued with same prompt
+  const latestContentGen = assemblyGenerations[0];
+  const critiqueBlocked = (() => {
+    if (!latestContentGen?.completedAt || !critiquePrompt) return false;
+    const latestContentDate = new Date(latestContentGen.completedAt).getTime();
+    const currentPromptId = critiquePrompt.id;
+    // Find a critique created after the latest content, using the same prompt
+    return critiqueGenerations.some((g) => {
+      if (!g.completedAt) return false;
+      const critiqueDate = new Date(g.completedAt).getTime();
+      if (critiqueDate <= latestContentDate) return false;
+      const critPromptId = g.generationMetadata?.promptId;
+      // Match: same library prompt ID, or both inline/project (promptId === "inline")
+      return critPromptId === currentPromptId || (critPromptId === "inline" && currentPromptId);
+    });
+  })();
+
+  // Block corrector when no critique exists for the latest content
+  const correctionBlocked = !hasAssembly || critiqueGenerations.length === 0;
+  const correctionBlockedReason = !hasAssembly
+    ? "Assemble the chapter first"
+    : "Run a critique first before correcting";
 
   return (
     <div className="py-6">
@@ -1481,13 +1399,6 @@ export default function ChapterPage() {
                 </ReactMarkdown>
               </div>
 
-              {selectedAssemblyVersion.generationMetadata?.type === "correction"
-                && typeof (selectedAssemblyVersion.assemblyMetadata as Record<string, unknown> | null)?.correctionRaw === "string"
-                && (
-                  <CorrectionDiff
-                    raw={((selectedAssemblyVersion.assemblyMetadata as Record<string, unknown>).correctionRaw as string)}
-                  />
-                )}
             </CardContent>
           </Card>
         </div>
@@ -1643,11 +1554,12 @@ export default function ChapterPage() {
 
       <CritiquePromptSection
         prompt={critiquePrompt}
-        critiqueLibrary={critiquePromptList}
-        onSelectFromLibrary={handleSelectCritiquePrompt}
-        selectingFromLibrary={selectingCritique}
-        onCritique={() => setCritiqueModalOpen(true)}
+        onCritique={runCritique}
         critiquing={critiquing}
+        blocked={critiqueBlocked}
+        blockedReason="Latest version already critiqued with this prompt"
+        model={critiqueModel}
+        onModelChange={setCritiqueModel}
         onDelete={async () => {
           if (!critiquePrompt) return;
           await fetch(`/api/projects/${params.id}/prompts/${critiquePrompt.id}`, {
@@ -1660,10 +1572,12 @@ export default function ChapterPage() {
 
       <CorrectorPromptSection
         prompt={correctorPrompt}
-        correctorLibrary={correctorPromptList}
-        onSelectFromLibrary={handleSelectCorrectorPrompt}
-        selectingFromLibrary={selectingCorrector}
-        onCorrect={() => setCorrectorModalOpen(true)}
+        onCorrect={() => setCorrectionTrigger((n) => n + 1)}
+        correcting={correcting}
+        blocked={correctionBlocked}
+        blockedReason={correctionBlockedReason}
+        model={correctorModel}
+        onModelChange={setCorrectorModel}
         onDelete={async () => {
           if (!correctorPrompt) return;
           await fetch(`/api/projects/${params.id}/prompts/${correctorPrompt.id}`, {
@@ -1858,104 +1772,14 @@ export default function ChapterPage() {
         projectCorrectorPromptId={correctorPrompt?.id}
         projectCorrectorPromptContent={correctorPrompt?.content}
         projectCorrectorPromptUserPrompt={correctorPrompt?.userPrompt}
-        modalOpen={correctorModalOpen}
-        onOpenChange={setCorrectorModalOpen}
+        correctionTrigger={correctionTrigger}
+        correctorModel={correctorModel}
+        onCorrectingChange={setCorrecting}
         onGenerationCreated={() => {
           fetchChapter();
           fetchPlaceholders();
         }}
       />
-
-      {/* Critique Modal */}
-      <Dialog open={critiqueModalOpen} onOpenChange={setCritiqueModalOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Critique Chapter</DialogTitle>
-            <DialogDescription>
-              {critiquing
-                ? "Critique is running in the background."
-                : "Select a critique prompt to analyze the assembled chapter."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {critiquing && (
-              <div className="rounded-md border border-info/30 bg-info/5 p-3" role="status" aria-live="polite">
-                <div className="flex items-start gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-info mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-info">Running critique</p>
-                    <p className="text-xs text-muted-foreground">
-                      Keep this open or close it; polling will refresh results automatically.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!hasAssembly && (
-              <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
-                <p className="text-xs text-warning">
-                  No assembled content found. Assemble the chapter first before running a critique.
-                </p>
-              </div>
-            )}
-
-            {/* Critique prompt picker */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium flex items-center gap-1.5">
-                <MessageSquareQuote className="h-3.5 w-3.5 text-muted-foreground" />
-                Critique Prompt
-              </h4>
-              {critiquePromptList.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No critique prompts available. Create one in the Critique Prompts section.</p>
-              ) : (
-                <Select
-                  value={critiquePromptId}
-                  onValueChange={(v) => setCritiquePromptId(v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a critique prompt…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {critiquePromptList.map((cp) => (
-                      <SelectItem key={cp.id} value={cp.id}>{cp.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Select value={critiqueModel} onValueChange={setCritiqueModel}>
-              <SelectTrigger className="w-[170px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODELS.map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              size="sm"
-              onClick={runCritique}
-              disabled={critiquing || !critiquePromptId || !hasAssembly}
-              title={!hasAssembly ? "Assemble the chapter first before running a critique" : undefined}
-            >
-              {critiquing ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <MessageSquareQuote className="h-3 w-3 mr-1" />
-              )}
-              {critiquing ? "Critiquing" : "Run Critique"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}

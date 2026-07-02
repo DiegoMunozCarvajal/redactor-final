@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { generatePromptContent } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
@@ -101,6 +101,16 @@ export async function POST(
   }
 
   const generationId = lockResult.result.generationId;
+
+  // Guarantee DB cleanup on client abort or request teardown so the
+  // generation row doesn't stay "generating" until the 30-min stale sweep.
+  _req.signal.addEventListener("abort", () => {
+    db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "Request aborted (client disconnect or timeout)" })
+      .where(and(eq(chapterGenerations.id, generationId), eq(chapterGenerations.status, "generating")))
+      .catch(() => {}); // Best-effort
+  }, { once: true });
 
   // LLM call outside the lock
   const placeholders = await getChapterPlaceholders(firstChapter.id, project.topic);

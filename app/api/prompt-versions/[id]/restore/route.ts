@@ -26,6 +26,10 @@ export async function POST(
   const csrfError = csrfCheck(req);
   if (csrfError) return csrfError;
 
+  // Authenticate first — don't leak version existence to unauthenticated callers.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   const { id } = await params;
 
   const [version] = await db
@@ -122,8 +126,6 @@ export async function POST(
     .limit(1);
 
   if (projectPrompt) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
     const [project] = await db

@@ -138,6 +138,16 @@ export async function POST(
 
   const gen = result.gen;
 
+  // Guarantee DB cleanup on client abort or request teardown so the
+  // generation row doesn't stay "generating" until the 30-min stale sweep.
+  req.signal.addEventListener("abort", () => {
+    db
+      .update(chapterGenerations)
+      .set({ status: "failed", error: "Request aborted (client disconnect or timeout)" })
+      .where(and(eq(chapterGenerations.id, gen.id), eq(chapterGenerations.status, "generating")))
+      .catch(() => {}); // Best-effort
+  }, { once: true });
+
   try {
     const result = await generatePromptContent({
       prompt,
