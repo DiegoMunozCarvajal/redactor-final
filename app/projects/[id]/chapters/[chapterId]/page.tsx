@@ -57,6 +57,7 @@ import { CorrectorSection, CorrectionDiff } from "@/components/prompts/corrector
 import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
+import { DiffModal } from "@/components/projects/diff-modal";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 import { getLatestGenerationError } from "@/lib/generation-errors";
 import {
@@ -181,6 +182,7 @@ export default function ChapterPage() {
   const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential" | "halves">("merge-sort");
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
   const [critiquePromptId, setCritiquePromptId] = useState<string>("");
   const [critiquePromptList, setCritiquePromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
@@ -509,7 +511,7 @@ export default function ChapterPage() {
     }
   }
 
-  async function saveDefinition(name: string, definition: string) {
+  async function saveDefinition(name: string, definition: string | null) {
     try {
       const res = await fetch(
         `/api/projects/${params.id}/chapters/${params.chapterId}/placeholders`,
@@ -822,7 +824,7 @@ export default function ChapterPage() {
         setCritiqueModalOpen(false);
         await fetchChapter();
         await fetchPlaceholders();
-        toast.success("Critique completed");
+        toast.success("Critique started");
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error ?? "Critique error");
@@ -864,6 +866,21 @@ export default function ChapterPage() {
   const selectedAssemblyVersionNumber = selectedAssemblyIndex >= 0
     ? assemblyVersions.length - selectedAssemblyIndex
     : 0;
+
+  // Find the original text that was corrected.
+  // assemblyVersions is sorted by completedAt desc (newest first).
+  // The original is the immediate predecessor of the correction.
+  const correctionOriginalText =
+    selectedAssemblyVersion?.generationMetadata?.type === "correction"
+      ? (() => {
+          const idx = assemblyVersions.findIndex(
+            (g) => g.id === selectedAssemblyVersion.id,
+          );
+          if (idx < 0) return null;
+          const original = assemblyVersions[idx + 1];
+          return original?.assembledContent ?? null;
+        })()
+      : null;
 
   // Critique generations: generations with generationMetadata.type === "critique"
   const critiqueGenerations = generations.filter(
@@ -1389,6 +1406,19 @@ export default function ChapterPage() {
                   </span>
                 )}
                 <div className="flex-1" />
+                {
+                  selectedAssemblyVersion.generationMetadata?.type === "correction" &&
+                    correctionOriginalText && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => setDiffModalOpen(true)}
+                      >
+                        Compare
+                      </Button>
+                    )
+                }
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1462,6 +1492,19 @@ export default function ChapterPage() {
           </Card>
         </div>
       )}
+
+      {
+        correctionOriginalText && selectedAssemblyVersion?.assembledContent && (
+          <DiffModal
+            open={diffModalOpen}
+            onOpenChange={setDiffModalOpen}
+            originalTitle={`v${selectedAssemblyVersionNumber - 1}`}
+            correctedTitle={`v${selectedAssemblyVersionNumber} (Corrected)`}
+            originalText={correctionOriginalText}
+            correctedText={selectedAssemblyVersion.assembledContent}
+          />
+        )
+      }
 
       {/* Critique Results */}
       {selectedCritique && (
