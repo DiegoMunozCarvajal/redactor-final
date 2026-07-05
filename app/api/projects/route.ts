@@ -27,7 +27,7 @@ export async function GET() {
     .leftJoin(chapters, eq(chapters.projectId, projects.id))
     .leftJoin(chapterGenerations, and(
       eq(chapterGenerations.chapterId, chapters.id),
-      sql`${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('title', 'fill', 'critique', 'prompt')`,
+      sql`(${chapterGenerations.generationMetadata}->>'type' IS NULL OR ${chapterGenerations.generationMetadata}->>'type' NOT IN ('title', 'fill', 'critique', 'prompt'))`,
     ))
     .where(eq(projects.userId, user.id))
     .groupBy(projects.id)
