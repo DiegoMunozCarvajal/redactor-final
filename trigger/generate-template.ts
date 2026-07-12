@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { checkBlocklist } from "@/lib/ai/originality-check";
+import { assertOriginalEnough } from "@/lib/ai/originality-check";
 
 const placeholderSchema = z.object({
   name: z.string(),
@@ -126,24 +126,24 @@ export const generateTemplate = task({
             );
           }
 
-          // Check generated blocks for contamination from source material.
-          // Only check `content` (the actual prompt text). `sourceContext` is
-          // domain context that should reference the source, and `notes` is
-          // meta-guidance for the placeholder-fill LLM — neither is generation
-          // output that reaches the reader.
+          // Originality check — advisory only for template generation.
+          // Templates are structural: they describe narrative patterns, not
+          // final content. Downstream stages (fragment, assembly) enforce
+          // strict originality with shingle/LCS checks.
+          // Blocklist hits are logged as warnings but don't reject blocks.
           let contaminatedBlocks = 0;
           for (const block of blocks) {
-            const contentHits = checkBlocklist(block.content);
-            if (contentHits.length > 0) {
+            const result = assertOriginalEnough(block.content, {
+              stage: "metaprompt-block",
+              throwOnFail: false,
+            });
+            if (result.flagged) {
               contaminatedBlocks++;
-              console.warn(
-                `[generate-template] ⚠️  Chapter "${chapter.title}", block "${block.name}": ${contentHits.length} contamination pattern(s) detected in content`,
-              );
             }
           }
           if (contaminatedBlocks > 0) {
-            throw new Error(
-              `Template generation for chapter "${chapter.title}" rejected: ${contaminatedBlocks}/${blocks.length} blocks contain protected material references. Review the MetaPrompt or source chapters.`,
+            console.warn(
+              `[generate-template] ⚠️  Chapter "${chapter.title}": ${contaminatedBlocks}/${blocks.length} blocks flagged by originality check (advisory — proceeding).`,
             );
           }
 
