@@ -95,20 +95,36 @@ export const generateTemplate = task({
         TEMPLATE_CONCURRENCY,
         async (chapter) => {
           const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
-          const userPrompt = (metaPrompt.userPrompt ?? `Descompón el siguiente capítulo fuente en sus unidades naturales de contenido y genera un prompt por cada unidad.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de bloques en formato JSON.`)
-            .replace(/{{CAPITULO_FUENTE}}/g, capituloFuente)
-            .replace(/{CAPITULO_FUENTE}/g, capituloFuente);
+          // Replace any {CAPITULO_*} or {{CAPITULO_*}} variant (case-insensitive)
+          // so meta-prompts can use {CAPITULO_FUENTE}, {CAPITULO_EN_MARKDOWN}, etc.
+          const replaceCapituloPlaceholder = (text: string) =>
+            text.replace(/\{\{?CAPITULO_[^}]+\}\}?/gi, capituloFuente);
+
+          const userPrompt = replaceCapituloPlaceholder(
+            metaPrompt.userPrompt ??
+              `Descompón el siguiente capítulo fuente en sus unidades naturales de contenido y genera un prompt por cada unidad.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de bloques en formato JSON.`,
+          );
+
+          // Also replace in the system prompt for non-Anthropic providers
+          // (Anthropic uses cachedSystemPrompt below — replacement happens there too)
+          const systemPrompt = replaceCapituloPlaceholder(metaPrompt.content);
 
           const result = await generateCompletion({
-            systemPrompt: isAnthropic ? "" : metaPrompt.content,
+            systemPrompt: isAnthropic ? "" : systemPrompt,
             userPrompt,
             schema: metaPromptOutputSchema,
             model,
             ...(effort ? { effort } : {}),
-            ...(isAnthropic ? { cachedSystemPrompt: metaPrompt.content, cacheSystemPrompt: true } : {}),
+            ...(isAnthropic ? { cachedSystemPrompt: systemPrompt, cacheSystemPrompt: true } : {}),
           });
 
           const blocks = result.data.templates;
+
+          if (!blocks || blocks.length === 0) {
+            throw new Error(
+              `Chapter "${chapter.title}" generated 0 template blocks. The metaprompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
+            );
+          }
 
           // Check generated blocks for contamination from source material
           let contaminatedBlocks = 0;
