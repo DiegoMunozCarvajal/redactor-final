@@ -126,17 +126,18 @@ export const generateTemplate = task({
             );
           }
 
-          // Check generated blocks for contamination from source material
+          // Check generated blocks for contamination from source material.
+          // Only check `content` (the actual prompt text). `sourceContext` is
+          // domain context that should reference the source, and `notes` is
+          // meta-guidance for the placeholder-fill LLM — neither is generation
+          // output that reaches the reader.
           let contaminatedBlocks = 0;
           for (const block of blocks) {
             const contentHits = checkBlocklist(block.content);
-            const notesHits = checkBlocklist(block.notes);
-            const sourceContextHits = checkBlocklist(block.sourceContext);
-            const totalHits = contentHits.length + notesHits.length + sourceContextHits.length;
-            if (totalHits > 0) {
+            if (contentHits.length > 0) {
               contaminatedBlocks++;
               console.warn(
-                `[generate-template] ⚠️  Chapter "${chapter.title}", block "${block.name}": ${totalHits} contamination pattern(s) detected`,
+                `[generate-template] ⚠️  Chapter "${chapter.title}", block "${block.name}": ${contentHits.length} contamination pattern(s) detected in content`,
               );
             }
           }
