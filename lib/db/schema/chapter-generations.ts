@@ -33,6 +33,9 @@ export const chapterGenerations = pgTable(
       fragmentIds?: string[];
       assemblyPromptId?: string;
       critiqueGenerationId?: string;
+      editorialBriefId?: string;
+      editorialBriefVersion?: number;
+      editorialBriefHash?: string;
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{

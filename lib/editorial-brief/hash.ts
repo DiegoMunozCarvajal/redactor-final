@@ -7,7 +7,7 @@ import type { EditorialBundle } from "./schema";
  * Uses a deterministic algorithm so that the same logical object always
  * produces the same string regardless of property insertion order.
  */
-function canonicalStringify(value: unknown): string {
+export function canonicalStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
