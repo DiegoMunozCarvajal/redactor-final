@@ -1,6 +1,8 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { chapterGenerations } from "./chapter-generations";
 import { prompts } from "./prompts";
+import { promptVersions } from "./prompt-versions";
+import { llmPromptExecutions } from "./prompt-registry";
 
 export const fragments = pgTable(
   "fragments",
@@ -12,6 +14,10 @@ export const fragments = pgTable(
     projectPromptId: uuid("project_prompt_id")
       .notNull()
       .references(() => prompts.id, { onDelete: "cascade" }),
+    // FK to prompt_versions enforced via SQL migration. Nullable during transition.
+    promptRevisionId: uuid("prompt_revision_id"),
+    executionId: uuid("execution_id")
+      .references(() => llmPromptExecutions.id, { onDelete: "restrict" }),
     position: integer("position").notNull(),
     content: text("content"),
     metadata: jsonb("metadata"),

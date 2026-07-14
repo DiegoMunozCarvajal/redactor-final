@@ -178,6 +178,7 @@ export async function POST(
         .values({
           chapterGenerationId: gen.id,
           projectPromptId: prompt.id,
+          promptRevisionId: prompt.currentRevisionId,
           position: prompt.position,
           content: result.text,
           modelUsed: result.model,

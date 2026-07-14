@@ -18,6 +18,9 @@ export const prompts = pgTable("prompts", {
   function: text("function"),
   notes: text("notes"),
   sourceContext: text("source_context"),
+  // FK to prompt_versions enforced via SQL migration.
+  // Nullable during schema transition; P3-T2 makes all insert sites provide it.
+  currentRevisionId: uuid("current_revision_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_prompts_chapter_position").on(table.chapterId, table.position),

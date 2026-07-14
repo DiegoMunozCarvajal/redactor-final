@@ -234,6 +234,7 @@ export const generateChapter = task({
             .values({
               chapterGenerationId: generationId,
               projectPromptId: prompt.id,
+              promptRevisionId: prompt.currentRevisionId,
               position: prompt.position,
               content: result.text,
               modelUsed: result.model,
