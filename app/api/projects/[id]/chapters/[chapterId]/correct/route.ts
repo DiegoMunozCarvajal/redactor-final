@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
-import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateCorrection } from "@/trigger/generate-correction";
-import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { snapshotFromGenerationMetadata, metadataFromSnapshot } from "@/lib/editorial-brief/context";
@@ -47,35 +45,16 @@ export async function POST(
     return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const correctorPromptId = body.correctorPromptId as string | undefined;
-  const correctorPrompt = body.correctorPrompt as { content: string; userPrompt?: string | null } | undefined;
+  const correctorPromptRevisionId = body.correctorPromptRevisionId as string | undefined;
   const critiqueGenerationId = body.critiqueGenerationId as string | undefined;
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
-  // Require either correctorPromptId (from library) or correctorPrompt (inline from project prompt)
-  if (!correctorPromptId && !correctorPrompt) {
+  if (!correctorPromptRevisionId) {
     return NextResponse.json(
-      { error: "correctorPromptId or correctorPrompt is required" },
+      { error: "correctorPromptRevisionId is required" },
       { status: 400 },
     );
-  }
-
-  // Validate inline corrector prompt if provided
-  if (correctorPrompt != null) {
-    if (typeof correctorPrompt.content !== "string" || correctorPrompt.content.length > 100_000) {
-      return NextResponse.json(
-        { error: "correctorPrompt.content must be a string under 100KB" },
-        { status: 400 },
-      );
-    }
-    if (correctorPrompt.userPrompt !== undefined && correctorPrompt.userPrompt !== null &&
-        (typeof correctorPrompt.userPrompt !== "string" || correctorPrompt.userPrompt.length > 50_000)) {
-      return NextResponse.json(
-        { error: "correctorPrompt.userPrompt must be a string under 50KB" },
-        { status: 400 },
-      );
-    }
   }
 
   if (!critiqueGenerationId) {
@@ -151,49 +130,8 @@ export async function POST(
     contentToCorrect = latestAssembly.assembledContent;
   }
 
-  // Resolve corrector prompt: inline object or library lookup
-  let cpContent: string;
-  let cpUserPrompt: string | null;
-  let cpName: string;
-
-  if (correctorPrompt) {
-    cpContent = correctorPrompt.content;
-    cpUserPrompt = correctorPrompt.userPrompt ?? null;
-    cpName = "Project Corrector";
-  } else {
-    const [cp] = await db
-      .select()
-      .from(promptLibrary)
-      .where(and(eq(promptLibrary.id, correctorPromptId!), eq(promptLibrary.category, "corrector")))
-      .limit(1);
-
-    if (!cp) {
-      return NextResponse.json(
-        { error: "corrector prompt not found" },
-        { status: 400 },
-      );
-    }
-    cpContent = cp.content;
-    cpUserPrompt = cp.userPrompt;
-    cpName = cp.name;
-  }
-
-  const placeholders = await getChapterPlaceholders(chapterId, project.topic);
-  const missingPlaceholders = getMissingPlaceholderNames(
-    [cpContent, cpUserPrompt].filter(Boolean) as string[],
-    placeholders,
-  );
-  if (missingPlaceholders.length > 0) {
-    const missing = missingPlaceholders.join(", ");
-    return NextResponse.json(
-      {
-        error: `Cannot run corrector "${cpName}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
-      },
-      { status: 400 },
-    );
-  }
-
-  const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
+  // Prompt revision validated at runtime by executeVersionedPrompt
+  const resolvedModel = model ?? "claude-sonnet-4-20250514";
 
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale correction rows before rate check (inside lock for TOCTOU safety).
@@ -212,16 +150,11 @@ export async function POST(
         status: "pending",
         generationMetadata: {
           type: "correction",
-          promptId: correctorPromptId ?? "inline",
-          promptTitle: cpName,
+          correctorPromptRevisionId,
           model: resolvedModel,
           critiqueGenerationId,
-          // Preserve inline prompt content for audit trail.
-          // When promptId === "inline", future reviewers need to know
-          // what correction instructions were actually sent to the LLM.
-          ...(correctorPrompt && { promptContent: correctorPrompt.content }),
           ...(critiqueSnapshot ? metadataFromSnapshot(critiqueSnapshot) : {}),
-        },
+        } as Record<string, unknown>,
       })
       .returning();
 
@@ -252,13 +185,9 @@ export async function POST(
         generationId: gen.id,
         projectId,
         chapterId,
-        correctorPrompt: {
-          content: cpContent,
-          userPrompt: cpUserPrompt,
-        },
+        correctorPromptRevisionId,
         contentToCorrect,
         critiqueContent: critiqueGen.assembledContent!,
-        projectTopic: project.topic,
         ...(critiqueSnapshot
           ? {
               editorialBriefId: critiqueSnapshot.editorialBriefId,
@@ -285,7 +214,7 @@ export async function POST(
     action: "chapter.correction",
     resourceType: "chapter_generation",
     resourceId: gen.id,
-    metadata: { projectId, chapterId, correctorPromptId: correctorPromptId ?? "inline", critiqueGenerationId },
+    metadata: { projectId, chapterId, correctorPromptRevisionId, critiqueGenerationId },
   });
 
   return NextResponse.json(gen);

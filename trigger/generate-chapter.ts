@@ -222,6 +222,9 @@ export const generateChapter = task({
             placeholders,
             projectTopic: project.topic,
             projectId,
+            chapterId: gen.chapterId,
+            chapterGenerationId: generationId,
+            chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
             editorialContext: editorialBundle
               ? renderEditorialScope(editorialBundle, { scope: "fragment", chapterId: gen.chapterId })
               : null,
@@ -235,6 +238,7 @@ export const generateChapter = task({
               chapterGenerationId: generationId,
               projectPromptId: prompt.id,
               promptRevisionId: prompt.currentRevisionId,
+              executionId: result.executionId ?? null,
               position: prompt.position,
               content: result.text,
               modelUsed: result.model,

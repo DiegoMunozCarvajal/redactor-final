@@ -2,11 +2,10 @@ import { task, type Context } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 import { chapterGenerations } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { generateChapterCorrection } from "@/lib/generate";
-import { getChapterPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
-import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope } from "@/lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
+import { runCorrection } from "@/lib/review/correction";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -14,7 +13,7 @@ const LLM_TIMEOUT_MS = 480_000; // 8 minutes
 
 export const generateCorrection = task({
   id: "generate-correction",
-  maxDuration: 600, // 10 minutes — headroom for Opus 4.8 + xhigh thinking
+  maxDuration: 600,
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -25,10 +24,9 @@ export const generateCorrection = task({
     generationId: string;
     projectId: string;
     chapterId: string;
-    correctorPrompt: { content: string; userPrompt: string | null };
+    correctorPromptRevisionId: string;
     contentToCorrect: string;
     critiqueContent: string;
-    projectTopic: string | null;
     editorialBriefId?: string;
     editorialBriefVersion?: number;
     editorialBriefHash?: string;
@@ -39,10 +37,9 @@ export const generateCorrection = task({
       generationId,
       projectId,
       chapterId,
-      correctorPrompt,
+      correctorPromptRevisionId,
       contentToCorrect,
       critiqueContent,
-      projectTopic,
       model,
       effort,
     } = payload;
@@ -56,8 +53,6 @@ export const generateCorrection = task({
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
 
     // Resolve editorial brief snapshot from generation metadata.
-    // Correction inherits the snapshot from the critique it responds to (stored
-    // in generationMetadata by the correct route).
     const corrGenSnapshot = snapshotFromGenerationMetadata(
       (gen.generationMetadata as Record<string, unknown> | null) ?? {},
     );
@@ -82,18 +77,11 @@ export const generateCorrection = task({
       }
     }
 
-    // Only "completed" is truly terminal. "failed" is NOT terminal —
-    // transient LLM/provider errors should retry. See generate-chapter.ts.
-    if (gen.status === "completed") {
-      return;
-    }
+    if (gen.status === "completed") return;
 
-    // Handle "failed" status on retry — reset to pending if attempts remain.
     if (gen.status === "failed") {
       const maxAttempts = ctx.run.maxAttempts ?? 3;
-      if (ctx.attempt.number >= maxAttempts) {
-        return; // Final attempt already failed — skip
-      }
+      if (ctx.attempt.number >= maxAttempts) return;
       await db
         .update(chapterGenerations)
         .set({ status: "pending" })
@@ -101,13 +89,9 @@ export const generateCorrection = task({
       gen.status = "pending";
     }
 
-    // Stale recovery — if a previous attempt crashed mid-execution, reset to pending
     if (gen.status === "generating") {
       const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
-      if (gen.createdAt && new Date(gen.createdAt) > staleCutoff) {
-        return;
-      }
-      // Stale — reset to pending and recover below
+      if (gen.createdAt && new Date(gen.createdAt) > staleCutoff) return;
       await db
         .update(chapterGenerations)
         .set({ status: "pending" })
@@ -115,7 +99,6 @@ export const generateCorrection = task({
       gen.status = "pending";
     }
 
-    // Unrecognized status — fail loudly
     if (gen.status !== "pending") {
       const msg = `Unrecognized generation status "${gen.status}" for ${generationId}`;
       await db
@@ -125,7 +108,6 @@ export const generateCorrection = task({
       throw new Error(msg);
     }
 
-    // Transition pending → generating atomically
     const [updated] = await db
       .update(chapterGenerations)
       .set({ status: "generating" })
@@ -136,28 +118,24 @@ export const generateCorrection = task({
         ),
       )
       .returning({ id: chapterGenerations.id });
-    if (!updated) {
-      return;
-    }
+    if (!updated) return;
 
     try {
-      const placeholders = await getChapterPlaceholders(chapterId, projectTopic);
-
-      const result = await generateChapterCorrection({
-        correctorPrompt,
-        content: contentToCorrect,
-        critiqueContent,
-        placeholders,
-        model,
+      const result = await runCorrection({
+        projectId,
+        chapterId,
+        chapterGenerationId: generationId,
+        model: model ?? "claude-sonnet-4-20250514",
         effort,
-        projectTopic,
+        revisionId: correctorPromptRevisionId,
         editorialContext: corrEditorialBundle
-          ? renderEditorialScope(corrEditorialBundle, { scope: "correction", chapterId })
-          : null,
+          ? renderEditorialData(corrEditorialBundle, { chapterId }) ?? ""
+          : "",
+        chapterContent: contentToCorrect,
+        critiqueContent,
         signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       });
 
-      // Extract <capitulo_corregido> from the output for clean display
       const capMatch = result.text.match(
         /<capitulo_corregido>([\s\S]*?)<\/capitulo_corregido>/,
       );
@@ -170,10 +148,11 @@ export const generateCorrection = task({
           assembledContent: cleanChapter,
           assemblyMetadata: {
             algorithm: "correction",
-            model: result.model,
+            model,
             fragmentCount: 1,
             correctionRaw: result.text,
-          },
+            correctionExecutionId: result.executionId,
+          } as Record<string, unknown>,
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, generationId));
@@ -182,8 +161,6 @@ export const generateCorrection = task({
       const maxAttempts = ctx.run.maxAttempts ?? 3;
       const isLastAttempt = ctx.attempt.number >= maxAttempts;
 
-      // Reset to pending on non-final attempts so Trigger.dev retry
-      // picks up from a clean state rather than seeing "failed".
       await db
         .update(chapterGenerations)
         .set({ status: isLastAttempt ? "failed" : "pending", error: message })

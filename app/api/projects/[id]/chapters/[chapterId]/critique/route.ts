@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, promptLibrary } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
-import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateCritique } from "@/trigger/generate-critique";
-import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
@@ -47,37 +45,15 @@ export async function POST(
     return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const critiquePromptId = body.critiquePromptId as string | undefined;
-  const critiquePrompt = body.critiquePrompt as { content: string; userPrompt?: string | null } | undefined;
+  const critiquePromptRevisionId = body.critiquePromptRevisionId as string | undefined;
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
-  if (!critiquePromptId && !critiquePrompt) {
+  if (!critiquePromptRevisionId) {
     return NextResponse.json(
-      { error: "critiquePromptId or critiquePrompt is required" },
+      { error: "critiquePromptRevisionId is required" },
       { status: 400 },
     );
-  }
-
-  if (critiquePrompt) {
-    if (typeof critiquePrompt.content !== "string" || critiquePrompt.content.length === 0) {
-      return NextResponse.json(
-        { error: "critiquePrompt.content must be a non-empty string" },
-        { status: 400 },
-      );
-    }
-    if (critiquePrompt.content.length > 100_000) {
-      return NextResponse.json(
-        { error: "critiquePrompt.content too large, max 100KB" },
-        { status: 400 },
-      );
-    }
-    if (critiquePrompt.userPrompt && critiquePrompt.userPrompt.length > 50_000) {
-      return NextResponse.json(
-        { error: "critiquePrompt.userPrompt too large, max 50KB" },
-        { status: 400 },
-      );
-    }
   }
 
   // Determine what content to critique: use provided content or fetch latest assembly
@@ -117,49 +93,8 @@ export async function POST(
     contentToCritique = latest.assembledContent;
   }
 
-  // Resolve critique prompt: inline object or library prompt
-  let cpContent: string;
-  let cpUserPrompt: string | null;
-  let cpName: string;
-
-  if (critiquePrompt) {
-    cpContent = critiquePrompt.content;
-    cpUserPrompt = critiquePrompt.userPrompt ?? null;
-    cpName = "Project Critique";
-  } else {
-    const [cp] = await db
-      .select()
-      .from(promptLibrary)
-      .where(and(eq(promptLibrary.id, critiquePromptId!), eq(promptLibrary.category, "critique")))
-      .limit(1);
-
-    if (!cp) {
-      return NextResponse.json(
-        { error: "critique prompt not found" },
-        { status: 400 },
-      );
-    }
-    cpContent = cp.content;
-    cpUserPrompt = cp.userPrompt;
-    cpName = cp.name;
-  }
-
-  const placeholders = await getChapterPlaceholders(chapterId, project.topic);
-  const missingPlaceholders = getMissingPlaceholderNames(
-    [cpContent, cpUserPrompt].filter(Boolean) as string[],
-    placeholders,
-  );
-  if (missingPlaceholders.length > 0) {
-    const missing = missingPlaceholders.join(", ");
-    return NextResponse.json(
-      {
-        error: `Cannot run critique "${cpName}": missing placeholder definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first.`,
-      },
-      { status: 400 },
-    );
-  }
-
-  const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
+  // Prompt revision validated at runtime by executeVersionedPrompt
+  const resolvedModel = model ?? "claude-sonnet-4-20250514";
 
   // Capture editorial bundle snapshot before the advisory lock.
   const bundle = await loadEditorialBundle({ projectId });
@@ -182,11 +117,10 @@ export async function POST(
         status: "pending",
         generationMetadata: {
           type: "critique",
-          promptId: critiquePromptId ?? "inline",
-          promptTitle: cpName,
+          critiquePromptRevisionId,
           model: resolvedModel,
           ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
-        },
+        } as Record<string, unknown>,
       })
       .returning();
 
@@ -217,12 +151,8 @@ export async function POST(
         generationId: gen.id,
         projectId,
         chapterId,
-        critiquePrompt: {
-          content: cpContent,
-          userPrompt: cpUserPrompt,
-        },
+        critiquePromptRevisionId,
         contentToCritique,
-        projectTopic: project.topic,
         ...(snapshot
           ? {
               editorialBriefId: snapshot.editorialBriefId,
@@ -249,7 +179,7 @@ export async function POST(
     action: "chapter.critique",
     resourceType: "chapter_generation",
     resourceId: gen.id,
-    metadata: { projectId, chapterId, critiquePromptId: critiquePromptId ?? "inline" },
+    metadata: { projectId, chapterId, critiquePromptRevisionId },
   });
 
   return NextResponse.json(gen);
