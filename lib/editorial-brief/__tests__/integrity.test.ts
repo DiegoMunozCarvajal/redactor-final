@@ -1,11 +1,17 @@
-import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
-import { canonicalStringify, hashEditorialBundle } from "../hash";
+import { hashEditorialBundle } from "../hash";
 import {
   assertExpectedEditorialBriefHash,
+  hashEditorialContract,
   verifyStoredEditorialBundle,
   type StoredEditorialBundle,
 } from "../integrity";
+import {
+  EditorialBriefExpectedHashFormatError,
+  EditorialBriefExpectedHashMismatchError,
+  EditorialBriefIntegrityError,
+} from "../errors";
+import { editorialBriefBundleInputSchema } from "../schema";
 import {
   createTestChapterContract,
   createTestEditorialBundle,
@@ -13,12 +19,6 @@ import {
   TEST_CHAPTER_1_ID,
   TEST_CHAPTER_2_ID,
 } from "./fixtures";
-
-function hashContract(content: unknown): string {
-  return createHash("sha256")
-    .update(canonicalStringify(content), "utf-8")
-    .digest("hex");
-}
 
 function createStoredBundle(): StoredEditorialBundle {
   const sourceIds = [
@@ -47,7 +47,7 @@ function createStoredBundle(): StoredEditorialBundle {
     contracts: contracts.map((content) => ({
       chapterId: content.chapterId,
       content,
-      contentHash: hashContract(content),
+      contentHash: hashEditorialContract(content),
     })),
     evidenceSourceIds: sourceIds,
   };
@@ -61,6 +61,33 @@ describe("stored editorial bundle integrity", () => {
     expect(() => verifyStoredEditorialBundle(stored)).toThrow(
       "brief content failed schema validation",
     );
+    expect(() => verifyStoredEditorialBundle(stored)).toThrowError(
+      EditorialBriefIntegrityError,
+    );
+  });
+
+  it("rejects a corrupt contract hash as an integrity error", () => {
+    const stored = createStoredBundle();
+    stored.contracts[0].contentHash = "0".repeat(64);
+
+    expect(() => verifyStoredEditorialBundle(stored)).toThrowError(
+      EditorialBriefIntegrityError,
+    );
+  });
+
+  it("rejects invalid contract JSON as an integrity error", () => {
+    const stored = createStoredBundle();
+    stored.contracts[0].content = {
+      ...(stored.contracts[0].content as Record<string, unknown>),
+      jobToBeDone: "",
+    };
+    stored.contracts[0].contentHash = hashEditorialContract(
+      stored.contracts[0].content,
+    );
+
+    expect(() => verifyStoredEditorialBundle(stored)).toThrowError(
+      EditorialBriefIntegrityError,
+    );
   });
 
   it("rejects contract row/content chapter mismatches", () => {
@@ -69,6 +96,9 @@ describe("stored editorial bundle integrity", () => {
 
     expect(() => verifyStoredEditorialBundle(stored)).toThrow(
       "contract chapterId mismatch",
+    );
+    expect(() => verifyStoredEditorialBundle(stored)).toThrowError(
+      EditorialBriefIntegrityError,
     );
   });
 
@@ -79,6 +109,43 @@ describe("stored editorial bundle integrity", () => {
     expect(() => verifyStoredEditorialBundle(stored)).toThrow(
       "Editorial brief content hash mismatch",
     );
+    expect(() => verifyStoredEditorialBundle(stored)).toThrowError(
+      EditorialBriefIntegrityError,
+    );
+  });
+
+  it("verifies normalized uppercase UUID input after persistence", () => {
+    const chapterId = "A1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6";
+    const sourceId = "B1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6";
+    const parsed = editorialBriefBundleInputSchema.parse({
+      content: createStoredBundle().brief.content,
+      contracts: [createTestChapterContract(chapterId)],
+      evidenceSourceIds: [sourceId],
+    });
+    const candidate = createTestEditorialBundle({
+      version: 4,
+      content: parsed.content,
+      contracts: parsed.contracts,
+      evidenceSourceIds: parsed.evidenceSourceIds,
+    });
+    const stored: StoredEditorialBundle = {
+      brief: {
+        id: candidate.id,
+        version: candidate.version,
+        content: parsed.content,
+        contentHash: hashEditorialBundle(candidate),
+      },
+      contracts: parsed.contracts.map((content) => ({
+        chapterId: content.chapterId,
+        content,
+        contentHash: hashEditorialContract(content),
+      })),
+      evidenceSourceIds: parsed.evidenceSourceIds,
+    };
+
+    const verified = verifyStoredEditorialBundle(stored);
+    expect(verified.contracts[0].chapterId).toBe(chapterId.toLowerCase());
+    expect(verified.evidenceSourceIds).toEqual([sourceId.toLowerCase()]);
   });
 
   it("returns the recomputed hash and deterministic source ids", () => {
@@ -103,6 +170,23 @@ describe("stored editorial bundle integrity", () => {
 
     expect(() =>
       assertExpectedEditorialBriefHash(bundle, "f".repeat(64)),
-    ).toThrow("Editorial brief hash mismatch");
+    ).toThrowError(EditorialBriefExpectedHashMismatchError);
+  });
+
+  it.each(["", "short", "A".repeat(64)])(
+    "rejects invalid expected hash format %j",
+    (expectedHash) => {
+      const bundle = verifyStoredEditorialBundle(createStoredBundle());
+
+      expect(() =>
+        assertExpectedEditorialBriefHash(bundle, expectedHash),
+      ).toThrowError(EditorialBriefExpectedHashFormatError);
+    },
+  );
+
+  it("allows an omitted expected hash", () => {
+    const bundle = verifyStoredEditorialBundle(createStoredBundle());
+
+    expect(assertExpectedEditorialBriefHash(bundle, undefined)).toBe(bundle);
   });
 });

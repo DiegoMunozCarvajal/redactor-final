@@ -4,9 +4,9 @@ import { projects } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { approveEditorialBrief } from "@/lib/editorial-brief/repository";
+import { mapRepoError } from "../../map-repo-error";
 
 // ---------------------------------------------------------------------------
 // POST — approve a draft editorial brief
@@ -47,13 +47,6 @@ export async function POST(
 
     return NextResponse.json(brief);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    if (message.includes("not found")) {
-      return NextResponse.json({ error: message }, { status: 404 });
-    }
-    if (message.includes("non-draft")) {
-      return NextResponse.json({ error: message }, { status: 409 });
-    }
-    return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
+    return mapRepoError(err);
   }
 }

@@ -87,7 +87,8 @@ describe("editorialBriefContentSchema", () => {
 
   it("rejects missing researchLanguage", () => {
     const valid = createTestBriefContent();
-    const { researchLanguage: _, ...marketNoLang } = valid.market;
+    const marketNoLang: Partial<typeof valid.market> = { ...valid.market };
+    delete marketNoLang.researchLanguage;
     const data = {
       ...valid,
       market: marketNoLang,
@@ -98,7 +99,8 @@ describe("editorialBriefContentSchema", () => {
 
   it("rejects missing manuscriptLanguage", () => {
     const valid = createTestBriefContent();
-    const { manuscriptLanguage: _, ...marketNoManu } = valid.market;
+    const marketNoManu: Partial<typeof valid.market> = { ...valid.market };
+    delete marketNoManu.manuscriptLanguage;
     const data = {
       ...valid,
       market: marketNoManu,
@@ -119,6 +121,16 @@ describe("chapterEditorialContractSchema", () => {
     const data = createTestChapterContract("not-a-uuid");
     const result = chapterEditorialContractSchema.safeParse(data);
     expect(result.success).toBe(false);
+  });
+
+  it("normalizes chapterId UUIDs to lowercase", () => {
+    const result = chapterEditorialContractSchema.parse(
+      createTestChapterContract("A1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6"),
+    );
+
+    expect(result.chapterId).toBe(
+      "a1b2c3d4-e5f6-4a7b-8c9d-a1b2c3d4e5f6",
+    );
   });
 
   it("rejects unknown fields", () => {
@@ -191,6 +203,56 @@ describe("editorialBriefBundleInputSchema", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it("rejects duplicate chapter ids that differ only by case", () => {
+    const chapterId = "A1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6";
+    const result = editorialBriefBundleInputSchema.safeParse({
+      content: createTestBriefContent(),
+      contracts: [
+        createTestChapterContract(chapterId),
+        createTestChapterContract(chapterId.toLowerCase()),
+      ],
+      evidenceSourceIds: [],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("normalizes evidence source UUIDs to lowercase", () => {
+    const result = editorialBriefBundleInputSchema.parse({
+      content: createTestBriefContent(),
+      contracts: [createTestChapterContract(TEST_CHAPTER_1_ID)],
+      evidenceSourceIds: [
+        "B1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6",
+      ],
+    });
+
+    expect(result.evidenceSourceIds).toEqual([
+      "b1b2c3d4-e5f6-4a7b-8c9d-a1b2c3d4e5f6",
+    ]);
+  });
+
+  it("rejects duplicate evidence source ids", () => {
+    const sourceId = "b1b2c3d4-e5f6-4a7b-8c9d-a1b2c3d4e5f6";
+    const result = editorialBriefBundleInputSchema.safeParse({
+      content: createTestBriefContent(),
+      contracts: [createTestChapterContract(TEST_CHAPTER_1_ID)],
+      evidenceSourceIds: [sourceId, sourceId],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects duplicate evidence source ids that differ only by case", () => {
+    const sourceId = "B1B2C3D4-E5F6-4A7B-8C9D-A1B2C3D4E5F6";
+    const result = editorialBriefBundleInputSchema.safeParse({
+      content: createTestBriefContent(),
+      contracts: [createTestChapterContract(TEST_CHAPTER_1_ID)],
+      evidenceSourceIds: [sourceId, sourceId.toLowerCase()],
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("rejects unknown fields in bundle", () => {

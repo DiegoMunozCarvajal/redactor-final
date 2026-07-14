@@ -1,4 +1,9 @@
 import { createHash } from "crypto";
+import {
+  EditorialBriefExpectedHashFormatError,
+  EditorialBriefExpectedHashMismatchError,
+  EditorialBriefIntegrityError,
+} from "./errors";
 import { canonicalStringify, hashEditorialBundle } from "./hash";
 import {
   chapterEditorialContractSchema,
@@ -38,7 +43,7 @@ export function verifyStoredEditorialBundle(
     stored.brief.content,
   );
   if (!parsedContent.success) {
-    throw new Error(
+    throw new EditorialBriefIntegrityError(
       `Stored brief content failed schema validation for brief ${stored.brief.id}: ${parsedContent.error.message}`,
     );
   }
@@ -47,19 +52,19 @@ export function verifyStoredEditorialBundle(
   for (const row of stored.contracts) {
     const computedContractHash = hashEditorialContract(row.content);
     if (computedContractHash !== row.contentHash) {
-      throw new Error(
+      throw new EditorialBriefIntegrityError(
         `Contract content hash mismatch for chapter ${row.chapterId} in brief ${stored.brief.id} (expected ${row.contentHash}, computed ${computedContractHash})`,
       );
     }
 
     const parsedContract = chapterEditorialContractSchema.safeParse(row.content);
     if (!parsedContract.success) {
-      throw new Error(
+      throw new EditorialBriefIntegrityError(
         `Stored contract for chapter ${row.chapterId} in brief ${stored.brief.id} failed schema validation: ${parsedContract.error.message}`,
       );
     }
     if (parsedContract.data.chapterId !== row.chapterId) {
-      throw new Error(
+      throw new EditorialBriefIntegrityError(
         `Stored contract chapterId mismatch in brief ${stored.brief.id}: row ${row.chapterId}, content ${parsedContract.data.chapterId}`,
       );
     }
@@ -77,7 +82,7 @@ export function verifyStoredEditorialBundle(
   };
   const computedHash = hashEditorialBundle(candidate);
   if (computedHash !== stored.brief.contentHash) {
-    throw new Error(
+    throw new EditorialBriefIntegrityError(
       `Editorial brief content hash mismatch for brief ${stored.brief.id} (expected ${stored.brief.contentHash}, computed ${computedHash})`,
     );
   }
@@ -89,8 +94,12 @@ export function assertExpectedEditorialBriefHash(
   bundle: EditorialBundle,
   expectedHash?: string,
 ): EditorialBundle {
-  if (expectedHash && bundle.hash !== expectedHash) {
-    throw new Error("Editorial brief hash mismatch");
+  if (expectedHash === undefined) return bundle;
+  if (!/^[0-9a-f]{64}$/.test(expectedHash)) {
+    throw new EditorialBriefExpectedHashFormatError();
+  }
+  if (bundle.hash !== expectedHash) {
+    throw new EditorialBriefExpectedHashMismatchError();
   }
   return bundle;
 }

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
 import { editorialBriefBundleInputSchema } from "@/lib/editorial-brief/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import { mapRepoError } from "../map-repo-error";
 import {
   getEditorialBriefBundle,
   replaceEditorialBriefDraft,
@@ -17,20 +16,6 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function mapRepoError(err: unknown): NextResponse {
-  const message = err instanceof Error ? err.message : "Unknown error";
-  if (message.includes("not found") || message.includes("do not belong")) {
-    return NextResponse.json({ error: message }, { status: 404 });
-  }
-  if (message.includes("non-draft") || message.includes("hash mismatch")) {
-    return NextResponse.json({ error: message }, { status: 409 });
-  }
-  if (message.includes("Invalid bundle")) {
-    return NextResponse.json({ error: message }, { status: 400 });
-  }
-  return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
-}
 
 // ---------------------------------------------------------------------------
 // GET — load a single editorial brief by id

@@ -6,11 +6,10 @@ import { chapterPlaceholders } from "@/lib/db/schema/chapter-placeholders";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
-import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { createEditorialBriefDraft } from "@/lib/editorial-brief/repository";
 import { extractEditorialBriefDraft } from "@/lib/editorial-brief/extract";
-import { mapRepoError } from "@/app/api/projects/[id]/editorial-briefs/route";
+import { mapRepoError } from "../map-repo-error";
 
 // ---------------------------------------------------------------------------
 // Schema

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const canonicalUuidSchema = z
+  .string()
+  .uuid()
+  .transform((value) => value.toLowerCase());
+
 // ---------------------------------------------------------------------------
 // EditorialScope
 // ---------------------------------------------------------------------------
@@ -171,7 +176,7 @@ const evidenceNeedSchema = z
 
 export const chapterEditorialContractSchema = z
   .object({
-    chapterId: z.string().uuid(),
+    chapterId: canonicalUuidSchema,
     jobToBeDone: z.string().min(1).max(2000),
     readerShift: z.string().min(1).max(2000),
     mustCover: z.array(z.string().min(1).max(2000)).max(50),
@@ -199,7 +204,7 @@ export const editorialBriefBundleInputSchema = z
   .object({
     content: editorialBriefContentSchema,
     contracts: z.array(chapterEditorialContractSchema).min(1).max(100),
-    evidenceSourceIds: z.array(z.string().uuid()).max(100),
+    evidenceSourceIds: z.array(canonicalUuidSchema).max(100),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -218,6 +223,19 @@ export const editorialBriefBundleInputSchema = z
         seen.add(id);
       }
     }
+
+    const seenSourceIds = new Set<string>();
+    for (const [index, id] of data.evidenceSourceIds.entries()) {
+      if (seenSourceIds.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate evidence source id: ${id}`,
+          path: ["evidenceSourceIds", index],
+        });
+      } else {
+        seenSourceIds.add(id);
+      }
+    }
   });
 
 export type EditorialBriefBundleInput = z.infer<
@@ -232,7 +250,7 @@ const SHA256_HEX_REGEX = /^[0-9a-f]{64}$/;
 
 export const editorialSnapshotSchema = z
   .object({
-    editorialBriefId: z.string().uuid(),
+    editorialBriefId: canonicalUuidSchema,
     editorialBriefVersion: z.number().int().positive(),
     editorialBriefHash: z.string().regex(SHA256_HEX_REGEX),
   })

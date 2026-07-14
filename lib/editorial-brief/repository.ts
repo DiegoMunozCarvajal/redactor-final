@@ -140,15 +140,16 @@ export async function createEditorialBriefDraft(
   if (!parsed.success) {
     throw new Error(`Invalid bundle input: ${parsed.error.message}`);
   }
+  const normalized = parsed.data;
 
   // Compute hash once — unchanged across retries
   const bundleForHash: EditorialBundle = {
     id: "",
     version: 0,
     hash: "",
-    content: input.content,
-    contracts: input.contracts,
-    evidenceSourceIds: input.evidenceSourceIds,
+    content: normalized.content,
+    contracts: normalized.contracts,
+    evidenceSourceIds: normalized.evidenceSourceIds,
   };
   const contentHash = hashEditorialBundle(bundleForHash);
 
@@ -157,10 +158,14 @@ export async function createEditorialBriefDraft(
   // between validation and insert).
   return dbCtx.transaction(async (tx) => {
     // Validate cross-project references inside the transaction
-    const chapterIds = input.contracts.map((c) => c.chapterId);
+    const chapterIds = normalized.contracts.map((c) => c.chapterId);
     await Promise.all([
       validateChaptersBelongToProject(chapterIds, input.projectId, tx),
-      validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, tx),
+      validateSourcesBelongToProject(
+        normalized.evidenceSourceIds,
+        input.projectId,
+        tx,
+      ),
     ]);
 
     // Check for existing draft BEFORE locking/inserting. The partial unique
@@ -207,15 +212,15 @@ export async function createEditorialBriefDraft(
           projectId: input.projectId,
           version: nextVersion,
           status: "draft",
-          content: input.content as unknown as Record<string, unknown>,
+          content: normalized.content as unknown as Record<string, unknown>,
           contentHash,
         })
         .returning();
 
       // Insert contracts
-      if (input.contracts.length > 0) {
+      if (normalized.contracts.length > 0) {
         await tx.insert(chapterEditorialContracts).values(
-          input.contracts.map((contract) => ({
+          normalized.contracts.map((contract) => ({
             editorialBriefId: brief.id,
             chapterId: contract.chapterId,
             content: contract as unknown as Record<string, unknown>,
@@ -225,9 +230,9 @@ export async function createEditorialBriefDraft(
       }
 
       // Insert source bindings
-      if (input.evidenceSourceIds.length > 0) {
+      if (normalized.evidenceSourceIds.length > 0) {
         await tx.insert(editorialBriefSources).values(
-          input.evidenceSourceIds.map((sourceId) => ({
+          normalized.evidenceSourceIds.map((sourceId) => ({
             editorialBriefId: brief.id,
             sourceId,
           })),
@@ -260,14 +265,14 @@ export async function createEditorialBriefDraft(
             projectId: input.projectId,
             version: retryVersion,
             status: "draft",
-            content: input.content as unknown as Record<string, unknown>,
+            content: normalized.content as unknown as Record<string, unknown>,
             contentHash,
           })
           .returning();
 
-        if (input.contracts.length > 0) {
+        if (normalized.contracts.length > 0) {
           await tx.insert(chapterEditorialContracts).values(
-            input.contracts.map((contract) => ({
+            normalized.contracts.map((contract) => ({
               editorialBriefId: brief.id,
               chapterId: contract.chapterId,
               content: contract as unknown as Record<string, unknown>,
@@ -276,9 +281,9 @@ export async function createEditorialBriefDraft(
           );
         }
 
-        if (input.evidenceSourceIds.length > 0) {
+        if (normalized.evidenceSourceIds.length > 0) {
           await tx.insert(editorialBriefSources).values(
-            input.evidenceSourceIds.map((sourceId) => ({
+            normalized.evidenceSourceIds.map((sourceId) => ({
               editorialBriefId: brief.id,
               sourceId,
             })),
@@ -316,24 +321,29 @@ export async function replaceEditorialBriefDraft(
   if (!parsed.success) {
     throw new Error(`Invalid bundle input: ${parsed.error.message}`);
   }
+  const normalized = parsed.data;
 
   const bundleForHash: EditorialBundle = {
     id: "",
     version: 0,
     hash: "",
-    content: input.content,
-    contracts: input.contracts,
-    evidenceSourceIds: input.evidenceSourceIds,
+    content: normalized.content,
+    contracts: normalized.contracts,
+    evidenceSourceIds: normalized.evidenceSourceIds,
   };
   const contentHash = hashEditorialBundle(bundleForHash);
 
   return dbCtx.transaction(async (tx) => {
     // Validate cross-project references inside the transaction to prevent
     // TOCTOU (chapter/source reassignment between validation and delete+insert).
-    const chapterIds = input.contracts.map((c) => c.chapterId);
+    const chapterIds = normalized.contracts.map((c) => c.chapterId);
     await Promise.all([
       validateChaptersBelongToProject(chapterIds, input.projectId, tx),
-      validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, tx),
+      validateSourcesBelongToProject(
+        normalized.evidenceSourceIds,
+        input.projectId,
+        tx,
+      ),
     ]);
 
     // Load existing brief and verify it's a draft for this project
@@ -365,9 +375,9 @@ export async function replaceEditorialBriefDraft(
       .where(eq(editorialBriefSources.editorialBriefId, input.briefId));
 
     // Insert new contracts
-    if (input.contracts.length > 0) {
+    if (normalized.contracts.length > 0) {
       await tx.insert(chapterEditorialContracts).values(
-        input.contracts.map((contract) => ({
+        normalized.contracts.map((contract) => ({
           editorialBriefId: input.briefId,
           chapterId: contract.chapterId,
           content: contract as unknown as Record<string, unknown>,
@@ -377,9 +387,9 @@ export async function replaceEditorialBriefDraft(
     }
 
     // Insert new source bindings
-    if (input.evidenceSourceIds.length > 0) {
+    if (normalized.evidenceSourceIds.length > 0) {
       await tx.insert(editorialBriefSources).values(
-        input.evidenceSourceIds.map((sourceId) => ({
+        normalized.evidenceSourceIds.map((sourceId) => ({
           editorialBriefId: input.briefId,
           sourceId,
         })),
@@ -390,7 +400,7 @@ export async function replaceEditorialBriefDraft(
     const [updated] = await tx
       .update(editorialBriefs)
       .set({
-        content: input.content as unknown as Record<string, unknown>,
+        content: normalized.content as unknown as Record<string, unknown>,
         contentHash,
         updatedAt: sql`now()`,
       })
