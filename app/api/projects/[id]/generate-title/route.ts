@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc } from "drizzle-orm";
-import { generatePromptContent } from "@/lib/generate";
-import { getChapterPlaceholders } from "@/lib/placeholders";
+import { generateTitle } from "@/lib/title/generate";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "@/lib/editorial-brief/context";
-
-const titleResponseSchema = z.object({
-  title: z.string().min(1),
-  subtitle: z.string().optional(),
-});
 
 export async function POST(
   _req: NextRequest,
@@ -121,27 +114,19 @@ export async function POST(
       .catch(() => {}); // Best-effort
   }, { once: true });
 
-  // LLM call outside the lock
-  const placeholders = await getChapterPlaceholders(firstChapter.id, project.topic);
-
   // Render title-scoped editorial context (no chapter contract — title scope
   // uses audience, promise, packaging, and guardrails only).
   const editorialContext = briefBundle
     ? renderEditorialScope(briefBundle, { scope: "title" })
     : null;
 
-  let result;
+  // LLM call outside the lock
+  let titleResult;
   try {
-    result = await generatePromptContent({
-      prompt: {
-        content:
-          'Genera un título y subtítulo atractivo para un libro sobre {tema}.',
-      },
-      placeholders,
-      projectTopic: project.topic,
+    titleResult = await generateTitle({
       projectId,
-      editorialContext,
-      schema: titleResponseSchema,
+      editorialContext: editorialContext ?? "",
+      projectTopic: project.topic ?? "",
     });
   } catch (err) {
     const message = sanitizeError(err);
@@ -152,26 +137,7 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  let title = "";
-  let subtitle = "";
-  try {
-    const parsed = titleResponseSchema.parse(JSON.parse(result.text));
-    title = parsed.title;
-    subtitle = parsed.subtitle ?? "";
-  } catch (err) {
-    console.error(
-      "[generate-title] Failed to parse title JSON:",
-      err instanceof Error ? err.message : "Unknown error",
-    );
-    await db
-      .update(chapterGenerations)
-      .set({ status: "failed", error: "Failed to parse title from model response" })
-      .where(eq(chapterGenerations.id, generationId));
-    return NextResponse.json(
-      { error: "Failed to parse title from model response" },
-      { status: 500 },
-    );
-  }
+  const { title, subtitle, executionId } = titleResult;
 
   // Atomic: both updates succeed or neither does.
   // Prevents inconsistent state where title is saved but generation
@@ -188,6 +154,6 @@ export async function POST(
       .where(eq(chapterGenerations.id, generationId));
   });
 
-  return NextResponse.json({ title, subtitle });
+  return NextResponse.json({ title, subtitle, executionId });
 
 }

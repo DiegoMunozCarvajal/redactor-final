@@ -272,7 +272,10 @@ describeDb("editorial brief API routes", () => {
         contracts: [createTestChapterContract(ch1Id), createTestChapterContract(ch2Id)],
         evidenceSourceIds: [],
       };
-      vi.mocked(extractEditorialBriefDraft).mockResolvedValue(extractedBundle as unknown as Awaited<ReturnType<typeof import("@/lib/editorial-brief/extract").extractEditorialBriefDraft>>);
+      vi.mocked(extractEditorialBriefDraft).mockResolvedValue({
+        draft: extractedBundle,
+        executionId: "test-execution-id",
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/editorial-brief/extract").extractEditorialBriefDraft>>);
 
       const { POST } = await import("@/app/api/projects/[id]/editorial-briefs/extract/route");
       const req = createTestRequest({ method: "POST", body: { sourceId } });

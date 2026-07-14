@@ -2,19 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // placeholder-fill.ts transitively imports drizzle which reads DATABASE_URL.
 // Mock the DB module so pure-function tests don't need a real database.
-vi.mock("@/lib/db", () => ({
-  db: {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        innerJoin: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      }),
-    }),
-  },
-}));
+vi.mock("@/lib/db", () => {
+  function chain(): Record<string, unknown> {
+    return {
+      select: () => chain(),
+      from: () => chain(),
+      innerJoin: () => chain(),
+      leftJoin: () => chain(),
+      where: () => chain(),
+      limit: () => Promise.resolve([]),
+      orderBy: () => chain(),
+      values: () => ({ returning: () => Promise.resolve([{ id: "exec-test" }]) }),
+      set: () => chain(),
+    };
+  }
+  const c = chain();
+  return {
+    db: {
+      select: c.select as () => unknown,
+      insert: () => ({ values: () => ({ returning: () => Promise.resolve([{ id: "exec-test" }]) }) }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve(undefined) }) }),
+      transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    },
+  };
+});
 
 // Mock heavy dependencies for fillOnePlaceholder integration tests
 vi.mock("@/lib/ai/rag", () => ({ retrieveContext: vi.fn() }));
@@ -29,6 +40,17 @@ vi.mock("@/lib/placeholder-research", () => ({
 }));
 vi.mock("@/lib/editorial-brief/render", () => ({
   renderEditorialScope: vi.fn().mockReturnValue(""),
+}));
+vi.mock("@/lib/prompts/executor", () => ({
+  executeVersionedPrompt: vi.fn().mockResolvedValue({
+    result: {
+      data: { definition: "A valid definition that is at least thirty characters long for the evidence placeholder test case." },
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30, costUsd: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      durationMs: 100,
+    },
+    executionId: "exec-test",
+    revision: { id: "rev-test", definitionId: "def-test", kind: "placeholder-fill", name: "Placeholder Fill v1", revisionNumber: 1, versionLabel: "v1.0", systemTemplate: "", userTemplate: "", requiredMarkers: [], outputContract: null, configuration: {} },
+  }),
 }));
 
 import {
