@@ -1,7 +1,6 @@
 import type {
   EditorialBriefContent,
   ChapterEditorialContract,
-  EditorialScope,
   EditorialBundle,
 } from "./schema";
 
@@ -198,126 +197,10 @@ function renderChapterContract(
     .join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Scope instructions
-// ---------------------------------------------------------------------------
-
-function renderScopeInstructions(scope: EditorialScope): string {
-  switch (scope) {
-    case "assembly":
-      return [
-        "  <assembly_instructions>",
-        '    <requirement name="coverage">Ensure all required mustCover items are addressed across the assembled fragments</requirement>',
-        '    <requirement name="progression">Maintain logical progression from earlier to later fragments</requirement>',
-        '    <requirement name="deduplication">Remove redundant content so each idea appears once in the strongest position</requirement>',
-        '    <requirement name="transition">Ensure smooth transitions between sections, using the transitionToNext contract field</requirement>',
-        "  </assembly_instructions>",
-      ].join("\n");
-
-    case "critique":
-      return [
-        "  <adherence_rubric>",
-        '    <criterion name="audience">Does the chapter address the primary reader&apos;s situation, pain, and awareness level?</criterion>',
-        '    <criterion name="promise">Does the chapter deliver on the core promise and respect the realistic boundary?</criterion>',
-        '    <criterion name="coverage">Does the chapter cover all mustCover items and requiredScenarios from the contract?</criterion>',
-        '    <criterion name="tone">Does the chapter match the prescribed tone, posture, and reading level?</criterion>',
-        '    <criterion name="ethics">Does the chapter respect ethical principles and avoid forbidden claims and framing?</criterion>',
-        '    <criterion name="evidence">Are factual claims supported by approved evidence sources or appropriately qualified?</criterion>',
-        "  </adherence_rubric>",
-      ].join("\n");
-
-    case "correction":
-      return [
-        "  <correction_instructions>",
-        "    <rule>Apply the critique findings while preserving correct material and tone</rule>",
-        "    <rule>Do not introduce unsupported factual claims</rule>",
-        "    <rule>Maintain the approved voice, posture, and reading level</rule>",
-        "  </correction_instructions>",
-      ].join("\n");
-
-    case "fragment":
-      return [
-        "  <fragment_instructions>",
-        "    <rule>Generate one useful unit; do not force packaging terms into fragments</rule>",
-        "  </fragment_instructions>",
-      ].join("\n");
-
-    case "title":
-      return [
-        "  <title_instructions>",
-        "    <rule>Use global packaging and audience; never inherit chapter-one bias</rule>",
-        "  </title_instructions>",
-      ].join("\n");
-
-    case "placeholder-fill":
-      return [
-        "  <placeholder_fill_instructions>",
-        '    <rule>Use contract evidence needs and approved RAG sources; do not invent statistics or citations</rule>',
-        "  </placeholder_fill_instructions>",
-      ].join("\n");
-  }
-}
 
 // ---------------------------------------------------------------------------
-// Section selectors per scope
+// Renderers map
 // ---------------------------------------------------------------------------
-
-interface ScopeProjection {
-  sections: Array<keyof EditorialBriefContent>;
-  includeContract: boolean;
-}
-
-const SCOPE_PROJECTIONS: Record<EditorialScope, ScopeProjection> = {
-  fragment: {
-    sections: ["market", "audience", "thesis", "voice", "guardrails"],
-    includeContract: true,
-  },
-  assembly: {
-    sections: [
-      "market",
-      "audience",
-      "thesis",
-      "voice",
-      "contentStrategy",
-      "guardrails",
-    ],
-    includeContract: true,
-  },
-  critique: {
-    sections: [
-      "market",
-      "audience",
-      "thesis",
-      "voice",
-      "contentStrategy",
-      "guardrails",
-      "evidence",
-      "researchBasis",
-    ],
-    includeContract: true,
-  },
-  correction: {
-    sections: [
-      "market",
-      "audience",
-      "thesis",
-      "voice",
-      "contentStrategy",
-      "guardrails",
-      "evidence",
-      "researchBasis",
-    ],
-    includeContract: true,
-  },
-  title: {
-    sections: ["market", "audience", "thesis", "guardrails", "packaging"],
-    includeContract: false,
-  },
-  "placeholder-fill": {
-    sections: ["market", "audience", "thesis", "voice", "guardrails"],
-    includeContract: true,
-  },
-};
 
 type SectionValue = EditorialBriefContent[keyof EditorialBriefContent];
 
@@ -402,64 +285,7 @@ export function renderEditorialData(
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-
-/**
- * Render an editorial bundle into a deterministic, scope-specific XML string
- * wrapped in `<editorial_context>` tags.
- *
- * @param bundle - The editorial bundle to render, or `null` for legacy behavior.
- * @param params.scope - The generation scope determining which sections to include.
- * @param params.chapterId - Required when the scope needs a chapter contract.
- * @returns Escaped XML string, or `null` when the bundle is `null`.
- */
-export function renderEditorialScope(
-  bundle: EditorialBundle | null,
-  params: { scope: EditorialScope; chapterId?: string },
-): string | null {
-  if (bundle === null) return null;
-
-  const { scope, chapterId } = params;
-  const projection = SCOPE_PROJECTIONS[scope];
-
-  // Build sections
-  const parts: string[] = [];
-
-  for (const sectionKey of projection.sections) {
-    const render = SECTION_RENDERERS[sectionKey];
-    parts.push(render(bundle.content[sectionKey]));
-  }
-
-  // Scope-specific instructions (assembly rubric, critique adherence, etc.)
-  parts.push(renderScopeInstructions(scope));
-
-  // Chapter contract
-  if (projection.includeContract) {
-    if (!chapterId) {
-      throw new Error(
-        `chapterId is required for scope "${scope}" which needs a chapter contract`,
-      );
-    }
-
-    const contract = bundle.contracts.find((c) => c.chapterId === chapterId);
-    if (!contract) {
-      throw new Error(
-        `Chapter contract not found for chapterId "${chapterId}" in scope "${scope}"`,
-      );
-    }
-
-    parts.push(renderChapterContract(contract));
-  }
-
-  // Evidence policy (separate from general evidence section for placeholder-fill)
-  if (scope === "placeholder-fill") {
-    parts.push(renderEvidencePolicy(bundle.content.evidence));
-  }
-
-  // Wrap in editorial_context
-  return [
-    `<editorial_context version="${bundle.version}" hash="${escapeXml(bundle.hash)}">`,
-    "  <authority>Approved project constraints. Apply them without quoting this block.</authority>",
-    ...parts,
-    "</editorial_context>",
-  ].join("\n");
-}
+//
+// Only renderEditorialData is exported — instruction-bearing renderEditorialScope
+// was removed in the prompt transparency migration (all instructions now come
+// from prompt revisions in the registry).

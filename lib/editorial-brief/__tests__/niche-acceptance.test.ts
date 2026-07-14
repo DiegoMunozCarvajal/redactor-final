@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 // Pure function tests below never touch the db mock.
 vi.mock("@/lib/db/drizzle", () => ({ db: {} }));
 
-import { renderEditorialScope } from "../render";
+import { renderEditorialData } from "../render";
 import { hashEditorialBundle } from "../hash";
 import {
   snapshotFromBundle,
@@ -304,8 +304,7 @@ describe("niche fixture schema validation", () => {
 describe("niche -- fragment scope projection", () => {
   it("projects niche audience, promise, voice, guardrails, and chapter contract", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "fragment",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
@@ -336,16 +335,15 @@ describe("niche -- fragment scope projection", () => {
     expect(result).toContain("Craft a context-appropriate first message");
     expect(result).toContain("first_message_response_rates");
 
-    // Should NOT include packaging or content strategy sections
-    expect(result).not.toContain("You matched. Now learn");
-    expect(result).not.toContain("examplePolicy");
-    expect(result).not.toContain("Opening after matching on a dating app");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("You matched. Now learn");
+    expect(result).toContain("examplePolicy");
+    expect(result).toContain("Opening after matching on a dating app");
   });
 
   it("selects the correct chapter contract per chapterId", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "fragment",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_2_ID,
     });
 
@@ -362,8 +360,7 @@ describe("niche -- fragment scope projection", () => {
 describe("niche -- assembly scope projection", () => {
   it("projects content strategy pillars and progression + dedup requirements", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "assembly",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
@@ -374,22 +371,15 @@ describe("niche -- assembly scope projection", () => {
     expect(result).toContain("Principle plus adaptable example");
     expect(result).toContain("never present a single perfect message");
 
-    // Assembly rubric requirements
-    expect(result).toContain("coverage");
-    expect(result).toContain("progression");
-    expect(result).toContain("deduplication");
-    expect(result).toContain("transition");
-
-    // Should NOT include packaging
-    expect(result).not.toContain("You matched. Now learn");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("You matched. Now learn");
   });
 });
 
 describe("niche -- critique scope projection", () => {
   it("projects all sections including evidence and research basis", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "critique",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
@@ -406,32 +396,13 @@ describe("niche -- critique scope projection", () => {
     expect(result).toContain("rag_optional");
     expect(result).toContain("Cite specific research data");
 
-    // Should NOT include packaging
-    expect(result).not.toContain("You matched. Now learn");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("You matched. Now learn");
   });
 
-  it("emits six named adherence criteria from the niche perspective", () => {
+  it("includes the chapter contract", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "critique",
-      chapterId: NICHE_CHAPTER_1_ID,
-    });
-
-    // All 6 criteria
-    for (const c of ["audience", "promise", "coverage", "tone", "ethics", "evidence"]) {
-      expect(result).toContain(c);
-    }
-    expect(result).toContain("adherence_rubric");
-
-    // Niche-specific criterion content
-    expect(result).toContain("primary reader");
-    expect(result).toContain("forbidden claims");
-  });
-
-  it("includes the chapter contract for critique evaluation", () => {
-    const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "critique",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
@@ -443,8 +414,7 @@ describe("niche -- critique scope projection", () => {
 describe("niche -- correction scope projection", () => {
   it("projects same sections as critique with no packaging", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "correction",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
@@ -457,17 +427,15 @@ describe("niche -- correction scope projection", () => {
     // Niche chapter contract
     expect(result).toContain("Craft a context-appropriate first message");
 
-    // No packaging (hook tag is unique to packaging section)
-    expect(result).not.toContain("You matched. Now learn");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("You matched. Now learn");
   });
 });
 
 describe("niche -- title scope projection", () => {
   it("includes niche packaging and NEVER includes chapter contract", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "title",
-    });
+    const result = renderEditorialData(bundle, {});
 
     // Niche packaging
     expect(result).toContain("What to text a girl you like");
@@ -481,30 +449,25 @@ describe("niche -- title scope projection", () => {
     expect(result).toContain("principle-based method");
     expect(result).toContain("Reciprocity");
 
-    // NEVER chapter contract
-    expect(result).not.toContain("chapter_contract");
-    expect(result).not.toContain("jobToBeDone");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("First message creation");
+    expect(result).toContain("never present a single perfect message");
+
+    // No chapter contract (no chapterId provided)
     expect(result).not.toContain("Craft a context-appropriate first message");
     expect(result).not.toContain("Keep the conversation moving");
     expect(result).not.toContain("Transition from texting");
-
-    // No content strategy (content_strategy, pillars, or examplePolicy)
-    expect(result).not.toContain("content_strategy");
-    expect(result).not.toContain("First message creation");
-    expect(result).not.toContain("never present a single perfect message");
   });
 });
 
 describe("niche -- placeholder-fill scope projection", () => {
-  it("projects evidence policy alongside audience, thesis, voice, guardrails", () => {
+  it("projects evidence alongside audience, thesis, voice, guardrails", () => {
     const { bundle } = makeBundle();
-    const result = renderEditorialScope(bundle, {
-      scope: "placeholder-fill",
+    const result = renderEditorialData(bundle, {
       chapterId: NICHE_CHAPTER_1_ID,
     });
 
-    // Evidence policy
-    expect(result).toContain("evidence_policy");
+    // Evidence section
     expect(result).toContain("rag_optional");
     expect(result).toContain("Cite specific research data");
 
@@ -519,8 +482,8 @@ describe("niche -- placeholder-fill scope projection", () => {
     expect(result).toContain("first_message_response_rates");
     expect(result).toContain("response rates by first message type");
 
-    // No packaging
-    expect(result).not.toContain("You matched. Now learn what to say");
+    // All data sections are included (no scope filtering)
+    expect(result).toContain("You matched. Now learn what to say");
   });
 });
 

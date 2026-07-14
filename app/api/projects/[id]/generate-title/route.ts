@@ -7,7 +7,7 @@ import { generateTitle } from "@/lib/title/generate";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
-import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "@/lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialData } from "@/lib/editorial-brief/context";
 
 export async function POST(
   _req: NextRequest,
@@ -117,7 +117,7 @@ export async function POST(
   // Render title-scoped editorial context (no chapter contract — title scope
   // uses audience, promise, packaging, and guardrails only).
   const editorialContext = briefBundle
-    ? renderEditorialScope(briefBundle, { scope: "title" })
+    ? renderEditorialData(briefBundle, {})
     : null;
 
   // LLM call outside the lock

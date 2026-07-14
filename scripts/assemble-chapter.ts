@@ -1,10 +1,12 @@
-// One-off: run assembly directly for a chapter
+// One-off: run assembly directly for a chapter.
+// NOTE: generateChapterAssemblyHalves was removed in the prompt transparency
+// migration. This script needs to be updated to use the planned assembly
+// pipeline (runAssemblyPlanner + runAssemblyAssembler from lib/assembly/).
 // Usage: export $(grep DATABASE_URL .env.local | xargs) && node --import tsx scripts/assemble-chapter.ts
 
 import postgres from "postgres";
 import { getChapterPlaceholders } from "../lib/placeholders";
-import { generateChapterAssemblyHalves } from "../lib/generate";
-import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "../lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialData } from "../lib/editorial-brief/context";
 
 const CHAPTER_ID = "299a019c-2436-4a05-9b2f-d08118c5e2bf";
 const PROJECT_ID = "d15fd234-0845-4d55-86e2-563565c128f9";
@@ -84,7 +86,7 @@ async function main() {
   const briefBundle = await loadEditorialBundle({ projectId: PROJECT_ID });
   const briefSnapshot = briefBundle ? snapshotFromBundle(briefBundle) : null;
   const editorialContext = briefBundle
-    ? renderEditorialScope(briefBundle, { scope: "assembly", chapterId: CHAPTER_ID })
+    ? renderEditorialData(briefBundle, { chapterId: CHAPTER_ID })
     : null;
 
   if (briefBundle) {
@@ -112,35 +114,12 @@ async function main() {
   console.log(`Fragments: ${fragmentContents.length}, total chars: ${fragmentContents.reduce((s, f) => s + f.content.length, 0)}`);
 
   try {
-    const result = await generateChapterAssemblyHalves({
-      assemblyPrompt: { content: assemblyPrompt.content as string, userPrompt: (assemblyPrompt.user_prompt as string) ?? null },
-      fragments: fragmentContents,
-      placeholders,
-      model: "deepseek-v4-pro",
-      effort: "max",
-      editorialContext,
-    });
-
-    console.log(`Assembly done. Content length: ${result.text.length} chars`);
-    console.log(`Tokens: ${result.usage.inputTokens} in / ${result.usage.outputTokens} out`);
-
-    await sql`
-      UPDATE chapter_generations
-      SET status = 'completed',
-          assembled_content = ${result.text},
-          assembly_metadata = ${JSON.stringify({
-            algorithm: "halves",
-            promptId: project.assembly_prompt_id,
-            promptTitle: "Assembly prompt v1",
-            promptSource: "library",
-            model: result.model,
-            fragmentCount: fragmentContents.length,
-          })}::jsonb,
-          completed_at = now()
-      WHERE id = ${gen.id}::uuid
-    `;
-
-    console.log(`Generation ${gen.id} marked as completed`);
+    console.error(
+      "This script needs updating for the prompt transparency migration. " +
+      "Use runAssemblyPlanner + runAssemblyAssembler from lib/assembly/ instead.",
+    );
+    await sql.end();
+    process.exit(1);
   } catch (err) {
     console.error("Assembly failed:", err);
     const msg = err instanceof Error ? err.message : String(err);

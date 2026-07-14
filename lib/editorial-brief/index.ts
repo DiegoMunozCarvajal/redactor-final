@@ -17,4 +17,4 @@ export type {
 
 export { hashEditorialBundle } from "./hash";
 
-export { renderEditorialScope } from "./render";
+export { renderEditorialData } from "./render";

@@ -1,7 +1,7 @@
 import { getEditorialBriefBundle, getApprovedEditorialBriefBundle } from "./repository";
 import type { EditorialBundle, EditorialSnapshot } from "./schema";
 import type { DB } from "./repository";
-export { renderEditorialScope, renderEditorialData } from "./render";
+export { renderEditorialData } from "./render";
 
 /**
  * Load an editorial bundle from the database.

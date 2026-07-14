@@ -39,7 +39,7 @@ vi.mock("@/lib/placeholder-research", () => ({
   inferPlaceholderProvider: vi.fn().mockReturnValue("llm"),
 }));
 vi.mock("@/lib/editorial-brief/render", () => ({
-  renderEditorialScope: vi.fn().mockReturnValue(""),
+  renderEditorialData: vi.fn().mockReturnValue(""),
 }));
 vi.mock("@/lib/prompts/executor", () => ({
   executeVersionedPrompt: vi.fn().mockResolvedValue({

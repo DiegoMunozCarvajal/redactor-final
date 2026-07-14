@@ -8,7 +8,7 @@ import { chapterPlaceholders, chapters } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
 import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
 import type { EditorialBundle } from "@/lib/editorial-brief/schema";
-import { renderEditorialScope } from "@/lib/editorial-brief/render";
+import { renderEditorialData } from "@/lib/editorial-brief/render";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { z } from "zod";
 import {
@@ -501,7 +501,7 @@ export async function fillOnePlaceholder(
   // that constrain placeholder definitions to the project niche.
   let editorialContextSection = "";
   if (editorialBundle && currentChapterId) {
-    const scope = renderEditorialScope(editorialBundle, { scope: "placeholder-fill", chapterId: currentChapterId });
+    const scope = renderEditorialData(editorialBundle, { chapterId: currentChapterId });
     if (scope) {
       editorialContextSection = `\n${scope}\n\n`;
     }

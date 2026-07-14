@@ -10,7 +10,7 @@ import { getProviderForModel } from "@/lib/ai/providers";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
-import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "@/lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialData } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -72,7 +72,7 @@ export async function POST(
   const snapshot = bundle ? snapshotFromBundle(bundle) : null;
   // Synchronous route — render editorial context now for the LLM call below.
   const editorialContext = bundle
-    ? renderEditorialScope(bundle, { scope: "fragment", chapterId: prompt.chapterId })
+    ? renderEditorialData(bundle, { chapterId: prompt.chapterId })
     : null;
 
   // Rate limit + generation insert must be atomic. Without a lock, two

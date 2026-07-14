@@ -13,7 +13,7 @@ import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders"
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope, renderEditorialData } from "@/lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runAssemblyPlanner } from "@/lib/assembly/planner";
 import { runAssemblyAssembler } from "@/lib/assembly/assembler";
 
@@ -226,7 +226,7 @@ export const generateChapter = task({
             chapterGenerationId: generationId,
             chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
             editorialContext: editorialBundle
-              ? renderEditorialScope(editorialBundle, { scope: "fragment", chapterId: gen.chapterId })
+              ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
               : null,
             ...(model ? { model } : {}),
             ...(effort !== undefined ? { effort } : {}),

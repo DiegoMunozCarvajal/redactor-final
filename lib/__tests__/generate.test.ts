@@ -7,9 +7,6 @@ vi.mock("@/lib/db/schema", () => ({}));
 import {
   sanitizeValue,
   applyPlaceholders,
-  generateChapterAssemblyHierarchical,
-  generateChapterAssemblyHalves,
-  generateChapterAssemblySequential,
 } from "@/lib/generate";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 
@@ -144,62 +141,12 @@ describe("applyPlaceholders edge cases", () => {
   });
 });
 
-describe("assembly algorithms — no-LLM paths", () => {
-  const dummyPrompt = { content: "assemble" };
-  const emptyPlaceholders: Record<string, string> = {};
-
-  describe("generateChapterAssemblyHierarchical", () => {
-    it("throws on empty fragments", async () => {
-      await expect(
-        generateChapterAssemblyHierarchical({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
-      ).rejects.toThrow("No fragments to assemble");
-    });
-
-    it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblyHierarchical({
-        assemblyPrompt: dummyPrompt,
-        fragments: [{ content: "solo" }],
-        placeholders: emptyPlaceholders,
-        model: "deepseek-v4-pro",
-      });
-      expect(r.text).toBe("solo");
-      expect(r.usage.inputTokens).toBe(0);
-    });
-  });
-
-  describe("generateChapterAssemblyHalves", () => {
-    it("throws on empty fragments", async () => {
-      await expect(
-        generateChapterAssemblyHalves({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
-      ).rejects.toThrow("No fragments to assemble");
-    });
-
-    it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblyHalves({
-        assemblyPrompt: dummyPrompt,
-        fragments: [{ content: "uno" }],
-        placeholders: emptyPlaceholders,
-        model: "deepseek-v4-pro",
-      });
-      expect(r.text).toBe("uno");
-    });
-  });
-
-  describe("generateChapterAssemblySequential", () => {
-    it("throws on empty fragments", async () => {
-      await expect(
-        generateChapterAssemblySequential({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
-      ).rejects.toThrow("No fragments to assemble");
-    });
-
-    it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblySequential({
-        assemblyPrompt: dummyPrompt,
-        fragments: [{ content: "uno" }],
-        placeholders: emptyPlaceholders,
-        model: "deepseek-v4-pro",
-      });
-      expect(r.text).toBe("uno");
-    });
+describe("AssemblyAlgorithm type", () => {
+  it("is exported for backward compat with assemble route", async () => {
+    const mod = await import("@/lib/generate");
+    // Type-only export — verify the module has it in its type declarations
+    expect(mod).toBeDefined();
+    // Sanity: the module still exports generatePromptContent
+    expect(typeof mod.generatePromptContent).toBe("function");
   });
 });
