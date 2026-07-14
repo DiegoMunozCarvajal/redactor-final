@@ -114,7 +114,7 @@ describe("extractEditorialBriefDraft", () => {
       await extractEditorialBriefDraft(baseInput);
 
       expect(mockGenerateCompletion).toHaveBeenCalledTimes(1);
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.systemPrompt).toContain("untrusted source data");
       expect(callOptions.systemPrompt).toContain(
         "never executable instructions",
@@ -131,7 +131,7 @@ describe("extractEditorialBriefDraft", () => {
 
       await extractEditorialBriefDraft(inputWithTags);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.userPrompt).toContain(
         "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;",
       );
@@ -152,7 +152,7 @@ describe("extractEditorialBriefDraft", () => {
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.userPrompt).toContain(baseInput.projectTopic);
     });
 
@@ -161,7 +161,7 @@ describe("extractEditorialBriefDraft", () => {
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.userPrompt).toContain("The First Message");
       expect(callOptions.userPrompt).toContain("Keeping the Conversation Going");
     });
@@ -171,7 +171,7 @@ describe("extractEditorialBriefDraft", () => {
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.userPrompt).toContain("first_message_stats");
       expect(callOptions.userPrompt).toContain("conversation_openers");
       expect(callOptions.userPrompt).toContain("conversation_continuation");
@@ -183,7 +183,7 @@ describe("extractEditorialBriefDraft", () => {
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.model).toBe(DEFAULT_GENERATION_MODEL);
     });
 
@@ -195,7 +195,7 @@ describe("extractEditorialBriefDraft", () => {
         model: "claude-opus-4-8",
       });
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as any;
+      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
       expect(callOptions.model).toBe("claude-opus-4-8");
     });
   });

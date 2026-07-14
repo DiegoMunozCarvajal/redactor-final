@@ -28,9 +28,11 @@ function renderElement(tag: string, value: string): string {
 
 function renderArray(tag: string, items: string[], indent = 4): string {
   if (items.length === 0) return "";
+  const filtered = items.filter((item) => item !== "-");
+  if (filtered.length === 0) return "";
   const pad = " ".repeat(indent);
   const innerPad = " ".repeat(indent + 2);
-  const inner = items
+  const inner = filtered
     .map((item) => `${innerPad}<item>${escapeXml(item)}</item>`)
     .join("\n");
   return `${pad}<${tag}>\n${inner}\n${pad}</${tag}>`;
@@ -317,19 +319,21 @@ const SCOPE_PROJECTIONS: Record<EditorialScope, ScopeProjection> = {
   },
 };
 
+type SectionValue = EditorialBriefContent[keyof EditorialBriefContent];
+
 const SECTION_RENDERERS: Record<
   keyof EditorialBriefContent,
-  (value: any) => string
+  (value: SectionValue) => string
 > = {
-  market: renderMarket,
-  audience: renderAudience,
-  thesis: renderThesis,
-  voice: renderVoice,
-  contentStrategy: renderContentStrategy,
-  guardrails: renderGuardrails,
-  evidence: renderEvidence,
-  packaging: renderPackaging,
-  researchBasis: renderResearchBasis,
+  market: renderMarket as (value: SectionValue) => string,
+  audience: renderAudience as (value: SectionValue) => string,
+  thesis: renderThesis as (value: SectionValue) => string,
+  voice: renderVoice as (value: SectionValue) => string,
+  contentStrategy: renderContentStrategy as (value: SectionValue) => string,
+  guardrails: renderGuardrails as (value: SectionValue) => string,
+  evidence: renderEvidence as (value: SectionValue) => string,
+  packaging: renderPackaging as (value: SectionValue) => string,
+  researchBasis: renderResearchBasis as (value: SectionValue) => string,
 };
 
 // ---------------------------------------------------------------------------

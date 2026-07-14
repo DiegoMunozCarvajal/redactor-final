@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen, Library } from "lucide-react";
+import { Loader2, Check, X, BookOpen, Library, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesManager } from "@/components/projects/sources-manager";
+import { EditorialBriefPanel } from "@/components/projects/editorial-brief-panel";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -47,7 +48,7 @@ interface ProjectData {
   const [editTopic, setEditTopic] = useState("");
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
-  const [activeTab, setActiveTab] = useState<"chapters" | "sources">("chapters");
+  const [activeTab, setActiveTab] = useState<"chapters" | "sources" | "brief">("chapters");
 
   const fetchProject = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -301,6 +302,18 @@ interface ProjectData {
           <Library className="h-4 w-4 inline mr-2" />
           Fuentes RAG
         </button>
+        <button
+          onClick={() => setActiveTab("brief")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            activeTab === "brief"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <FileText className="h-4 w-4 inline mr-2" />
+          Brief editorial
+        </button>
       </div>
 
       {activeTab === "chapters" && (
@@ -332,6 +345,10 @@ interface ProjectData {
       {activeTab === "sources" && (
         <SourcesManager projectId={project.id} />
       )}
+
+      <div className={activeTab === "brief" ? "" : "hidden"}>
+        <EditorialBriefPanel projectId={project.id} />
+      </div>
     </div>
   );
 }

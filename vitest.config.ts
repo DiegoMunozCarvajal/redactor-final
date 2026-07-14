@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["**/*.test.ts"],
+    include: ["**/*.test.{ts,tsx}"],
     pool: "forks",
     setupFiles: ["./vitest.setup.ts"],
     poolOptions: {

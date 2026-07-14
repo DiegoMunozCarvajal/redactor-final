@@ -2,7 +2,7 @@ import { db } from "@/lib/db/drizzle";
 import { and, eq, sql, max, desc } from "drizzle-orm";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import type { PgTransaction } from "drizzle-orm/pg-core";
+import type { PgTransaction, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "@/lib/db/schema";
 import {
   editorialBriefs,
@@ -28,7 +28,7 @@ import { createHash } from "crypto";
 // ---------------------------------------------------------------------------
 
 type PgSchema = typeof schema;
-type DB = PostgresJsDatabase<PgSchema> | PgTransaction<any, PgSchema, ExtractTablesWithRelations<PgSchema>>;
+type DB = PostgresJsDatabase<PgSchema> | PgTransaction<PgQueryResultHKT, PgSchema, ExtractTablesWithRelations<PgSchema>>;
 
 // ---------------------------------------------------------------------------
 // Internal helpers

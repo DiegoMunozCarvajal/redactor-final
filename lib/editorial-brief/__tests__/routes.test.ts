@@ -117,7 +117,7 @@ describeDb("editorial brief API routes", () => {
     vi.clearAllMocks();
     vi.mocked(createClient).mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: USER_ID } }, error: null }) },
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
     vi.mocked(csrfCheck).mockReturnValue(null);
   });
 
@@ -140,7 +140,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { GET } = await import("@/app/api/projects/[id]/editorial-briefs/route");
       const req = createTestRequest();
       const res = await GET(req, { params: Promise.resolve({ id: projectId }) });
@@ -194,7 +194,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { POST } = await import("@/app/api/projects/[id]/editorial-briefs/route");
       const req = createTestRequest({ method: "POST", body: {} });
       const res = await POST(req, { params: Promise.resolve({ id: projectId }) });
@@ -245,7 +245,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { POST } = await import("@/app/api/projects/[id]/editorial-briefs/extract/route");
       const req = createTestRequest({ method: "POST", body: { sourceId } });
       const res = await POST(req, { params: Promise.resolve({ id: projectId }) });
@@ -272,7 +272,7 @@ describeDb("editorial brief API routes", () => {
         contracts: [createTestChapterContract(ch1Id), createTestChapterContract(ch2Id)],
         evidenceSourceIds: [],
       };
-      vi.mocked(extractEditorialBriefDraft).mockResolvedValue(extractedBundle as any);
+      vi.mocked(extractEditorialBriefDraft).mockResolvedValue(extractedBundle as unknown as Awaited<ReturnType<typeof import("@/lib/editorial-brief/extract").extractEditorialBriefDraft>>);
 
       const { POST } = await import("@/app/api/projects/[id]/editorial-briefs/extract/route");
       const req = createTestRequest({ method: "POST", body: { sourceId } });
@@ -312,7 +312,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { GET } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/route");
       const req = createTestRequest();
       const res = await GET(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
@@ -344,7 +344,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { PATCH } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/route");
       const req = createTestRequest({ method: "PATCH", body: { content: createTestBriefContent(), contracts: [createTestChapterContract(ch1Id)], evidenceSourceIds: [] } });
       const res = await PATCH(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
@@ -381,7 +381,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { DELETE } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/route");
       const req = createTestRequest({ method: "DELETE" });
       const res = await DELETE(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
@@ -415,7 +415,7 @@ describeDb("editorial brief API routes", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(createClient).mockResolvedValue({
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { POST } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/approve/route");
       const req = createTestRequest({ method: "POST" });
       const res = await POST(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
