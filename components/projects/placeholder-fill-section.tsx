@@ -373,7 +373,7 @@ export function PlaceholderFillSection({
                   const placeholder = placeholders.find((p) => p.name === ph.name);
                   const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
                   const promptsStale = currentPromptsHash && metadata?.promptsHash && metadata.promptsHash !== currentPromptsHash;
-                  const briefStale = activeBriefHash && metadata?.editorialBriefHash && metadata.editorialBriefHash !== activeBriefHash;
+                  const briefStale = activeBriefHash && metadata?.editorialBriefHash !== activeBriefHash;
                   return promptsStale || briefStale;
                 })()
             );

@@ -132,12 +132,12 @@ export async function POST(
       model: body.model,
     });
 
-    // Create draft from extraction result
+    // Create draft from extraction result, binding the extracted source
     const brief = await createEditorialBriefDraft({
       projectId,
       content: extracted.content,
       contracts: extracted.contracts,
-      evidenceSourceIds: extracted.evidenceSourceIds,
+      evidenceSourceIds: [source.id],
     });
 
     await logAudit({

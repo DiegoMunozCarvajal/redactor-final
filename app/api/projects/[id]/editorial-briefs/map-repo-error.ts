@@ -50,6 +50,8 @@ export function mapRepoError(err: unknown): NextResponse {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  if (err instanceof Error) console.error(err);
-  return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  // Log full error server-side but return generic message to client.
+  // Prevents CWE-209: leaking DB internals via error responses.
+  if (err instanceof Error) console.error("[mapRepoError]", err);
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }

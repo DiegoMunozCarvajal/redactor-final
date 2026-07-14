@@ -573,19 +573,18 @@ export async function fillOnePlaceholder(
         isRequiredEvidence = evidenceNeed.required;
         evidenceSourceIds = editorialBundle.evidenceSourceIds;
 
-        if (evidenceNeed.required) {
-          // Required evidence: force RAG and use the contract query
-          provider = "rag";
-        }
-        // For both required and optional evidence with RAG, use the contract query
-        // (the query from the evidence need is more targeted than auto-generated)
+        // Force RAG for ALL evidence needs (required and optional).
+        // Evidence needs dictate the search strategy — the contract query
+        // is more targeted than auto-generated keyword matching.
+        provider = "rag";
       }
     }
   }
 
-  // Cross-chapter reuse: only for non-evidence, non-RAG, non-direct placeholders
-  // that don't require evidence (required evidence must go through RAG).
-  if (currentChapterId && !isRequiredEvidence) {
+  // Cross-chapter reuse: only for placeholders without evidence needs.
+  // Evidence needs (required or optional) must go through RAG with the
+  // contract's exact source list — never reuse another chapter's definition.
+  if (currentChapterId && !evidenceSourceIds) {
     if (provider !== "rag" && provider !== "direct") {
       const otherDefs = await db
         .select({ definition: chapterPlaceholders.definition })

@@ -171,15 +171,36 @@ describe("withProjectLock", () => {
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 
-  it("returns locked=false when lock busy, does not run fn", async () => {
+  it("returns locked=false when lock busy and no stale holder", async () => {
     const { mockUnsafe, mockRelease } = setupLockClient(false);
+    // Recovery query returns empty — no stale lock to terminate
+    mockUnsafe.mockResolvedValueOnce([]);
     const fn = vi.fn();
 
     const r = await withProjectLock("550e8400-e29b-41d4-a716-446655440002", fn);
 
     expect(r.locked).toBe(false);
     expect(fn).not.toHaveBeenCalled();
-    expect(mockUnsafe).toHaveBeenCalledOnce();
+    expect(mockUnsafe).toHaveBeenCalledTimes(2); // acquire + recovery
+    expect(mockRelease).toHaveBeenCalledOnce();
+  });
+
+  it("recovers stale lock when holder is idle, then runs fn", async () => {
+    const { mockUnsafe, mockRelease } = setupLockClient(false);
+    // Recovery query returns killed=true — stale lock terminated
+    mockUnsafe.mockResolvedValueOnce([{ killed: true }]);
+    // Retry acquire succeeds
+    mockUnsafe.mockResolvedValueOnce([{ acquired: true }]);
+    // Release succeeds
+    mockUnsafe.mockResolvedValueOnce(undefined);
+    const fn = vi.fn().mockResolvedValue("recovered");
+
+    const r = await withProjectLock("550e8400-e29b-41d4-a716-446655440005", fn);
+
+    expect(r.locked).toBe(true);
+    if (r.locked) expect(r.result).toBe("recovered");
+    expect(fn).toHaveBeenCalledOnce();
+    expect(mockUnsafe).toHaveBeenCalledTimes(4); // acquire, recovery, retry-acquire, release
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 

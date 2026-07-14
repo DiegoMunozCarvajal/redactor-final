@@ -145,7 +145,7 @@ export async function POST(
         const meta = p.fillMetadata as { promptsHash?: string; editorialBriefHash?: string } | null;
         if (!meta?.promptsHash && !meta?.editorialBriefHash) return true; // No hash — fill (stale detection impossible)
         if (meta.promptsHash && meta.promptsHash !== promptsHash) return true; // Prompts changed
-        if (meta.editorialBriefHash && briefBundle && meta.editorialBriefHash !== briefBundle.hash) return true; // Brief changed
+        if (briefBundle && meta.editorialBriefHash !== briefBundle.hash) return true; // Brief changed or missing (pre-brief def → stale)
         return false;
       })
     : placeholderRows;
