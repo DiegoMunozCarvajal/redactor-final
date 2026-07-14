@@ -153,6 +153,8 @@ function statusBadge(status: string) {
       return <Badge className="bg-success/10 text-success border-success/20">Completed</Badge>;
     case "generating":
       return <Badge className="bg-info/10 text-info border-info/20">Generating</Badge>;
+    case "planning":
+      return <Badge className="bg-info/10 text-info border-info/20">Planning</Badge>;
     case "assembling":
       return <Badge className="bg-info/10 text-info border-info/20">Assembling</Badge>;
     case "failed":
@@ -183,7 +185,6 @@ export default function ChapterPage() {
   const [selectingAssembly, setSelectingAssembly] = useState(false);
   const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
   const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
-  const [assemblyAlgorithm, setAssemblyAlgorithm] = useState<"merge-sort" | "sequential" | "halves">("merge-sort");
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -429,7 +430,6 @@ export default function ChapterPage() {
             fragmentIds,
             model: assemblyModel,
             effort: "max",
-            assemblyAlgorithm,
             ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
@@ -1745,16 +1745,6 @@ export default function ChapterPage() {
                       {m.short}
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-              <Select value={assemblyAlgorithm} onValueChange={(v) => setAssemblyAlgorithm(v as "merge-sort" | "sequential" | "halves")}>
-                <SelectTrigger className="w-[110px] h-7 text-[10px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="merge-sort" className="text-[10px]">Merge-Sort</SelectItem>
-                  <SelectItem value="halves" className="text-[10px]">Halves</SelectItem>
-                  <SelectItem value="sequential" className="text-[10px]">Sequential</SelectItem>
                 </SelectContent>
               </Select>
             </div>
