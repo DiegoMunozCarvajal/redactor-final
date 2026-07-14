@@ -5,70 +5,24 @@ import {
   getModelDefinition,
   getProviderForModel,
 } from "@/lib/ai/providers";
-import { db } from "@/lib/db";
-import { generationSystemPrompts, projects } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import type { ZodType } from "zod";
-import { DEFAULT_SYSTEM_PROMPT, STYLE_RULES } from "@/lib/ai/system-prompts";
+import { STYLE_RULES } from "@/lib/ai/system-prompts";
 import { assertOriginalEnough } from "@/lib/ai/originality-check";
+import { executeChapterPrompt } from "@/lib/prompts/chapter-executor";
+import {
+  sanitizeValue,
+  applyPlaceholders,
+  stripPlaceholderWrappers,
+  escapeXmlText,
+  escapeXmlAttr,
+} from "@/lib/prompts/placeholder-transform";
+import type { ZodType } from "zod";
 
-// In-memory cache for the default generation system prompt.
-// Refreshed on each call. TTL of 60s means a default change takes up to 60s
-// to propagate to all serverless instances. Acceptable trade-off for avoiding
-// a DB query on every fragment generation request.
-let cachedDefaultPrompt: { content: string; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 60_000; // 1 minute
+// Re-export placeholder utilities for backward compatibility
+export { sanitizeValue, applyPlaceholders, stripPlaceholderWrappers, escapeXmlText, escapeXmlAttr };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function getActiveGenerationSystemPrompt(projectId?: string): Promise<string> {
-  // 1. Project override
-  if (projectId) {
-    if (!UUID_RE.test(projectId)) {
-      throw new Error(`Invalid projectId: ${projectId}`);
-    }
-    const [project] = await db
-      .select({ promptId: projects.generationSystemPromptId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (project?.promptId) {
-      const [row] = await db
-        .select({ content: generationSystemPrompts.content })
-        .from(generationSystemPrompts)
-        .where(eq(generationSystemPrompts.id, project.promptId))
-        .limit(1);
-      if (row?.content) return row.content;
-    }
-  }
-
-  // 2. Default prompt from DB (with short-lived cache)
-  const now = Date.now();
-  if (cachedDefaultPrompt && (now - cachedDefaultPrompt.fetchedAt) < CACHE_TTL_MS) {
-    return cachedDefaultPrompt.content;
-  }
-
-  const [def] = await db
-    .select({ content: generationSystemPrompts.content })
-    .from(generationSystemPrompts)
-    .where(eq(generationSystemPrompts.isDefault, true))
-    .limit(1);
-  if (def?.content) {
-    cachedDefaultPrompt = { content: def.content, fetchedAt: now };
-    return def.content;
-  }
-
-  // 3. Hardcoded fallback
-  return DEFAULT_SYSTEM_PROMPT;
-}
-
-export function sanitizeValue(value: string): string {
-  return value
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-    .replace(/<</g, "‹‹")
-    .replace(/>>/g, "››")
-    .trim();
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface PromptLike {
   content: string;
@@ -82,11 +36,9 @@ export interface GeneratePromptParams {
   temperature?: number;
   maxTokens?: number;
   effort?: ReasoningEffort;
-  /** Override the default system prompt. If omitted, resolves from DB (project override → default → hardcoded fallback). */
-  systemPrompt?: string;
   /** Project topic. Used as fallback when {tema} placeholder has no definition. */
   projectTopic?: string | null;
-  /** Project ID. Used to resolve project-level system prompt override. */
+  /** Project ID. Used to resolve project-level system prompt override and to pass to chapter executor. */
   projectId?: string;
   /** Editorial brief context rendered as XML. Injected into system prompt with Anthropic cache split. */
   editorialContext?: string | null;
@@ -94,6 +46,12 @@ export interface GeneratePromptParams {
   schema?: ZodType;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
   signal?: AbortSignal;
+  /** Chapter ID — required for the chapter executor. */
+  chapterId?: string;
+  /** Chapter generation ID — required for the chapter executor. */
+  chapterGenerationId?: string;
+  /** The currentRevisionId from the prompt row — identifies the immutable version to use. */
+  chapterPromptRevisionId?: string;
 }
 
 /** Assembly output scales with fragment count. Each fragment contributes ~2048 tokens.
@@ -119,62 +77,14 @@ export interface GenerateResult {
     cacheCreationTokens?: number;
     cacheReadTokens?: number;
   };
+  /** Execution ID linking to the llm_prompt_executions row. Present when
+   *  the call went through executeChapterPrompt (fragment generation). */
+  executionId?: string;
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Escape user-generated text for safe insertion inside XML-like prompt tags.
- *  Prevents fragment content containing `</seccion>` or `</content>` from
- *  breaking prompt framing or injecting instructions into downstream LLM calls. */
-function escapeXmlText(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Escape text for use in XML attribute values (double-quoted). */
-function escapeXmlAttr(text: string): string {
-  return escapeXmlText(text).replace(/"/g, "&quot;");
-}
-
-export function applyPlaceholders(
-  content: string,
-  placeholders: Record<string, string>,
-  projectTopic?: string | null,
-): string {
-  // Sort longest-first to prevent {foo} matching inside {foo_bar}
-  const entries = Object.entries(placeholders).sort(
-    ([a], [b]) => b.length - a.length,
-  );
-  for (const [name, value] of entries) {
-    const sanitized = sanitizeValue(value);
-    // Case-insensitive regex: {tema} matches {TEMA}, {Tema}, etc.
-    const regex = new RegExp(`\\{${escapeRegex(name)}\\}`, "gi");
-    // Escape $ to prevent special pattern interpretation in replace ($&, $1, etc.)
-    content = content.replace(
-      regex,
-      `<<${name.toUpperCase()}>>${sanitized.replace(/\$/g, "$$$$")}<</${name.toUpperCase()}>>`,
-    );
-  }
-  // Fallback: if {tema} wasn't in the placeholder map but project has a topic, use it
-  if (projectTopic && !placeholders["tema"]) {
-    const sanitized = sanitizeValue(projectTopic);
-    content = content.replace(
-      /\{tema\}/gi,
-      `<<TEMA>>${sanitized.replace(/\$/g, "$$$$")}<</TEMA>>`,
-    );
-  }
-  return content;
-}
-
-/** Strip <<NAME>>...<</NAME>> wrappers that applyPlaceholders inserts.
- *  LLMs sometimes reproduce these verbatim. Remove them from generated output. */
-function stripPlaceholderWrappers(text: string): string {
-  return text.replace(/<<([A-Z_]+)>>([\s\S]*?)<<\/\1>>/g, "$2");
-}
+// ---------------------------------------------------------------------------
+// Fragment content generation
+// ---------------------------------------------------------------------------
 
 export async function generatePromptContent(
   params: GeneratePromptParams,
@@ -183,21 +93,53 @@ export async function generatePromptContent(
     prompt,
     placeholders,
     model = DEFAULT_GENERATION_MODEL,
-    temperature,
-    maxTokens,
-    effort,
-    systemPrompt,
     projectTopic,
     projectId,
     editorialContext,
-    schema,
     signal,
+    chapterId,
+    chapterGenerationId,
+    chapterPromptRevisionId,
+    effort,
   } = params;
 
+  // Route through the prompt registry executor when we have a revision ID.
+  // This is the new path — every call site that provides currentRevisionId
+  // gets versioned execution with full lineage tracking.
+  if (chapterPromptRevisionId && chapterId && chapterGenerationId && projectId) {
+    const result = await executeChapterPrompt({
+      projectId,
+      chapterId,
+      chapterGenerationId,
+      chapterPromptRevisionId,
+      editorialContext: editorialContext ?? null,
+      placeholders,
+      projectTopic: projectTopic ?? null,
+      model,
+      ...(effort !== undefined ? { effort } : {}),
+      ...(signal !== undefined ? { signal } : {}),
+    });
+
+    return {
+      text: result.text,
+      model,
+      provider: getProviderForModel(model),
+      durationMs: result.durationMs,
+      usage: {
+        inputTokens: result.usage.promptTokens,
+        outputTokens: result.usage.completionTokens,
+        costUsd: result.usage.costUsd,
+        cacheCreationTokens: result.usage.cacheCreationTokens,
+        cacheReadTokens: result.usage.cacheReadTokens,
+      },
+      executionId: result.executionId,
+    };
+  }
+
+  // Legacy path — fallback for callers that haven't been updated to provide
+  // the new required fields. Uses direct generateCompletion as before.
   // When userPrompt is set: content = system, userPrompt = user message (metaprompt pattern)
-  let effectiveSystemPrompt = prompt.userPrompt
-    ? prompt.content
-    : systemPrompt ?? await getActiveGenerationSystemPrompt(projectId);
+  const effectiveSystemPrompt = prompt.userPrompt ? prompt.content : "";
   const userContent = prompt.userPrompt ?? prompt.content;
   const content = applyPlaceholders(userContent, placeholders, projectTopic);
 
@@ -207,23 +149,22 @@ export async function generatePromptContent(
   const useCache = isAnthropic && !!prompt.userPrompt;
 
   // Apply placeholders to system prompt when using metaprompt pattern
+  let appliedSystemPrompt = effectiveSystemPrompt;
   if (prompt.userPrompt) {
-    effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
+    appliedSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
   }
 
   // Compose system prompt with editorial context
-  // For Anthropic cached calls: static prompt → cached, editorial → dynamic non-cached
-  // For non-Anthropic or no metaprompt: join both into systemPrompt
   let systemPromptForCall: string;
   let cachedForCall: string | undefined;
 
   if (useCache) {
-    cachedForCall = effectiveSystemPrompt;
+    cachedForCall = appliedSystemPrompt;
     systemPromptForCall = editorialContext ?? "";
   } else {
     systemPromptForCall = editorialContext
-      ? effectiveSystemPrompt + "\n\n" + editorialContext
-      : effectiveSystemPrompt;
+      ? appliedSystemPrompt + "\n\n" + editorialContext
+      : appliedSystemPrompt;
   }
 
   const baseOptions = {
@@ -233,8 +174,8 @@ export async function generatePromptContent(
     ...(useCache
       ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true }
       : {}),
-    ...(temperature !== undefined ? { temperature } : {}),
-    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.maxTokens !== undefined ? { maxTokens: params.maxTokens } : {}),
     ...(effort !== undefined ? { effort } : {}),
     ...(signal !== undefined ? { signal } : {}),
   };
@@ -243,8 +184,8 @@ export async function generatePromptContent(
   let usage: { promptTokens: number; completionTokens: number; costUsd?: number; cacheCreationTokens: number; cacheReadTokens: number };
   let durationMs = 0;
 
-  if (schema) {
-    const result = await generateCompletion({ ...baseOptions, schema } as Parameters<typeof generateCompletion>[0]);
+  if (params.schema) {
+    const result = await generateCompletion({ ...baseOptions, schema: params.schema } as Parameters<typeof generateCompletion>[0]);
     rawText = JSON.stringify(result.data);
     usage = result.usage;
     durationMs = result.durationMs;
@@ -255,8 +196,7 @@ export async function generatePromptContent(
     durationMs = result.durationMs;
   }
 
-  // Check generated fragment for contamination. Fail-closed: throw so
-  // Trigger.dev retries (LLM non-determinism → retry often produces clean variant).
+  // Check generated fragment for contamination.
   const text = stripPlaceholderWrappers(rawText);
   assertOriginalEnough(text, { stage: "fragment", throwOnFail: true });
 
@@ -274,6 +214,10 @@ export async function generatePromptContent(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Assembly types and helpers
+// ---------------------------------------------------------------------------
 
 export interface AssemblyGenerationOptions {
   assemblyPrompt: PromptLike;
@@ -704,6 +648,10 @@ export async function generateChapterAssembly(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Critique and correction
+// ---------------------------------------------------------------------------
 
 export interface GenerateCritiqueParams {
   critiquePrompt: PromptLike;
