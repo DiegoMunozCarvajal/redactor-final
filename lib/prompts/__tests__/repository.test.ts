@@ -192,7 +192,7 @@ describe('createPromptRevision', () => {
 
   it('throws for invalid input', async () => {
     await expect(
-      createPromptRevision('def-1', { versionLabel: '', systemTemplate: '', userTemplate: '' }, 'user-1'),
+      createPromptRevision('def-1', { versionLabel: '', systemTemplate: '', userTemplate: '', configuration: {} }, 'user-1'),
     ).rejects.toThrow('Invalid prompt revision input');
   });
 

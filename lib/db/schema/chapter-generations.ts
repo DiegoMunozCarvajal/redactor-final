@@ -5,6 +5,7 @@ import { chapters } from "./chapters";
 export const generationStatusEnum = pgEnum("generation_status", [
   "pending",
   "generating",
+  "planning",
   "assembling",
   "completed",
   "failed",
@@ -39,7 +40,7 @@ export const chapterGenerations = pgTable(
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{
-      algorithm?: "merge-sort" | "sequential" | "halves" | "critique" | "correction";
+      algorithm?: "merge-sort" | "sequential" | "halves" | "critique" | "correction" | "planned-editorial-v1";
       promptId?: string;
       promptTitle?: string;
       promptSource?: string;
@@ -50,7 +51,23 @@ export const chapterGenerations = pgTable(
       tokensUsed?: number;
       costUsd?: number;
       durationMs?: number;
+      pipeline?: string;
+      plannerExecutionId?: string;
+      assemblyExecutionId?: string;
     }>(),
+    assemblyPlan: jsonb("assembly_plan").$type<Record<string, unknown>>(),
+    planningMetadata: jsonb("planning_metadata").$type<{
+      model?: string;
+      provider?: string;
+      effort?: string;
+      tokensUsed?: number;
+      costUsd?: number;
+      durationMs?: number;
+      plannerExecutionId?: string;
+      pipeline?: string;
+    }>(),
+    plannerPromptRevisionId: uuid("planner_prompt_revision_id"),
+    assemblyPromptRevisionId: uuid("assembly_prompt_revision_id"),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
