@@ -38,7 +38,7 @@ function makeInput(overrides: Partial<ExecuteChapterPromptInput> = {}): ExecuteC
     chapterId: "ch-1",
     chapterGenerationId: "gen-1",
     chapterPromptRevisionId: "rev-1",
-    editorialContext: "<editorial>ctx</editorial>",
+    editorialContext: null,
     placeholders: { tema: "El Tema" },
     projectTopic: "El Tema",
     model: "claude-sonnet-4-20250514",
@@ -49,8 +49,8 @@ function makeInput(overrides: Partial<ExecuteChapterPromptInput> = {}): ExecuteC
 function makeVersion(overrides: Record<string, unknown> = {}) {
   return {
     id: "rev-1",
-    content: "System content for chapter",
-    userPrompt: "User prompt for chapter",
+    content: "System content for chapter {{EDITORIAL_CONTEXT}}",
+    userPrompt: "User prompt for chapter {{EDITORIAL_CONTEXT}}",
     ...overrides,
   };
 }

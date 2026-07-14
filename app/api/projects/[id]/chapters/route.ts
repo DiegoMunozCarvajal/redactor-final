@@ -90,7 +90,7 @@ export async function POST(
 
     // Copy prompts and placeholders from template chapter if selected
     if (templateChapterId) {
-      await copyTemplatePromptsToChapter(tx, templateChapterId, projectId, ch.id);
+      await copyTemplatePromptsToChapter(tx, templateChapterId, projectId, ch.id, user.id);
     }
 
     return ch;

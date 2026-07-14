@@ -117,10 +117,13 @@ export const generateChapter = task({
           eq(chapterGenerations.status, "pending"),
         ),
       )
-      .returning({ id: chapterGenerations.id });
+      .returning({ id: chapterGenerations.id, assemblyPlan: chapterGenerations.assemblyPlan });
     if (!updated) {
       return;
     }
+
+    // Capture any persisted plan from a previous attempt (retry recovery)
+    const persistedPlan = updated.assemblyPlan as Record<string, unknown> | null;
 
     // Load project
     const [project] = await db
@@ -184,6 +187,8 @@ export const generateChapter = task({
     try {
       if (fragmentIds && fragmentIds.length > 0) {
         // Inflate fragments from DB — manual re-assembly path.
+        // Do NOT filter by generationId: fragments come from prior generations
+        // (the API route already verified project/chapter ownership).
         const existing = await db
           .select({
             id: fragments.id,
@@ -192,12 +197,7 @@ export const generateChapter = task({
           })
           .from(fragments)
           .leftJoin(prompts, eq(fragments.projectPromptId, prompts.id))
-          .where(
-            and(
-              inArray(fragments.id, fragmentIds),
-              eq(fragments.chapterGenerationId, generationId),
-            ),
-          )
+          .where(inArray(fragments.id, fragmentIds))
           .orderBy(asc(fragments.position));
 
         for (const f of existing) {
@@ -208,78 +208,101 @@ export const generateChapter = task({
           });
         }
       } else {
-        // Load placeholders
-        const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
+        // Check for existing fragments from a previous attempt (retry recovery).
+        // If fragments exist, inflate them instead of regenerating.
+        const existingFragments = await db
+          .select({
+            id: fragments.id,
+            title: prompts.title,
+            content: fragments.content,
+          })
+          .from(fragments)
+          .leftJoin(prompts, eq(fragments.projectPromptId, prompts.id))
+          .where(eq(fragments.chapterGenerationId, generationId))
+          .orderBy(asc(fragments.position));
 
-        // Mandatory placeholder validation
-        const contentPromptStrings = contentPrompts.flatMap((p) =>
-          [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
-        );
-        const requiredTokens = extractPlaceholders(contentPromptStrings);
-        const missingPlaceholders = requiredTokens.filter(
-          (name) => !(name in placeholders),
-        );
-
-        if (missingPlaceholders.length > 0) {
-          const missing = missingPlaceholders.join(", ");
-          const msg = `Cannot generate: the following placeholders have no definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first via the placeholder filling UI before generating fragments.`;
-          await db
-            .update(chapterGenerations)
-            .set({ status: "failed", error: msg })
-            .where(eq(chapterGenerations.id, generationId));
-          throw new Error(msg);
-        }
-
-        // ── Phase 1: Generate content fragments ──────────────────────────
-        const PARALLEL_FRAGMENTS = 3;
-        const results = await runSettledWithConcurrency(
-          contentPrompts,
-          PARALLEL_FRAGMENTS,
-          async (prompt) => {
-            const result = await generatePromptContent({
-              prompt,
-              placeholders,
-              projectTopic: project.topic,
-              projectId,
-              chapterId: gen.chapterId,
-              chapterGenerationId: generationId,
-              chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
-              editorialContext: editorialBundle
-                ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
-                : null,
-              ...(model ? { model } : {}),
-              ...(effort !== undefined ? { effort } : {}),
+        if (existingFragments.length > 0) {
+          for (const f of existingFragments) {
+            fragmentContents.push({
+              id: f.id,
+              title: f.title ?? "Fragment",
+              content: f.content ?? "",
             });
+          }
+        } else {
+          // Load placeholders
+          const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
+          // Mandatory placeholder validation
+          const contentPromptStrings = contentPrompts.flatMap((p) =>
+            [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
+          );
+          const requiredTokens = extractPlaceholders(contentPromptStrings);
+          const missingPlaceholders = requiredTokens.filter(
+            (name) => !(name in placeholders),
+          );
+
+          if (missingPlaceholders.length > 0) {
+            const missing = missingPlaceholders.join(", ");
+            const msg = `Cannot generate: the following placeholders have no definitions: {${missing.replace(/, /g, "}, {")}}. Fill them first via the placeholder filling UI before generating fragments.`;
             await db
-              .insert(fragments)
-              .values({
+              .update(chapterGenerations)
+              .set({ status: "failed", error: msg })
+              .where(eq(chapterGenerations.id, generationId));
+            throw new Error(msg);
+          }
+
+          // ── Phase 1: Generate content fragments ──────────────────────────
+          const PARALLEL_FRAGMENTS = 3;
+          const results = await runSettledWithConcurrency(
+            contentPrompts,
+            PARALLEL_FRAGMENTS,
+            async (prompt) => {
+              const result = await generatePromptContent({
+                prompt,
+                placeholders,
+                projectTopic: project.topic,
+                projectId,
+                chapterId: gen.chapterId,
                 chapterGenerationId: generationId,
-                projectPromptId: prompt.id,
-                promptRevisionId: prompt.currentRevisionId,
-                executionId: result.executionId ?? null,
-                position: prompt.position,
-                content: result.text,
-                modelUsed: result.model,
-                tokensUsed:
-                  (result.usage?.inputTokens ?? 0) +
-                  (result.usage?.outputTokens ?? 0),
-                metadata: {
-                  provider: result.provider,
-                  ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
-                  ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
-                  ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
-                  ...(result.durationMs ? { durationMs: result.durationMs } : {}),
-                },
+                chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
+                editorialContext: editorialBundle
+                  ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
+                  : null,
+                ...(model ? { model } : {}),
+                ...(effort !== undefined ? { effort } : {}),
               });
 
-            return {
-              id: prompt.id,
-              title: prompt.title,
-              content: result.text,
-            };
-          },
-        );
+              const [inserted] = await db
+                .insert(fragments)
+                .values({
+                  chapterGenerationId: generationId,
+                  projectPromptId: prompt.id,
+                  promptRevisionId: prompt.currentRevisionId,
+                  executionId: result.executionId ?? null,
+                  position: prompt.position,
+                  content: result.text,
+                  modelUsed: result.model,
+                  tokensUsed:
+                    (result.usage?.inputTokens ?? 0) +
+                    (result.usage?.outputTokens ?? 0),
+                  metadata: {
+                    provider: result.provider,
+                    ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
+                    ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
+                    ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
+                    ...(result.durationMs ? { durationMs: result.durationMs } : {}),
+                  },
+                })
+                .returning({ id: fragments.id });
+
+              return {
+                id: inserted.id,
+                title: prompt.title,
+                content: result.text,
+              };
+            },
+          );
 
         // Preserve original order
         for (let i = 0; i < results.length; i++) {
@@ -288,6 +311,7 @@ export const generateChapter = task({
             fragmentContents.push(r.value);
           } else {
             throw r.reason;
+          }
           }
         }
       }
@@ -304,61 +328,77 @@ export const generateChapter = task({
       }
 
       // ── Phase 2: Planning ────────────────────────────────────────────
-      // Transition generating → planning
-      await db
-        .update(chapterGenerations)
-        .set({ status: "planning" })
-        .where(eq(chapterGenerations.id, generationId));
+      // Skip planning if a valid plan was persisted from a previous attempt
+      // (retry recovery — fragments survive, plan survives, assembly retries).
+      let plan: Record<string, unknown> | null = persistedPlan;
+      let plannerExecutionId: string | null = null;
 
       // Build editorial data context (data-only, no instructions)
       const editorialData = editorialBundle
         ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
         : null;
 
-      // Derive mustCover from chapter contract
-      let mustCover: string[] = [];
-      if (editorialBundle) {
-        const contract = editorialBundle.contracts.find(
-          (c) => c.chapterId === gen.chapterId,
-        );
-        if (contract) {
-          mustCover = contract.mustCover;
+      if (!plan) {
+        // Transition generating → planning
+        await db
+          .update(chapterGenerations)
+          .set({ status: "planning" })
+          .where(eq(chapterGenerations.id, generationId));
+
+        // Derive mustCover from chapter contract
+        let mustCover: string[] = [];
+        if (editorialBundle) {
+          const contract = editorialBundle.contracts.find(
+            (c) => c.chapterId === gen.chapterId,
+          );
+          if (contract) {
+            mustCover = contract.mustCover;
+          }
         }
-      }
 
-      const plannerResult = await runAssemblyPlanner({
-        projectId,
-        model: model ?? DEFAULT_GENERATION_MODEL,
-        editorialContext: editorialData ?? "",
-        fragments: fragmentContents.map((f) => ({
-          id: f.id,
-          title: f.title,
-          content: f.content,
-        })),
-        validationContext: {
-          fragmentIds: fragmentContents.map((f) => f.id),
-          mustCover,
-        },
-        effort,
-        ...(plannerRevisionId ? { revisionId: plannerRevisionId } : {}),
-      });
-
-      // Store the assembly plan and planning metadata
-      await db
-        .update(chapterGenerations)
-        .set({
-          assemblyPlan: plannerResult.plan as unknown as Record<string, unknown>,
-          planningMetadata: {
-            model: plannerResult.model,
-            tokensUsed: plannerResult.usage.totalTokens,
-            costUsd: plannerResult.usage.costUsd,
-            durationMs: plannerResult.durationMs,
-            plannerExecutionId: plannerResult.executionId,
-            pipeline: "planned-editorial-v1",
+        const plannerResult = await runAssemblyPlanner({
+          projectId,
+          model: model ?? DEFAULT_GENERATION_MODEL,
+          editorialContext: editorialData ?? "",
+          fragments: fragmentContents.map((f) => ({
+            id: f.id,
+            title: f.title,
+            content: f.content,
+          })),
+          validationContext: {
+            fragmentIds: fragmentContents.map((f) => f.id),
+            mustCover,
           },
-          ...(plannerRevisionId ? { plannerPromptRevisionId: plannerRevisionId } : {}),
-        })
-        .where(eq(chapterGenerations.id, generationId));
+          effort,
+          chapterId: gen.chapterId,
+          chapterGenerationId: generationId,
+          ...(plannerRevisionId ? { revisionId: plannerRevisionId } : {}),
+        });
+
+        plan = plannerResult.plan as unknown as Record<string, unknown>;
+        plannerExecutionId = plannerResult.executionId;
+
+        // Store the assembly plan and planning metadata
+        await db
+          .update(chapterGenerations)
+          .set({
+            assemblyPlan: plan,
+            planningMetadata: {
+              model: plannerResult.model,
+              tokensUsed: plannerResult.usage.totalTokens,
+              costUsd: plannerResult.usage.costUsd,
+              durationMs: plannerResult.durationMs,
+              plannerExecutionId: plannerResult.executionId,
+              pipeline: "planned-editorial-v1",
+            },
+            ...(plannerRevisionId ? { plannerPromptRevisionId: plannerRevisionId } : {}),
+          })
+          .where(eq(chapterGenerations.id, generationId));
+      } else {
+        // Extract plannerExecutionId from existing planning metadata
+        const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
+        plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
+      }
 
       // ── Phase 3: Assembly ────────────────────────────────────────────
       // Transition planning → assembling
@@ -367,17 +407,22 @@ export const generateChapter = task({
         .set({ status: "assembling" })
         .where(eq(chapterGenerations.id, generationId));
 
+      // plan is guaranteed non-null here — either from planner or persisted
+      const assemblyPlan = plan!;
+
       const assemblerResult = await runAssemblyAssembler({
         projectId,
         model: model ?? DEFAULT_GENERATION_MODEL,
         editorialContext: editorialData ?? "",
-        plan: plannerResult.plan,
+        plan: assemblyPlan as unknown as import("@/lib/assembly/plan-schema").AssemblyPlanV1,
         fragments: fragmentContents.map((f) => ({
           id: f.id,
           title: f.title,
           content: f.content,
         })),
         effort,
+        chapterId: gen.chapterId,
+        chapterGenerationId: generationId,
         ...(assemblyRevisionId ? { revisionId: assemblyRevisionId } : {}),
       });
 
@@ -391,7 +436,7 @@ export const generateChapter = task({
             algorithm: "planned-editorial-v1",
             model: assemblerResult.model,
             fragmentCount: fragmentContents.length,
-            plannerExecutionId: plannerResult.executionId,
+            plannerExecutionId: plannerExecutionId,
             assemblyExecutionId: assemblerResult.executionId,
             pipeline: "planned-editorial-v1",
           },
@@ -405,14 +450,9 @@ export const generateChapter = task({
       const maxAttempts = ctx.run.maxAttempts ?? 3;
       const isLastAttempt = ctx.attempt.number >= maxAttempts;
 
-      // Only clean up fragments on terminal failure — keep them for retry
-      // so the plan and fragments can be reused on the next attempt.
-      if (isLastAttempt) {
-        await db
-          .delete(fragments)
-          .where(eq(fragments.chapterGenerationId, generationId))
-          .catch(() => {});
-      }
+      // Never delete fragments — they survive for retry recovery.
+      // The persisted fragments and assemblyPlan enable the next attempt
+      // to skip re-generation and re-planning.
 
       // Mark terminal only on last attempt; reset to pending for retry
       await db

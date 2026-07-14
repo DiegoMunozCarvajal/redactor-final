@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, prompts, promptLibrary } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, fragments, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -11,7 +11,6 @@ import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeh
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_GENERATION_MODEL, getModelDefinition } from "@/lib/ai/providers";
-import type { AssemblyAlgorithm } from "@/lib/generate";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, snapshotFromGenerationMetadata } from "@/lib/editorial-brief/context";
 
 export async function POST(
@@ -51,14 +50,22 @@ export async function POST(
   const fragmentIds: string[] = body.fragmentIds ?? [];
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | "xhigh" | undefined;
-  const assemblyPromptId = body.assemblyPromptId as string | undefined;
   const plannerRevisionId = body.plannerRevisionId as string | undefined;
   const assemblyRevisionId = body.assemblyRevisionId as string | undefined;
-  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
-    ? "sequential"
-    : body.assemblyAlgorithm === "halves"
-      ? "halves"
-      : "merge-sort";
+
+  // Reject legacy fields — Plan 2 resolves everything via revision IDs
+  if (body.assemblyAlgorithm !== undefined) {
+    return NextResponse.json(
+      { error: "assemblyAlgorithm is deprecated. Use plannerRevisionId and assemblyRevisionId instead." },
+      { status: 400 },
+    );
+  }
+  if (body.assemblyPromptId !== undefined) {
+    return NextResponse.json(
+      { error: "assemblyPromptId is deprecated. Use assemblyRevisionId instead." },
+      { status: 400 },
+    );
+  }
 
   if (!Array.isArray(fragmentIds) || fragmentIds.length === 0) {
     return NextResponse.json({ error: "fragmentIds required" }, { status: 400 });
@@ -162,83 +169,25 @@ export async function POST(
           b ? snapshotFromBundle(b) : null,
         );
 
-  // Pre-flight: verify an assembly prompt will be available at task execution.
-  // Priority: explicit assemblyPromptId > project default > chapter embedded.
-  if (assemblyPromptId) {
-    const [ap] = await db
-      .select({ id: promptLibrary.id })
-      .from(promptLibrary)
-      .where(and(eq(promptLibrary.id, assemblyPromptId), eq(promptLibrary.category, "assembly")))
-      .limit(1);
-
-    if (!ap) {
-      return NextResponse.json(
-        { error: "assembly prompt not found" },
-        { status: 400 },
-      );
-    }
-  } else if (!project.assemblyPromptId) {
-    // No explicit prompt and no project default — must have chapter-level
-    const [embedded] = await db
-      .select({ id: prompts.id })
-      .from(prompts)
-      .where(
-        and(
-          eq(prompts.chapterId, chapterId),
-          eq(prompts.projectId, projectId),
-          eq(prompts.isAssembly, true),
-        ),
-      )
-      .limit(1);
-
-    if (!embedded) {
-      return NextResponse.json(
-        { error: "no assembly prompt configured. Provide assemblyPromptId or configure an assembly prompt for this chapter." },
-        { status: 400 },
-      );
-    }
-  }
-
-  // Pre-flight: validate placeholders
+  // Pre-flight: validate placeholders for the chapter's embedded prompts
   const placeholders = await getChapterPlaceholders(chapterId, project.topic);
 
-  // Resolve which assembly prompt will be used for placeholder validation
-  let apContent: string | null = null;
-  let apUserPrompt: string | null = null;
+  // Collect all content prompt texts for placeholder validation
+  const chapterPrompts = await db
+    .select({ content: prompts.content, userPrompt: prompts.userPrompt })
+    .from(prompts)
+    .where(
+      and(
+        eq(prompts.chapterId, chapterId),
+        eq(prompts.projectId, projectId),
+      ),
+    );
 
-  const effectiveAssemblyPromptId = assemblyPromptId ?? project.assemblyPromptId;
-  if (effectiveAssemblyPromptId) {
-    const [ap] = await db
-      .select({ content: promptLibrary.content, userPrompt: promptLibrary.userPrompt })
-      .from(promptLibrary)
-      .where(and(eq(promptLibrary.id, effectiveAssemblyPromptId), eq(promptLibrary.category, "assembly")))
-      .limit(1);
-    if (ap) {
-      apContent = ap.content;
-      apUserPrompt = ap.userPrompt;
-    }
-  } else {
-    const [embedded] = await db
-      .select({ content: prompts.content, userPrompt: prompts.userPrompt })
-      .from(prompts)
-      .where(
-        and(
-          eq(prompts.chapterId, chapterId),
-          eq(prompts.projectId, projectId),
-          eq(prompts.isAssembly, true),
-        ),
-      )
-      .limit(1);
-    if (embedded) {
-      apContent = embedded.content;
-      apUserPrompt = embedded.userPrompt;
-    }
-  }
-
-  const missingPlaceholders = getMissingPlaceholderNames(
-    [apContent, apUserPrompt].filter(Boolean) as string[],
-    placeholders,
+  const allPromptTexts = chapterPrompts.flatMap((p) =>
+    [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
   );
+
+  const missingPlaceholders = getMissingPlaceholderNames(allPromptTexts, placeholders);
   if (missingPlaceholders.length > 0) {
     const missing = missingPlaceholders.join(", ");
     return NextResponse.json(
@@ -270,9 +219,8 @@ export async function POST(
       type: "assembly" as const,
       model: model ?? null,
       effort: effort ?? null,
-      algorithm: assemblyAlgorithm,
+      algorithm: "planned-editorial-v1" as const,
       fragmentIds,
-      ...(assemblyPromptId ? { assemblyPromptId } : {}),
       ...(assemblySnapshot ? metadataFromSnapshot(assemblySnapshot) : {}),
     };
     const [row] = await db
@@ -340,7 +288,7 @@ export async function POST(
     action: "chapter.assemble",
     resourceType: "chapter_generation",
     resourceId: gen.id,
-    metadata: { projectId, chapterId, fragmentIds, assemblyAlgorithm },
+    metadata: { projectId, chapterId, fragmentIds, algorithm: "planned-editorial-v1" },
   });
 
   return NextResponse.json(gen);

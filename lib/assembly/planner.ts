@@ -15,6 +15,8 @@ export interface PlannerInput {
   validationContext: AssemblyPlanValidationContext;
   revisionId?: string;
   effort?: ReasoningEffort;
+  chapterId?: string;
+  chapterGenerationId?: string;
 }
 
 export interface PlannerResult {
@@ -53,6 +55,8 @@ export async function runAssemblyPlanner(
     kind: 'assembly-planner',
     projectId: input.projectId,
     revisionId: input.revisionId,
+    chapterId: input.chapterId,
+    chapterGenerationId: input.chapterGenerationId,
     markerValues: {
       '{{EDITORIAL_CONTEXT}}': input.editorialContext,
       '{{SECCIONES_GENERADAS}}': serializedFragments,

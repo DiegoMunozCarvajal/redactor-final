@@ -182,9 +182,6 @@ export default function ChapterPage() {
   const [assemblyModalOpen, setAssemblyModalOpen] = useState(false);
   const [selectedFragments, setSelectedFragments] = useState<Record<string, string>>({});
   const [assembling, setAssembling] = useState(false);
-  const [selectingAssembly, setSelectingAssembly] = useState(false);
-  const [assemblyPromptId, setAssemblyPromptId] = useState<string>("");
-  const [assemblyPromptList, setAssemblyPromptList] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -210,7 +207,6 @@ export default function ChapterPage() {
   }>>({});
   const [showPromptVersions, setShowPromptVersions] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const assemblyFetchRef = useRef(false);
 
   function getModel(promptId: string) {
     return promptModels[promptId] ?? defaultModel;
@@ -273,27 +269,15 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
 
-  const fetchAssemblyLibrary = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch("/api/prompt-library?category=assembly", { signal });
-      if (signal?.aborted) return;
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setAssemblyPromptList(data);
-      }
-    } catch { /* supplementary */ }
-  }, []);
-
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
       fetchChapter(controller.signal),
       fetchPrompts(controller.signal),
       fetchPlaceholders(controller.signal),
-      fetchAssemblyLibrary(controller.signal),
     ]);
     return () => controller.abort();
-  }, [fetchChapter, fetchPrompts, fetchPlaceholders, fetchAssemblyLibrary]);
+  }, [fetchChapter, fetchPrompts, fetchPlaceholders]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -413,11 +397,6 @@ export default function ChapterPage() {
       toast.error("Select at least one fragment");
       return;
     }
-    // If no embedded assembly prompt, require assemblyPromptId
-    if (!assemblyPrompt && !assemblyPromptId) {
-      toast.error("Select an assembly prompt");
-      return;
-    }
     setAssemblyModalOpen(false);
     setAssembling(true);
     try {
@@ -430,7 +409,6 @@ export default function ChapterPage() {
             fragmentIds,
             model: assemblyModel,
             effort: "max",
-            ...(assemblyPromptId ? { assemblyPromptId } : {}),
           }),
         },
       );
@@ -632,43 +610,6 @@ export default function ChapterPage() {
     }
   }
 
-  async function handleSelectAssemblyPrompt(libraryId: string) {
-    setSelectingAssembly(true);
-    try {
-      // Fetch the library prompt
-      const res = await fetch(`/api/prompt-library/${libraryId}`);
-      if (!res.ok) {
-        toast.error("Failed to load assembly prompt");
-        return;
-      }
-      const ap = await res.json();
-      // Create as project prompt for this chapter
-      const createRes = await fetch(`/api/projects/${params.id}/prompts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapterId: params.chapterId,
-          title: ap.name,
-          content: ap.content,
-          userPrompt: ap.userPrompt ?? null,
-          isAssembly: true,
-        }),
-      });
-      if (createRes.ok) {
-        toast.success(`Assembly prompt "${ap.name}" added`);
-        fetchPrompts();
-        fetchPlaceholders();
-      } else {
-        const err = await createRes.json().catch(() => ({}));
-        toast.error(err.error ?? "Failed to add assembly prompt");
-      }
-    } catch {
-      toast.error("Network error");
-    } finally {
-      setSelectingAssembly(false);
-    }
-  }
-
   function openAssemblyModal() {
     // Pre-select the latest fragment for each content prompt
     const sel: Record<string, string> = {};
@@ -679,20 +620,6 @@ export default function ChapterPage() {
       }
     }
     setSelectedFragments(sel);
-
-    // If no embedded assembly prompt, fetch assembly prompts for the picker.
-    // Guard against double-click races with a ref.
-    if (!assemblyPrompt && !assemblyFetchRef.current) {
-      assemblyFetchRef.current = true;
-      fetch("/api/prompt-library?category=assembly")
-        .then((r) => r.json())
-        .then((data) => {
-          if (Array.isArray(data)) setAssemblyPromptList(data);
-        })
-        .catch(() => {})
-        .finally(() => { assemblyFetchRef.current = false; });
-    }
-
     setAssemblyModalOpen(true);
   }
 
@@ -1575,9 +1502,6 @@ export default function ChapterPage() {
 
       <AssemblyPromptSection
         prompt={assemblyPrompt}
-        assemblyLibrary={assemblyPromptList}
-        onSelectFromLibrary={handleSelectAssemblyPrompt}
-        selectingFromLibrary={selectingAssembly}
         onAssemble={openAssemblyModal}
         assembling={isAssemblingChapter}
         onDelete={async () => {
@@ -1650,33 +1574,6 @@ export default function ChapterPage() {
                     </p>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Assembly prompt picker — shown when no embedded assembly prompt */}
-            {!assemblyPrompt && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium flex items-center gap-1.5">
-                  <Puzzle className="h-3.5 w-3.5 text-muted-foreground" />
-                  Assembly Prompt
-                </h4>
-                {assemblyPromptList.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Loading assembly prompts…</p>
-                ) : (
-                  <Select
-                    value={assemblyPromptId}
-                    onValueChange={(v) => setAssemblyPromptId(v)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select an assembly prompt…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assemblyPromptList.map((ap) => (
-                        <SelectItem key={ap.id} value={ap.id}>{ap.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
               </div>
             )}
 

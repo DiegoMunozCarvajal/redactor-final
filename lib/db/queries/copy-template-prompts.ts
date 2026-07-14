@@ -2,12 +2,15 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { prompts, chapterPlaceholders } from "@/lib/db/schema";
 import { eq, asc, inArray, isNull, and } from "drizzle-orm";
 import * as schema from "@/lib/db/schema";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 
 type Tx = PostgresJsDatabase<typeof schema>;
 
 /**
  * Copy template prompts from a template chapter to a project chapter.
- * Also copies chapter placeholders (names only, no definitions).
+ * Also copies chapter placeholders (names only, no definitions) and creates
+ * an immutable prompt_versions snapshot for each copied prompt so
+ * currentRevisionId is never null.
  *
  * Used by project creation (projects/route.ts) and chapter addition
  * (projects/[id]/chapters/route.ts). Having this in one place eliminates
@@ -18,6 +21,7 @@ export async function copyTemplatePromptsToChapter(
   templateChapterId: string,
   projectId: string,
   projectChapterId: string,
+  userId: string,
 ): Promise<void> {
   // Copy prompts
   const templatePrompts = await tx
@@ -32,7 +36,7 @@ export async function copyTemplatePromptsToChapter(
     .orderBy(asc(prompts.position));
 
   if (templatePrompts.length > 0) {
-    await tx.insert(prompts).values(
+    const inserted = await tx.insert(prompts).values(
       templatePrompts.map((p) => ({
         projectId,
         chapterId: projectChapterId,
@@ -47,7 +51,13 @@ export async function copyTemplatePromptsToChapter(
         notes: p.notes,
         sourceContext: p.sourceContext,
       })),
-    );
+    ).returning({ id: prompts.id });
+
+    // Create immutable prompt_versions snapshot for each copied prompt.
+    // Without this, currentRevisionId is null and fragment generation fails.
+    for (const prompt of inserted) {
+      await writeCurrentChapterPromptRevision(prompt.id, userId, tx);
+    }
   }
 
   // Copy placeholders (names only, no definitions).

@@ -109,8 +109,8 @@ export async function executeChapterPrompt(
 
   const hasMarker = systemMessage.includes(editorialMarker) || userMessage.includes(editorialMarker);
   if (!hasMarker && editorialContext) {
-    console.warn(
-      `[chapter-executor] Editorial context provided but neither system nor user message contains {{EDITORIAL_CONTEXT}} marker. The generation-system revision (${generationSystemRevision.id}) may be missing the marker.`,
+    throw new Error(
+      `[chapter-executor] Editorial context provided but neither system nor user message contains {{EDITORIAL_CONTEXT}} marker. The generation-system revision (${generationSystemRevision.id}) is missing the marker — update the revision to include {{EDITORIAL_CONTEXT}}.`,
     );
   }
 

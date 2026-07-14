@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, chapterPlaceholders, promptLibrary, bookTemplates } from "@/lib/db/schema";
+import { projects, chapters, prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
@@ -54,7 +54,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, topic, title, bookTemplateId, assemblyPromptId } = body;
+  const { name, topic, title, bookTemplateId } = body;
+
+  // Reject legacy fields — Plan 2 resolves via prompt registry
+  if (body.assemblyPromptId !== undefined) {
+    return NextResponse.json(
+      { error: "assemblyPromptId is deprecated. Configure assembly defaults via prompt-defaults API." },
+      { status: 400 },
+    );
+  }
 
   // Server-side validation
   if (typeof name !== "string" || name.length < 1 || name.length > 200) {
@@ -65,9 +73,6 @@ export async function POST(req: NextRequest) {
   }
   if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
     return NextResponse.json({ error: "topic must be a string of 500 characters or less" }, { status: 400 });
-  }
-  if (assemblyPromptId !== undefined && typeof assemblyPromptId !== "string") {
-    return NextResponse.json({ error: "assemblyPromptId must be a string" }, { status: 400 });
   }
 
   let project: typeof projects.$inferSelect;
@@ -89,26 +94,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Validate assemblyPromptId: must exist in prompt_library with category "assembly".
-      // A critique or corrector UUID passes FK checks but produces a broken default
-      // assembly config — reject early with a clear error.
-      if (assemblyPromptId) {
-        const [prompt] = await tx
-          .select({ id: promptLibrary.id, category: promptLibrary.category })
-          .from(promptLibrary)
-          .where(eq(promptLibrary.id, assemblyPromptId))
-          .limit(1);
-        if (!prompt) {
-          throw { status: 400, message: "assemblyPromptId not found" };
-        }
-        if (prompt.category !== "assembly") {
-          throw { status: 400, message: "assemblyPromptId must be an assembly prompt" };
-        }
-      }
-
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null, assemblyPromptId: assemblyPromptId ?? null })
+        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters
@@ -139,7 +127,7 @@ export async function POST(req: NextRequest) {
 
           chapterIdMap.set(chapter.id, projectChapter.id);
 
-          await copyTemplatePromptsToChapter(tx, chapter.id, p.id, projectChapter.id);
+          await copyTemplatePromptsToChapter(tx, chapter.id, p.id, projectChapter.id, user.id);
         }
 
         // Sync placeholders from project prompts — catch any {tokens} in prompt
@@ -201,29 +189,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Sync placeholders from global assembly prompt to all new project chapters
-        if (assemblyPromptId) {
-          const [globalAp] = await tx
-            .select({ content: promptLibrary.content, userPrompt: promptLibrary.userPrompt })
-            .from(promptLibrary)
-            .where(and(eq(promptLibrary.id, assemblyPromptId), eq(promptLibrary.category, "assembly")))
-            .limit(1);
-          if (globalAp) {
-            const apContents = [globalAp.content, globalAp.userPrompt].filter(
-              (s): s is string => typeof s === "string" && s.length > 0,
-            );
-            const detected = extractPlaceholders(apContents);
-            if (detected.length > 0) {
-              const projectChapterIds = [...chapterIdMap.values()];
-              for (const projectChapterId of projectChapterIds) {
-                await tx
-                  .insert(chapterPlaceholders)
-                  .values(detected.map((name) => ({ chapterId: projectChapterId, name })))
-                  .onConflictDoNothing();
-              }
-            }
-          }
-        }
       }
 
       return p;
