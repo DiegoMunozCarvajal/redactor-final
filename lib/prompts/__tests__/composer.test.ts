@@ -7,6 +7,7 @@ const revision = {
   requiredMarkers: ['{{EDITORIAL_CONTEXT}}', '{{ASSEMBLY_PLAN}}', '{{SECCIONES_GENERADAS}}'],
 };
 
+describe('composePrompt', () => {
 it('replaces only declared markers byte for byte', () => {
   const result = composePrompt(revision, {
     '{{EDITORIAL_CONTEXT}}': '<brief />',
@@ -48,4 +49,5 @@ it('computes stable SHA-256 hashes', () => {
     '{{SECCIONES_GENERADAS}}': 'z',
   });
   expect(a.dataManifest).toEqual(b.dataManifest);
+  });
 });
