@@ -394,7 +394,7 @@ export function renderEditorialScope(
 
   // Wrap in editorial_context
   return [
-    `<editorial_context version="2" hash="${escapeXml(bundle.hash)}">`,
+    `<editorial_context version="${bundle.version}" hash="${escapeXml(bundle.hash)}">`,
     "  <authority>Approved project constraints. Apply them without quoting this block.</authority>",
     ...parts,
     "</editorial_context>",

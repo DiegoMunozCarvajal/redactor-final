@@ -19,11 +19,9 @@ export function canonicalStringify(value: unknown): string {
   }
 
   if (Array.isArray(value)) {
-    // Sort by canonical string representation so semantically identical
-    // arrays produce the same hash regardless of element order.  This is
-    // essential for string arrays inside EditorialBriefContent (mechanism,
-    // tone, avoid, pillars, etc.) where LLM output ordering is unstable.
-    const items = value.map(canonicalStringify).sort();
+    // Array order is semantic in editorial content and chapter contracts.
+    // Set-like collections are normalized explicitly in buildCanonicalPayload.
+    const items = value.map(canonicalStringify);
     return `[${items.join(",")}]`;
   }
 

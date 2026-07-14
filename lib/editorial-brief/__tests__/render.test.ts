@@ -6,7 +6,6 @@ import {
   createTestChapterContract,
   TEST_CHAPTER_1_ID,
   TEST_CHAPTER_2_ID,
-  TEST_BRIEF_ID,
 } from "./fixtures";
 import type { EditorialBundle } from "../schema";
 
@@ -30,9 +29,22 @@ describe("renderEditorialScope", () => {
       scope: "fragment",
       chapterId: TEST_CHAPTER_1_ID,
     });
-    expect(result).toContain(`<editorial_context version="2" hash="`);
+    expect(result).toContain(
+      `<editorial_context version="${bundle.version}" hash="`,
+    );
     expect(result).toContain(hash);
     expect(result).toContain("</editorial_context>");
+  });
+
+  it("renders the stored bundle version", () => {
+    const bundle = createTestEditorialBundle({ version: 7 });
+    const hash = hashEditorialBundle(bundle);
+    const result = renderEditorialScope(
+      { ...bundle, hash },
+      { scope: "fragment", chapterId: TEST_CHAPTER_1_ID },
+    );
+
+    expect(result).toContain(`<editorial_context version="7" hash="${hash}">`);
   });
 
   it("includes authority tag", () => {
@@ -304,9 +316,9 @@ describe("XML escaping", () => {
         },
       },
     });
-    const { bundle: hashedBundle, hash } = (() => {
+    const { bundle: hashedBundle } = (() => {
       const h = hashEditorialBundle(bundle);
-      return { bundle: { ...bundle, hash: h }, hash: h };
+      return { bundle: { ...bundle, hash: h } };
     })();
     const result = renderEditorialScope(hashedBundle, {
       scope: "fragment",

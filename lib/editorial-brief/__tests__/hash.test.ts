@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hashEditorialBundle } from "../hash";
+import { canonicalStringify, hashEditorialBundle } from "../hash";
 import {
   createTestEditorialBundle,
   createTestChapterContract,
@@ -36,6 +36,27 @@ describe("hashEditorialBundle", () => {
     };
 
     expect(hashEditorialBundle(bundle)).toBe(hashEditorialBundle(reordered));
+  });
+
+  it("is stable regardless of nested object key ordering", () => {
+    expect(
+      canonicalStringify({ outer: { second: 2, first: 1 } }),
+    ).toBe(canonicalStringify({ outer: { first: 1, second: 2 } }));
+  });
+
+  it("changes when a nested editorial array is reordered", () => {
+    const bundle = createTestEditorialBundle();
+    const reordered = createTestEditorialBundle({
+      content: {
+        thesis: {
+          mechanism: [...bundle.content.thesis.mechanism].reverse(),
+        },
+      },
+    });
+
+    expect(hashEditorialBundle(bundle)).not.toBe(
+      hashEditorialBundle(reordered),
+    );
   });
 
   it("is stable regardless of contract order", () => {

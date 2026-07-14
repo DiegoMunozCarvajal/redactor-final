@@ -11,17 +11,20 @@ import {
 } from "@/lib/db/schema/editorial-briefs";
 import { chapters } from "@/lib/db/schema/chapters";
 import { sources } from "@/lib/db/schema/sources";
-import { canonicalStringify, hashEditorialBundle } from "@/lib/editorial-brief/hash";
+import { hashEditorialBundle } from "@/lib/editorial-brief/hash";
+import {
+  assertExpectedEditorialBriefHash,
+  hashEditorialContract,
+  verifyStoredEditorialBundle,
+} from "@/lib/editorial-brief/integrity";
 import {
   editorialBriefBundleInputSchema,
-  chapterEditorialContractSchema,
 } from "@/lib/editorial-brief/schema";
 import type {
   EditorialBriefContent,
   ChapterEditorialContract,
   EditorialBundle,
 } from "@/lib/editorial-brief/schema";
-import { createHash } from "crypto";
 
 // ---------------------------------------------------------------------------
 // Db context type — allows callers to inject a transaction or test db instance
@@ -33,12 +36,6 @@ export type DB = PostgresJsDatabase<PgSchema> | PgTransaction<PgQueryResultHKT, 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function hashContract(contract: ChapterEditorialContract): string {
-  return createHash("sha256")
-    .update(canonicalStringify(contract), "utf-8")
-    .digest("hex");
-}
 
 /** Validate that all chapterIds belong to the given project. */
 async function validateChaptersBelongToProject(
@@ -95,34 +92,20 @@ async function enrichToBundle(
     .from(editorialBriefSources)
     .where(eq(editorialBriefSources.editorialBriefId, brief.id));
 
-  // Verify per-contract integrity: hash check (bit-level) + schema parse
-  // (structural). This catches both DB corruption and schema evolution gaps.
-  const parsedContracts: ChapterEditorialContract[] = [];
-  for (const c of contracts) {
-    const contract = c.content as unknown as ChapterEditorialContract;
-    const computed = hashContract(contract);
-    if (computed !== c.contentHash) {
-      throw new Error(
-        `Contract content hash mismatch for chapter ${c.chapterId} in brief ${brief.id} (expected ${c.contentHash}, computed ${computed})`,
-      );
-    }
-    const parsed = chapterEditorialContractSchema.safeParse(contract);
-    if (!parsed.success) {
-      throw new Error(
-        `Stored contract for chapter ${c.chapterId} in brief ${brief.id} failed schema validation: ${parsed.error.message}`,
-      );
-    }
-    parsedContracts.push(parsed.data);
-  }
-
-  return {
-    id: brief.id,
-    version: brief.version,
-    hash: brief.contentHash,
-    content: brief.content as unknown as EditorialBriefContent,
-    contracts: parsedContracts,
-    evidenceSourceIds: briefSources.map((s) => s.sourceId),
-  };
+  return verifyStoredEditorialBundle({
+    brief: {
+      id: brief.id,
+      version: brief.version,
+      content: brief.content,
+      contentHash: brief.contentHash,
+    },
+    contracts: contracts.map((contract) => ({
+      chapterId: contract.chapterId,
+      content: contract.content,
+      contentHash: contract.contentHash,
+    })),
+    evidenceSourceIds: briefSources.map((source) => source.sourceId),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +219,7 @@ export async function createEditorialBriefDraft(
             editorialBriefId: brief.id,
             chapterId: contract.chapterId,
             content: contract as unknown as Record<string, unknown>,
-            contentHash: hashContract(contract),
+            contentHash: hashEditorialContract(contract),
           })),
         );
       }
@@ -288,7 +271,7 @@ export async function createEditorialBriefDraft(
               editorialBriefId: brief.id,
               chapterId: contract.chapterId,
               content: contract as unknown as Record<string, unknown>,
-              contentHash: hashContract(contract),
+              contentHash: hashEditorialContract(contract),
             })),
           );
         }
@@ -388,7 +371,7 @@ export async function replaceEditorialBriefDraft(
           editorialBriefId: input.briefId,
           chapterId: contract.chapterId,
           content: contract as unknown as Record<string, unknown>,
-          contentHash: hashContract(contract),
+          contentHash: hashEditorialContract(contract),
         })),
       );
     }
@@ -488,8 +471,6 @@ export async function approveEditorialBrief(
       throw new Error("Cannot approve a non-draft editorial brief");
     }
 
-    const draft = brief;
-
     // Archive any currently approved version
     await tx
       .update(editorialBriefs)
@@ -541,11 +522,8 @@ export async function getEditorialBriefBundle(
 
   if (!brief) return null;
 
-  if (input.expectedHash && brief.contentHash !== input.expectedHash) {
-    throw new Error("Editorial brief hash mismatch");
-  }
-
-  return enrichToBundle(brief, dbCtx);
+  const bundle = await enrichToBundle(brief, dbCtx);
+  return assertExpectedEditorialBriefHash(bundle, input.expectedHash);
 }
 
 /**
