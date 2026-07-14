@@ -3,44 +3,38 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/page-header";
 import { LoadingSkeleton } from "@/components/patterns/loading-skeleton";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { PromptRevisionEditor } from "@/components/prompts/prompt-revision-editor";
+import type { RevisionSummary } from "@/components/prompts/prompt-revision-editor";
+import { KIND_LABELS } from "@/components/prompts/prompt-definition-list";
+import type { PromptKind } from "@/lib/db/schema/prompt-registry";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-interface GenerationPrompt {
+interface DefinitionDetail {
   id: string;
   name: string;
+  kind: PromptKind;
   description: string | null;
-  content: string;
-  isDefault: boolean;
-  createdAt: string;
-  updatedAt: string;
+  archivedAt: string | null;
+  revisions: RevisionSummary[];
 }
 
-export default function GenerationEditPage() {
+export default function GenerationDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [prompt, setPrompt] = useState<GenerationPrompt | null>(null);
+  const [definition, setDefinition] = useState<DefinitionDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-  const [content, setContent] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
 
-  const fetchPrompt = useCallback(async (signal?: AbortSignal) => {
+  const fetchDefinition = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/generation-prompts/${params.id}`, { signal });
-      if (!res.ok) { router.push("/generation"); return; }
-      const data = await res.json();
-      setPrompt(data);
-      setName(data.name);
-      setContent(data.content);
-      setIsDefault(data.isDefault);
+      const res = await fetch(`/api/prompt-definitions/${params.id}`, { signal });
+      if (!res.ok) {
+        router.push("/generation");
+        return;
+      }
+      setDefinition(await res.json());
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       toast.error("Could not connect to server");
@@ -50,95 +44,44 @@ export default function GenerationEditPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchPrompt(controller.signal);
+    fetchDefinition(controller.signal);
     return () => controller.abort();
-  }, [fetchPrompt]);
-
-  async function save() {
-    if (!name.trim() || !content.trim()) return;
-    setSaving(true);
-    const res = await fetch(`/api/generation-prompts/${params.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), content, is_default: isDefault }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setPrompt(updated);
-      toast.success("Saved");
-    } else {
-      const err = await res.json().catch(() => ({}));
-      toast.error(err.error ?? "Error saving");
-    }
-    setSaving(false);
-  }
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  async function confirmDelete() {
-    setDeleteOpen(false);
-    const res = await fetch(`/api/generation-prompts/${params.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("Failed to delete");
-      return;
-    }
-    toast.success("Deleted");
-    router.push("/generation");
-  }
+  }, [fetchDefinition]);
 
   if (loading) return <LoadingSkeleton />;
-  if (!prompt) return null;
+  if (!definition) return null;
 
-  const wordCount = content.split(/\s+/).filter(Boolean).length;
+  const kindLabel = KIND_LABELS[definition.kind] ?? definition.kind;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={name}
-        subtitle={`${wordCount} words · ${content.length} chars · updated ${prompt.updatedAt.slice(0, 10)}`}
+        title={definition.name}
+        subtitle={
+          definition.description
+            ? `${kindLabel} · ${definition.description}`
+            : kindLabel
+        }
       >
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => router.push("/generation")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />Back
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>Delete</Button>
-          <Button onClick={save} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save
+            <ArrowLeft className="h-4 w-4 mr-2" />Volver
           </Button>
         </div>
       </PageHeader>
 
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="name">Name</Label>
-          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+      {definition.archivedAt && (
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
+          Esta definición está archivada desde {definition.archivedAt.slice(0, 10)}.
         </div>
+      )}
 
-        <div>
-          <Label htmlFor="content">System Prompt</Label>
-          <Textarea
-            id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="font-mono text-xs min-h-[500px]"
-          />
-        </div>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isDefault}
-            onChange={(e) => setIsDefault(e.target.checked)}
-          />
-          Default — use this prompt for all fragment generation
-        </label>
-      </div>
-      <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        description="Delete this generation prompt? This cannot be undone."
-        onConfirm={confirmDelete}
+      <PromptRevisionEditor
+        definitionId={definition.id}
+        definitionName={definition.name}
+        kind={definition.kind}
+        revisions={definition.revisions}
+        onRevisionCreated={() => fetchDefinition()}
       />
     </div>
   );
