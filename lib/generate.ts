@@ -88,7 +88,7 @@ export interface GeneratePromptParams {
   projectTopic?: string | null;
   /** Project ID. Used to resolve project-level system prompt override. */
   projectId?: string;
-  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  /** Editorial brief context rendered as XML. Injected into system prompt with Anthropic cache split. */
   editorialContext?: string | null;
   /** Zod schema for structured output. When set, the LLM returns parsed JSON. */
   schema?: ZodType;
@@ -714,7 +714,7 @@ export interface GenerateCritiqueParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
-  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  /** Editorial brief context rendered as XML. Injected into system prompt with Anthropic cache split. */
   editorialContext?: string | null;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
   signal?: AbortSignal;
@@ -843,7 +843,7 @@ export interface GenerateCorrectionParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
-  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  /** Editorial brief context rendered as XML. Injected into system prompt with Anthropic cache split. */
   editorialContext?: string | null;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
   signal?: AbortSignal;
@@ -862,6 +862,7 @@ export async function generateChapterCorrection(
     effort,
     maxTokens,
     projectTopic,
+    editorialContext,
     signal,
   } = params;
 
@@ -912,14 +913,24 @@ export async function generateChapterCorrection(
     effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
   }
 
+  // Anthropic ephemeral cache — split static (cached) from dynamic editorial context
+  let systemPromptForCall: string;
+  let cachedForCall: string | undefined;
+  if (useCache) {
+    cachedForCall = effectiveSystemPrompt;
+    systemPromptForCall = editorialContext ?? "";
+  } else {
+    systemPromptForCall = editorialContext
+      ? effectiveSystemPrompt + "\n\n" + editorialContext
+      : effectiveSystemPrompt;
+  }
+
   const result = await generateCompletion({
     model,
-    systemPrompt: useCache ? "" : effectiveSystemPrompt,
+    systemPrompt: systemPromptForCall,
     userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
-    ...(useCache
-      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
-      : {}),
+    ...(cachedForCall ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true } : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
     ...(signal !== undefined ? { signal } : {}),
