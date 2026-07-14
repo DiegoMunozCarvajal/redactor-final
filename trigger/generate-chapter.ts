@@ -155,11 +155,22 @@ export const generateChapter = task({
 
     let editorialBundle: Awaited<ReturnType<typeof loadEditorialBundle>> = null;
     if (genSnapshot) {
-      editorialBundle = await loadEditorialBundle({
-        projectId,
-        briefId: genSnapshot.editorialBriefId,
-        expectedHash: genSnapshot.editorialBriefHash,
-      });
+      try {
+        editorialBundle = await loadEditorialBundle({
+          projectId,
+          briefId: genSnapshot.editorialBriefId,
+          expectedHash: genSnapshot.editorialBriefHash,
+        });
+      } catch (err) {
+        await db
+          .update(chapterGenerations)
+          .set({
+            status: "failed",
+            error: `Editorial brief hash mismatch: ${sanitizeError(err)}`,
+          })
+          .where(eq(chapterGenerations.id, generationId));
+        throw err;
+      }
     }
 
     // Load project prompts for this chapter

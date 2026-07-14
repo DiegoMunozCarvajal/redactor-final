@@ -123,6 +123,7 @@ export async function POST(
           promptTitle: prompt.title,
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
+          ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
         },
       })
       .returning();
@@ -162,6 +163,8 @@ export async function POST(
       prompt,
       placeholders,
       projectTopic: project.topic,
+      projectId,
+      editorialContext,
       ...(model ? { model } : {}),
       ...(effort !== undefined ? { effort } : {}),
     });

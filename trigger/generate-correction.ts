@@ -64,11 +64,22 @@ export const generateCorrection = task({
 
     let corrEditorialBundle: Awaited<ReturnType<typeof loadEditorialBundle>> = null;
     if (corrGenSnapshot) {
-      corrEditorialBundle = await loadEditorialBundle({
-        projectId,
-        briefId: corrGenSnapshot.editorialBriefId,
-        expectedHash: corrGenSnapshot.editorialBriefHash,
-      });
+      try {
+        corrEditorialBundle = await loadEditorialBundle({
+          projectId,
+          briefId: corrGenSnapshot.editorialBriefId,
+          expectedHash: corrGenSnapshot.editorialBriefHash,
+        });
+      } catch (err) {
+        await db
+          .update(chapterGenerations)
+          .set({
+            status: "failed",
+            error: `Editorial brief hash mismatch: ${sanitizeError(err)}`,
+          })
+          .where(eq(chapterGenerations.id, generationId));
+        throw err;
+      }
     }
 
     // Only "completed" is truly terminal. "failed" is NOT terminal —

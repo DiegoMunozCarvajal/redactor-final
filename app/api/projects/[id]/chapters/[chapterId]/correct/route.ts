@@ -11,7 +11,7 @@ import { generateCorrection } from "@/trigger/generate-correction";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
-import { loadEditorialBundle, snapshotFromGenerationMetadata, metadataFromSnapshot } from "@/lib/editorial-brief/context";
+import { snapshotFromGenerationMetadata, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,

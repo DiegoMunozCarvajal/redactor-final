@@ -138,13 +138,12 @@ export async function POST(
   // Resolve the snapshot for this assembly:
   // - All versioned fragments share the same hash → use that snapshot
   // - All legacy fragments (no snapshots) → capture current approved brief (or null)
-  const currentBundle = await loadEditorialBundle({ projectId });
   const assemblySnapshot =
     fragmentSnapshots.length > 0
       ? fragmentSnapshots[0]
-      : currentBundle
-        ? snapshotFromBundle(currentBundle)
-        : null;
+      : await loadEditorialBundle({ projectId }).then((b) =>
+          b ? snapshotFromBundle(b) : null,
+        );
 
   // Pre-flight: verify an assembly prompt will be available at task execution.
   // Priority: explicit assemblyPromptId > project default > chapter embedded.
