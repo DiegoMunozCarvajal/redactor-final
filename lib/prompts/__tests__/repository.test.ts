@@ -40,6 +40,7 @@ function revRow(overrides: Record<string, unknown> = {}) {
     configuration: {},
     kind: 'assembly',
     name: 'Test Assembly',
+    archivedAt: null,
     ...overrides,
   };
 }
@@ -125,6 +126,30 @@ describe('resolvePromptRevision', () => {
       resolvePromptRevision({ kind: 'assembly' as PromptKind }),
     ).rejects.toThrow('No prompt revision found for kind assembly');
   });
+
+  it('rejects an archived definition during explicit resolution', async () => {
+    const chain = makeChain([revRow({ archivedAt: new Date('2026-07-14') })]);
+    mockDb.select.mockReturnValue(chain);
+
+    await expect(
+      resolvePromptRevision({ kind: 'assembly' as PromptKind, runRevisionId: 'rev-1' }),
+    ).rejects.toThrow('belongs to an archived definition');
+  });
+
+  it('falls back from a missing project binding to the global default', async () => {
+    // First call: project binding returns nothing
+    mockDb.select
+      .mockReturnValueOnce(makeChain([]))
+      // Second call: global default returns a revision
+      .mockReturnValueOnce(makeChain([revRow({ id: 'default-rev' })]));
+
+    const result = await resolvePromptRevision({
+      kind: 'assembly' as PromptKind,
+      projectId: 'project-without-binding',
+    });
+
+    expect(result.id).toBe('default-rev');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -133,7 +158,7 @@ describe('resolvePromptRevision', () => {
 
 describe('createPromptRevision', () => {
   it('allocates next revision number under transaction', async () => {
-    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test' };
+    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test', archivedAt: null };
     const defChain = makeChain([defResult]);
     defChain.for = vi.fn(() => Promise.resolve([defResult]));
 
@@ -224,7 +249,7 @@ describe('createPromptRevision', () => {
   });
 
   it('validates required markers and throws when they are missing', async () => {
-    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test' };
+    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test', archivedAt: null };
     const defChain = makeChain([defResult]);
     defChain.for = vi.fn(() => Promise.resolve([defResult]));
 
@@ -260,7 +285,7 @@ describe('createPromptRevision', () => {
   });
 
   it('rejects reserved legacy configuration keys', async () => {
-    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test' };
+    const defResult = { id: 'def-1', kind: 'assembly', name: 'Test', archivedAt: null };
     const defChain = makeChain([defResult]);
     defChain.for = vi.fn(() => Promise.resolve([defResult]));
 
@@ -285,6 +310,39 @@ describe('createPromptRevision', () => {
         'user-1',
       ),
     ).rejects.toThrow('Reserved configuration key');
+  });
+
+  it('rejects creating a revision on an archived definition', async () => {
+    const def = {
+      id: 'def-1',
+      kind: 'assembly',
+      name: 'Archived',
+      archivedAt: new Date('2026-07-14'),
+    };
+    const defChain = makeChain([def]);
+    defChain.for = vi.fn(() => Promise.resolve([def]));
+
+    const tx = {
+      select: vi.fn(() => defChain),
+      insert: vi.fn(),
+    };
+
+    mockDb.transaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(tx),
+    );
+
+    await expect(
+      createPromptRevision(
+        'def-1',
+        {
+          versionLabel: '2.0',
+          systemTemplate: '{{EDITORIAL_CONTEXT}}',
+          userTemplate: '{{ASSEMBLY_PLAN}} {{SECCIONES_GENERADAS}}',
+          configuration: {},
+        },
+        'user-1',
+      ),
+    ).rejects.toThrow('Prompt definition def-1 is archived');
   });
 });
 

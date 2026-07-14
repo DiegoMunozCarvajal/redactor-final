@@ -53,6 +53,7 @@ type SelectRow = {
   configuration: Record<string, unknown>;
   kind: string;
   name: string;
+  archivedAt: Date | null;
 };
 
 function rowToResolved(row: SelectRow): ResolvedPromptRevision {
@@ -83,6 +84,7 @@ const selectFields = {
   configuration: promptRevisions.configuration,
   kind: promptDefinitions.kind,
   name: promptDefinitions.name,
+  archivedAt: promptDefinitions.archivedAt,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -191,6 +193,13 @@ export async function resolvePromptRevision(
     );
   }
 
+  // Reject archived definitions
+  if (row.archivedAt !== null) {
+    throw new Error(
+      `Prompt revision ${row.id} belongs to an archived definition`,
+    );
+  }
+
   return rowToResolved(row);
 }
 
@@ -224,6 +233,7 @@ export async function createPromptRevision(
         id: promptDefinitions.id,
         kind: promptDefinitions.kind,
         name: promptDefinitions.name,
+        archivedAt: promptDefinitions.archivedAt,
       })
       .from(promptDefinitions)
       .where(eq(promptDefinitions.id, definitionId))
@@ -231,6 +241,10 @@ export async function createPromptRevision(
 
     if (!def) {
       throw new Error(`Prompt definition ${definitionId} not found`);
+    }
+
+    if (def.archivedAt !== null) {
+      throw new Error(`Prompt definition ${definitionId} is archived`);
     }
 
     // 2. Compute next revision number
