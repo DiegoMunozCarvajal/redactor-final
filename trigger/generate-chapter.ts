@@ -34,8 +34,17 @@ export const generateChapter = task({
       editorialBriefHash?: string;
       model?: string;
       effort?: "off" | "max" | "xhigh";
+      plannerRevisionId?: string;
+      assemblyRevisionId?: string;
     }, { ctx }: { ctx: Context }) => {
-    const { generationId, projectId, model, effort } = payload;
+    const {
+      generationId,
+      projectId,
+      model,
+      effort,
+      plannerRevisionId,
+      assemblyRevisionId,
+    } = payload;
 
     // Load generation
     const [gen] = await db
@@ -306,6 +315,7 @@ export const generateChapter = task({
           mustCover,
         },
         effort,
+        ...(plannerRevisionId ? { revisionId: plannerRevisionId } : {}),
       });
 
       // Store the assembly plan and planning metadata
@@ -321,7 +331,7 @@ export const generateChapter = task({
             plannerExecutionId: plannerResult.executionId,
             pipeline: "planned-editorial-v1",
           },
-          plannerPromptRevisionId: null, // resolved at runtime by executeVersionedPrompt
+          ...(plannerRevisionId ? { plannerPromptRevisionId: plannerRevisionId } : {}),
         })
         .where(eq(chapterGenerations.id, generationId));
 
@@ -343,6 +353,7 @@ export const generateChapter = task({
           content: f.content,
         })),
         effort,
+        ...(assemblyRevisionId ? { revisionId: assemblyRevisionId } : {}),
       });
 
       // Store assembled content
@@ -359,6 +370,7 @@ export const generateChapter = task({
             assemblyExecutionId: assemblerResult.executionId,
             pipeline: "planned-editorial-v1",
           },
+          ...(assemblyRevisionId ? { assemblyPromptRevisionId: assemblyRevisionId } : {}),
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, generationId));

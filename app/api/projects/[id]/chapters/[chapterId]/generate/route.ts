@@ -48,6 +48,8 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
   const effortRaw = body.effort as string | undefined;
+  const plannerRevisionId = body.plannerRevisionId as string | undefined;
+  const assemblyRevisionId = body.assemblyRevisionId as string | undefined;
 
   // Capture editorial bundle snapshot before the advisory lock.
   const bundle = await loadEditorialBundle({ projectId });
@@ -141,6 +143,8 @@ export async function POST(
           : {}),
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
+        ...(plannerRevisionId ? { plannerRevisionId } : {}),
+        ...(assemblyRevisionId ? { assemblyRevisionId } : {}),
       },
       { idempotencyKey: gen.id },
     );

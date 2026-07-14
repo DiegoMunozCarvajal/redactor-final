@@ -52,6 +52,8 @@ export async function POST(
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | "xhigh" | undefined;
   const assemblyPromptId = body.assemblyPromptId as string | undefined;
+  const plannerRevisionId = body.plannerRevisionId as string | undefined;
+  const assemblyRevisionId = body.assemblyRevisionId as string | undefined;
   const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
     ? "sequential"
     : body.assemblyAlgorithm === "halves"
@@ -311,6 +313,8 @@ export async function POST(
         projectId,
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
+        ...(plannerRevisionId ? { plannerRevisionId } : {}),
+        ...(assemblyRevisionId ? { assemblyRevisionId } : {}),
         ...(assemblySnapshot
           ? {
               editorialBriefId: assemblySnapshot.editorialBriefId,
