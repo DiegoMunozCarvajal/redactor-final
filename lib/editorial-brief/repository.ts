@@ -12,7 +12,10 @@ import {
 import { chapters } from "@/lib/db/schema/chapters";
 import { sources } from "@/lib/db/schema/sources";
 import { canonicalStringify, hashEditorialBundle } from "@/lib/editorial-brief/hash";
-import { editorialBriefBundleInputSchema } from "@/lib/editorial-brief/schema";
+import {
+  editorialBriefBundleInputSchema,
+  chapterEditorialContractSchema,
+} from "@/lib/editorial-brief/schema";
 import type {
   EditorialBriefContent,
   ChapterEditorialContract,
@@ -74,10 +77,9 @@ async function validateSourcesBelongToProject(
 /**
  * Enrich a raw brief row into an EditorialBundle.
  *
- * NOTE: Zod validation of stored JSON content is deferred (no `.parse()` on read).
- * Content was already validated by `editorialBriefBundleInputSchema` before
- * insertion, so re-validating on every read would add unnecessary overhead.
- * The `as unknown as` casts are safe given the validated-write invariant.
+ * Validates stored JSONB contracts and content against the current Zod schemas.
+ * Hash verification catches bit-level corruption; Zod parsing catches schema
+ * drift (e.g. a new required field added after the brief was stored).
  */
 async function enrichToBundle(
   brief: typeof editorialBriefs.$inferSelect,
@@ -93,16 +95,24 @@ async function enrichToBundle(
     .from(editorialBriefSources)
     .where(eq(editorialBriefSources.editorialBriefId, brief.id));
 
-  // Verify per-contract hashes against stored content. This detects data
-  // corruption or stale rows from prior buggy writes.
+  // Verify per-contract integrity: hash check (bit-level) + schema parse
+  // (structural). This catches both DB corruption and schema evolution gaps.
+  const parsedContracts: ChapterEditorialContract[] = [];
   for (const c of contracts) {
     const contract = c.content as unknown as ChapterEditorialContract;
     const computed = hashContract(contract);
     if (computed !== c.contentHash) {
       throw new Error(
-        `Contract content hash mismatch for chapter ${c.chapterId} in brief ${brief.id}`,
+        `Contract content hash mismatch for chapter ${c.chapterId} in brief ${brief.id} (expected ${c.contentHash}, computed ${computed})`,
       );
     }
+    const parsed = chapterEditorialContractSchema.safeParse(contract);
+    if (!parsed.success) {
+      throw new Error(
+        `Stored contract for chapter ${c.chapterId} in brief ${brief.id} failed schema validation: ${parsed.error.message}`,
+      );
+    }
+    parsedContracts.push(parsed.data);
   }
 
   return {
@@ -110,9 +120,7 @@ async function enrichToBundle(
     version: brief.version,
     hash: brief.contentHash,
     content: brief.content as unknown as EditorialBriefContent,
-    contracts: contracts.map(
-      (c) => c.content as unknown as ChapterEditorialContract,
-    ),
+    contracts: parsedContracts,
     evidenceSourceIds: briefSources.map((s) => s.sourceId),
   };
 }
@@ -124,6 +132,10 @@ async function enrichToBundle(
 /**
  * Create a new editorial brief draft for a project.
  * Allocates the next version number and validates chapter/source ownership.
+ *
+ * Version allocation is serialized via row-level FOR UPDATE lock on existing
+ * brief rows. For the first-ever brief (no rows to lock), a unique-constraint
+ * retry guard handles the narrow concurrent-creation window.
  */
 export async function createEditorialBriefDraft(
   input: {
@@ -146,15 +158,10 @@ export async function createEditorialBriefDraft(
     throw new Error(`Invalid bundle input: ${parsed.error.message}`);
   }
 
-  // Validate cross-project references
-  const chapterIds = input.contracts.map((c) => c.chapterId);
-  await validateChaptersBelongToProject(chapterIds, input.projectId, dbCtx);
-  await validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, dbCtx);
-
-  // Compute hash
+  // Compute hash once — unchanged across retries
   const bundleForHash: EditorialBundle = {
-    id: "", // placeholder — not included in hash
-    version: 0, // placeholder — not included in hash
+    id: "",
+    version: 0,
     hash: "",
     content: input.content,
     contracts: input.contracts,
@@ -162,55 +169,126 @@ export async function createEditorialBriefDraft(
   };
   const contentHash = hashEditorialBundle(bundleForHash);
 
-  // Allocate version and insert inside a transaction
+  // Allocate version and insert inside a transaction.  Ownership validation
+  // runs inside the same tx to prevent TOCTOU (chapter/source reassignment
+  // between validation and insert).
   return dbCtx.transaction(async (tx) => {
-    // Lock the project's briefs to serialize version allocation.
-    // When creating the first draft, no rows match the WHERE clause so no
-    // rows are locked. This is fine because the UNIQUE (project_id, version)
+    // Validate cross-project references inside the transaction
+    const chapterIds = input.contracts.map((c) => c.chapterId);
+    await Promise.all([
+      validateChaptersBelongToProject(chapterIds, input.projectId, tx),
+      validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, tx),
+    ]);
+
+    // Lock existing brief rows for this project to serialize version
+    // allocation. When creating the first draft, no rows match the WHERE
+    // clause so no rows are locked. The UNIQUE (project_id, version)
     // constraint acts as the fallback guard against version conflicts.
-    const existing = await tx
-      .select({ maxVersion: max(editorialBriefs.version) })
+    // We lock with a non-aggregate SELECT because FOR UPDATE is not
+    // allowed with aggregate functions like max().
+    await tx
+      .select({ id: editorialBriefs.id })
       .from(editorialBriefs)
       .where(eq(editorialBriefs.projectId, input.projectId))
       .for("update");
 
+    const existing = await tx
+      .select({ maxVersion: max(editorialBriefs.version) })
+      .from(editorialBriefs)
+      .where(eq(editorialBriefs.projectId, input.projectId));
+
     const latestVersion = existing[0]?.maxVersion ?? 0;
     const nextVersion = latestVersion + 1;
 
-    const [brief] = await tx
-      .insert(editorialBriefs)
-      .values({
-        projectId: input.projectId,
-        version: nextVersion,
-        status: "draft",
-        content: input.content as unknown as Record<string, unknown>,
-        contentHash,
-      })
-      .returning();
+    try {
+      const [brief] = await tx
+        .insert(editorialBriefs)
+        .values({
+          projectId: input.projectId,
+          version: nextVersion,
+          status: "draft",
+          content: input.content as unknown as Record<string, unknown>,
+          contentHash,
+        })
+        .returning();
 
-    // Insert contracts
-    if (input.contracts.length > 0) {
-      await tx.insert(chapterEditorialContracts).values(
-        input.contracts.map((contract) => ({
-          editorialBriefId: brief.id,
-          chapterId: contract.chapterId,
-          content: contract as unknown as Record<string, unknown>,
-          contentHash: hashContract(contract),
-        })),
-      );
+      // Insert contracts
+      if (input.contracts.length > 0) {
+        await tx.insert(chapterEditorialContracts).values(
+          input.contracts.map((contract) => ({
+            editorialBriefId: brief.id,
+            chapterId: contract.chapterId,
+            content: contract as unknown as Record<string, unknown>,
+            contentHash: hashContract(contract),
+          })),
+        );
+      }
+
+      // Insert source bindings
+      if (input.evidenceSourceIds.length > 0) {
+        await tx.insert(editorialBriefSources).values(
+          input.evidenceSourceIds.map((sourceId) => ({
+            editorialBriefId: brief.id,
+            sourceId,
+          })),
+        );
+      }
+
+      return enrichToBundle(brief, tx);
+    } catch (err: unknown) {
+      // Guard against the narrow window where two concurrent calls create the
+      // first brief for a project.  FOR UPDATE locks nothing when no rows
+      // exist, so the UNIQUE (project_id, version) constraint is the only
+      // serialization mechanism.  On collision, recompute the version once
+      // and retry — the second attempt sees the concurrently-inserted row
+      // via the FOR UPDATE lock.
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        (err as { code: string }).code === "23505"
+      ) {
+        const retryMax = await tx
+          .select({ maxVersion: max(editorialBriefs.version) })
+          .from(editorialBriefs)
+          .where(eq(editorialBriefs.projectId, input.projectId));
+
+        const retryVersion = (retryMax[0]?.maxVersion ?? 0) + 1;
+
+        const [brief] = await tx
+          .insert(editorialBriefs)
+          .values({
+            projectId: input.projectId,
+            version: retryVersion,
+            status: "draft",
+            content: input.content as unknown as Record<string, unknown>,
+            contentHash,
+          })
+          .returning();
+
+        if (input.contracts.length > 0) {
+          await tx.insert(chapterEditorialContracts).values(
+            input.contracts.map((contract) => ({
+              editorialBriefId: brief.id,
+              chapterId: contract.chapterId,
+              content: contract as unknown as Record<string, unknown>,
+              contentHash: hashContract(contract),
+            })),
+          );
+        }
+
+        if (input.evidenceSourceIds.length > 0) {
+          await tx.insert(editorialBriefSources).values(
+            input.evidenceSourceIds.map((sourceId) => ({
+              editorialBriefId: brief.id,
+              sourceId,
+            })),
+          );
+        }
+
+        return enrichToBundle(brief, tx);
+      }
+      throw err;
     }
-
-    // Insert source bindings
-    if (input.evidenceSourceIds.length > 0) {
-      await tx.insert(editorialBriefSources).values(
-        input.evidenceSourceIds.map((sourceId) => ({
-          editorialBriefId: brief.id,
-          sourceId,
-        })),
-      );
-    }
-
-    return enrichToBundle(brief, tx);
   });
 }
 
@@ -239,10 +317,6 @@ export async function replaceEditorialBriefDraft(
     throw new Error(`Invalid bundle input: ${parsed.error.message}`);
   }
 
-  const chapterIds = input.contracts.map((c) => c.chapterId);
-  await validateChaptersBelongToProject(chapterIds, input.projectId, dbCtx);
-  await validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, dbCtx);
-
   const bundleForHash: EditorialBundle = {
     id: "",
     version: 0,
@@ -254,6 +328,14 @@ export async function replaceEditorialBriefDraft(
   const contentHash = hashEditorialBundle(bundleForHash);
 
   return dbCtx.transaction(async (tx) => {
+    // Validate cross-project references inside the transaction to prevent
+    // TOCTOU (chapter/source reassignment between validation and delete+insert).
+    const chapterIds = input.contracts.map((c) => c.chapterId);
+    await Promise.all([
+      validateChaptersBelongToProject(chapterIds, input.projectId, tx),
+      validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, tx),
+    ]);
+
     // Load existing brief and verify it's a draft for this project
     const [existing] = await tx
       .select()

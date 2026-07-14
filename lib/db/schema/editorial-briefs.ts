@@ -2,13 +2,13 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
-  index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -38,7 +38,9 @@ export const editorialBriefs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("uq_editorial_briefs_project_version").on(table.projectId, table.version),
+    // Using unique() (table constraint) instead of uniqueIndex() to match the
+    // SQL migration's UNIQUE (project_id, version) declaration.
+    unique("uq_editorial_briefs_project_version").on(table.projectId, table.version),
     uniqueIndex("uq_editorial_briefs_project_draft")
       .on(table.projectId)
       .where(sql`status = 'draft'`),
@@ -62,17 +64,22 @@ export const chapterEditorialContracts = pgTable(
       .references(() => editorialBriefs.id, { onDelete: "cascade" }),
     chapterId: uuid("chapter_id")
       .notNull()
-      .references(() => chapters.id, { onDelete: "cascade" }),
+      // ON DELETE RESTRICT: prevents silently corrupting an approved brief
+      // when a referenced chapter is deleted.  The caller must explicitly
+      // remove the contract (via replaceEditorialBriefDraft) first.
+      .references(() => chapters.id, { onDelete: "restrict" }),
     content: jsonb("content").notNull(),
     contentHash: text("content_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("uq_chapter_editorial_contracts_brief_chapter").on(
+    unique("uq_chapter_editorial_contracts_brief_chapter").on(
       table.editorialBriefId,
       table.chapterId,
     ),
-    index("idx_chapter_editorial_contracts_brief").on(table.editorialBriefId),
+    // The unique constraint on (editorialBriefId, chapterId) already serves as
+    // an index for editorialBriefId lookups (leftmost prefix), so a separate
+    // single-column index is redundant.
     check(
       "chk_contracts_content_hash",
       sql`${table.contentHash} ~ '^[0-9a-f]{64}$'`,
@@ -95,11 +102,12 @@ export const editorialBriefSources = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("uq_editorial_brief_sources_brief_source").on(
+    unique("uq_editorial_brief_sources_brief_source").on(
       table.editorialBriefId,
       table.sourceId,
     ),
-    index("idx_editorial_brief_sources_brief").on(table.editorialBriefId),
+    // Same rationale as contracts: the composite unique constraint already
+    // covers editorialBriefId lookups via leftmost prefix.
   ],
 );
 

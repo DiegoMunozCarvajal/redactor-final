@@ -8,12 +8,22 @@ import type { EditorialBundle } from "./schema";
  * produces the same string regardless of property insertion order.
  */
 export function canonicalStringify(value: unknown): string {
+  // JSON.stringify(undefined) returns the JS primitive `undefined` (not a
+  // string), which would corrupt the hash payload if concatenated. Map
+  // undefined to null so JSONB round-trips and optional Zod fields never
+  // produce a broken hash.
+  if (value === undefined) return "null";
+
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
 
   if (Array.isArray(value)) {
-    const items = value.map(canonicalStringify);
+    // Sort by canonical string representation so semantically identical
+    // arrays produce the same hash regardless of element order.  This is
+    // essential for string arrays inside EditorialBriefContent (mechanism,
+    // tone, avoid, pillars, etc.) where LLM output ordering is unstable.
+    const items = value.map(canonicalStringify).sort();
     return `[${items.join(",")}]`;
   }
 
@@ -40,7 +50,7 @@ function buildCanonicalPayload(bundle: EditorialBundle): {
   return {
     content: bundle.content,
     contracts: [...bundle.contracts].sort((a, b) =>
-      a.chapterId.localeCompare(b.chapterId),
+      a.chapterId.localeCompare(b.chapterId, "en"),
     ),
     evidenceSourceIds: [...bundle.evidenceSourceIds].sort(),
   };

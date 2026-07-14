@@ -212,9 +212,11 @@ export const editorialBriefBundleInputSchema = z
           message: `Duplicate chapter id: ${id}`,
           path: ["contracts"],
         });
-        return;
+        // Continue collecting all duplicates — don't return early so the
+        // caller sees every duplicate in a single validation round-trip.
+      } else {
+        seen.add(id);
       }
-      seen.add(id);
     }
   });
 
