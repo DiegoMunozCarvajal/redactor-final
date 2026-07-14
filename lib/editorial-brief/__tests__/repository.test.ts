@@ -216,25 +216,28 @@ describeDb("editorial brief repository", () => {
       const contract1 = createTestChapterContract(TEST_CHAPTER_1_ID);
       const contract2 = createTestChapterContract(TEST_CHAPTER_2_ID);
 
-      // Create brief with one contract
+      // Create brief with both contracts — project has 2 chapters, coverage must match
       const brief = await createEditorialBriefDraft(
         {
           projectId: project.id,
           content: createTestBriefContent(),
-          contracts: [contract1],
+          contracts: [contract1, contract2],
           evidenceSourceIds: [],
         },
         tx,
       );
       const originalHash = brief.hash;
 
-      // Replace with different contracts
+      // Replace with modified contract2 — same chapters, different content → hash changes
+      const contract2Modified = createTestChapterContract(TEST_CHAPTER_2_ID, {
+        mustCover: ["Updated coverage item"],
+      });
       const replaced = await replaceEditorialBriefDraft(
         {
           briefId: brief.id,
           projectId: project.id,
           content: createTestBriefContent(),
-          contracts: [contract1, contract2],
+          contracts: [contract1, contract2Modified],
           evidenceSourceIds: [],
         },
         tx,

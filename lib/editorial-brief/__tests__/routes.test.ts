@@ -330,11 +330,13 @@ describeDb("editorial brief API routes", () => {
   describe("PATCH /api/projects/[id]/editorial-briefs/[briefId]", () => {
     let projectId: string;
     let ch1Id: string;
+    let ch2Id: string;
 
     beforeAll(async () => {
       const s = await setupProject();
       projectId = s.projectId;
       ch1Id = s.ch1Id;
+      ch2Id = s.ch2Id;
     });
 
     afterAll(async () => {
@@ -346,7 +348,7 @@ describeDb("editorial brief API routes", () => {
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
       } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>);
       const { PATCH } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/route");
-      const req = createTestRequest({ method: "PATCH", body: { content: createTestBriefContent(), contracts: [createTestChapterContract(ch1Id)], evidenceSourceIds: [] } });
+      const req = createTestRequest({ method: "PATCH", body: { content: createTestBriefContent(), contracts: [createTestChapterContract(ch1Id), createTestChapterContract(ch2Id)], evidenceSourceIds: [] } });
       const res = await PATCH(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
       expect(res.status).toBe(401);
     });
@@ -360,7 +362,7 @@ describeDb("editorial brief API routes", () => {
 
     it("returns 404 for non-existent brief", async () => {
       const { PATCH } = await import("@/app/api/projects/[id]/editorial-briefs/[briefId]/route");
-      const req = createTestRequest({ method: "PATCH", body: { content: createTestBriefContent(), contracts: [createTestChapterContract(ch1Id)], evidenceSourceIds: [] } });
+      const req = createTestRequest({ method: "PATCH", body: { content: createTestBriefContent(), contracts: [createTestChapterContract(ch1Id), createTestChapterContract(ch2Id)], evidenceSourceIds: [] } });
       const res = await PATCH(req, { params: Promise.resolve({ id: projectId, briefId: uid() }) });
       expect(res.status).toBe(404);
     });

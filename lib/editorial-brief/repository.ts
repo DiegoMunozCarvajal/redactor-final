@@ -310,22 +310,8 @@ export async function replaceEditorialBriefDraft(
     // current chapter IDs for coverage validation on save.
     const currentChapterIds = await lockProjectAndLoadChapterIds(input.projectId, tx);
 
-    // Validate cross-project references inside the transaction to prevent
-    // TOCTOU (chapter/source reassignment between validation and delete+insert).
-    const chapterIds = normalized.contracts.map((c) => c.chapterId);
-    await Promise.all([
-      validateChaptersBelongToProject(chapterIds, input.projectId, tx),
-      validateSourcesBelongToProject(
-        normalized.evidenceSourceIds,
-        input.projectId,
-        tx,
-      ),
-    ]);
-
-    // Validate exact chapter coverage on save — prevents incomplete drafts
-    assertExactChapterCoverage(chapterIds, currentChapterIds);
-
-    // Load existing brief and verify it's a draft for this project
+    // Load existing brief BEFORE coverage validation — non-existent brief
+    // should surface as "not found" (404), not a coverage mismatch (409).
     const [existing] = await tx
       .select()
       .from(editorialBriefs)
@@ -343,6 +329,21 @@ export async function replaceEditorialBriefDraft(
     if (existing.status !== "draft") {
       throw new Error("Cannot replace a non-draft editorial brief");
     }
+
+    // Validate cross-project references inside the transaction to prevent
+    // TOCTOU (chapter/source reassignment between validation and delete+insert).
+    const chapterIds = normalized.contracts.map((c) => c.chapterId);
+    await Promise.all([
+      validateChaptersBelongToProject(chapterIds, input.projectId, tx),
+      validateSourcesBelongToProject(
+        normalized.evidenceSourceIds,
+        input.projectId,
+        tx,
+      ),
+    ]);
+
+    // Validate exact chapter coverage on save — prevents incomplete drafts
+    assertExactChapterCoverage(chapterIds, currentChapterIds);
 
     // Remove old contracts and sources
     await tx
