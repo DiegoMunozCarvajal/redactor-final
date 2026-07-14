@@ -44,6 +44,7 @@ interface Props {
   onSaveDefinition: (name: string, definition: string | null) => Promise<void>;
   onFillComplete?: () => void | Promise<void>;
   currentPromptsHash?: string;
+  activeBriefHash?: string | null;
 }
 
 type FillStatus = "pending" | "generating" | "filled" | "error";
@@ -63,6 +64,7 @@ export function PlaceholderFillSection({
   onSaveDefinition,
   onFillComplete,
   currentPromptsHash,
+  activeBriefHash,
 }: Props) {
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [filling, setFilling] = useState(false);
@@ -367,11 +369,12 @@ export function PlaceholderFillSection({
             const isExpanded = expandedSources[ph.name] ?? false;
             const isStale = Boolean(
               state.status === "filled"
-                && currentPromptsHash
                 && (() => {
                   const placeholder = placeholders.find((p) => p.name === ph.name);
                   const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
-                  return metadata?.promptsHash && metadata.promptsHash !== currentPromptsHash;
+                  const promptsStale = currentPromptsHash && metadata?.promptsHash && metadata.promptsHash !== currentPromptsHash;
+                  const briefStale = activeBriefHash && metadata?.editorialBriefHash !== activeBriefHash;
+                  return promptsStale || briefStale;
                 })()
             );
 

@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["**/*.test.ts"],
+    include: ["**/*.test.{ts,tsx}"],
     pool: "forks",
     setupFiles: ["./vitest.setup.ts"],
     poolOptions: {
@@ -21,6 +21,12 @@ export default defineConfig({
       // Test defaults. Override with TEST_DATABASE_URL for DB-dependent tests.
       NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
+      TEST_DATABASE_URL:
+        process.env.TEST_DATABASE_URL ??
+        "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      DATABASE_URL:
+        process.env.TEST_DATABASE_URL ??
+        "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },
   },
 });

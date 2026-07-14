@@ -21,6 +21,7 @@
  */
 
 import { drizzle } from "drizzle-orm/postgres-js";
+import { TransactionRollbackError } from "drizzle-orm/errors";
 import postgres from "postgres";
 import * as schema from "@/lib/db/schema";
 
@@ -28,8 +29,10 @@ function getTestConnectionUrl(): string {
   const url = process.env.TEST_DATABASE_URL;
   if (url) return url;
 
-  // Fall back to local Supabase or Docker PostgreSQL
-  return "postgresql://postgres:postgres@localhost:5432/redactor_test";
+  throw new Error(
+    "TEST_DATABASE_URL is not set and no local PostgreSQL is available. " +
+      "Set TEST_DATABASE_URL to a disposable test database.",
+  );
 }
 
 let _testClient: ReturnType<typeof postgres> | null = null;
@@ -53,24 +56,50 @@ function getTestDb(): ReturnType<typeof drizzle<typeof schema>> {
 }
 
 /**
- * Execute a callback inside a test database transaction.
+ * Execute a callback inside a real Drizzle database transaction.
  * The transaction is always rolled back, so tests never leave side effects.
- * Uses savepoints for nested transaction safety.
+ *
+ * Uses Drizzle's `db.transaction()` to open a real PostgreSQL transaction.
+ * After the callback completes, `tx.rollback()` is called, which throws a
+ * `TransactionRollbackError` sentinel that is caught and suppressed.
+ *
+ * If the callback itself throws, the error is preserved and rethrown after
+ * the rollback completes.
  */
 export async function withTestDb<T>(
   fn: (db: ReturnType<typeof drizzle<typeof schema>>) => Promise<T>,
 ): Promise<T> {
   const db = getTestDb();
 
-  // Use a savepoint so nested calls don't conflict
-  await db.execute("SAVEPOINT test_begin");
+  let result: T | undefined;
+  let userError: unknown;
 
   try {
-    const result = await fn(db);
-    return result;
-  } finally {
-    await db.execute("ROLLBACK TO SAVEPOINT test_begin");
+    await db.transaction(async (tx) => {
+      try {
+        // `tx` is a PgTransaction which doesn't expose the `$client` property
+        // that `ReturnType<typeof drizzle>` has, but for query operations the
+        // two types are mutually compatible. The double cast is required because
+        // TypeScript sees them as structurally incompatible.
+        result = await fn(tx as unknown as ReturnType<typeof drizzle<typeof schema>>);
+      } catch (e) {
+        userError = e;
+      }
+      // Always roll back — this throws TransactionRollbackError
+      tx.rollback();
+    });
+  } catch (e) {
+    // Swallow only the expected Drizzle rollback sentinel
+    if (!(e instanceof TransactionRollbackError)) {
+      throw e;
+    }
   }
+
+  if (userError !== undefined) {
+    throw userError;
+  }
+
+  return result as T;
 }
 
 /**

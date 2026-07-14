@@ -6,6 +6,7 @@ import { generateChapterCorrection } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope } from "@/lib/editorial-brief/context";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -28,11 +29,15 @@ export const generateCorrection = task({
     contentToCorrect: string;
     critiqueContent: string;
     projectTopic: string | null;
+    editorialBriefId?: string;
+    editorialBriefVersion?: number;
+    editorialBriefHash?: string;
     model?: string;
     effort?: "off" | "max" | "xhigh";
   }, { ctx }: { ctx: Context }) => {
     const {
       generationId,
+      projectId,
       chapterId,
       correctorPrompt,
       contentToCorrect,
@@ -49,6 +54,33 @@ export const generateCorrection = task({
       .where(eq(chapterGenerations.id, generationId))
       .limit(1);
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
+
+    // Resolve editorial brief snapshot from generation metadata.
+    // Correction inherits the snapshot from the critique it responds to (stored
+    // in generationMetadata by the correct route).
+    const corrGenSnapshot = snapshotFromGenerationMetadata(
+      (gen.generationMetadata as Record<string, unknown> | null) ?? {},
+    );
+
+    let corrEditorialBundle: Awaited<ReturnType<typeof loadEditorialBundle>> = null;
+    if (corrGenSnapshot) {
+      try {
+        corrEditorialBundle = await loadEditorialBundle({
+          projectId,
+          briefId: corrGenSnapshot.editorialBriefId,
+          expectedHash: corrGenSnapshot.editorialBriefHash,
+        });
+      } catch (err) {
+        await db
+          .update(chapterGenerations)
+          .set({
+            status: "failed",
+            error: `Editorial brief hash mismatch: ${sanitizeError(err)}`,
+          })
+          .where(eq(chapterGenerations.id, generationId));
+        throw err;
+      }
+    }
 
     // Only "completed" is truly terminal. "failed" is NOT terminal —
     // transient LLM/provider errors should retry. See generate-chapter.ts.
@@ -119,6 +151,9 @@ export const generateCorrection = task({
         model,
         effort,
         projectTopic,
+        editorialContext: corrEditorialBundle
+          ? renderEditorialScope(corrEditorialBundle, { scope: "correction", chapterId })
+          : null,
         signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       });
 

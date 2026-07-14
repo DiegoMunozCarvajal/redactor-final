@@ -17,6 +17,7 @@ import { fillOnePlaceholder } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { hashPromptContents } from "@/lib/placeholder-utils";
+import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -86,6 +87,10 @@ export async function POST(
     return NextResponse.json({ error: "placeholder not found" }, { status: 404 });
   }
 
+  // Load editorial brief for evidence-driven RAG overrides.
+  // If no approved brief exists, briefBundle is null (legacy behavior).
+  const briefBundle = await loadEditorialBundle({ projectId });
+
   // Check if this placeholder can be resolved directly (no LLM)
   const { resolved } = resolvePlaceholdersDirect(
     [name],
@@ -101,6 +106,13 @@ export async function POST(
           provider: "direct",
           model,
           promptsHash,
+          ...(briefBundle
+            ? {
+                editorialBriefId: briefBundle.id,
+                editorialBriefVersion: briefBundle.version,
+                editorialBriefHash: briefBundle.hash,
+              }
+            : {}),
         }),
       })
       .where(
@@ -166,19 +178,19 @@ export async function POST(
   // LLM call outside the lock
   let result;
   try {
-    result = await fillOnePlaceholder(
-      phDef,
-      project.topic ?? null,
+    result = await fillOnePlaceholder({
+      placeholder: phDef,
+      projectTopic: project.topic ?? null,
       projectId,
       promptContents,
       existingDefinitions,
-      model,
+      model: model ?? undefined,
       effort,
-      undefined,
       chapterId,
       sourceContexts,
-      req.signal,
-    );
+      signal: req.signal,
+      editorialBundle: briefBundle,
+    });
   } catch (err) {
     const message = sanitizeError(err);
     await db
@@ -213,6 +225,15 @@ export async function POST(
         ragChunks: result.ragChunks,
         model,
         promptsHash,
+        ...(briefBundle
+          ? {
+              editorialBriefId: briefBundle.id,
+              editorialBriefVersion: briefBundle.version,
+              editorialBriefHash: briefBundle.hash,
+            }
+          : {}),
+        ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
+        ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
       }),
     })
     .where(

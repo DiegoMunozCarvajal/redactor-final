@@ -11,3 +11,4 @@ export * from "./meta-prompts";
 export * from "./prompt-library";
 export * from "./generation-prompts";
 export * from "./sources";
+export * from "./editorial-briefs";

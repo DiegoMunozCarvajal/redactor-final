@@ -57,6 +57,7 @@ import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-se
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
 import { DiffModal } from "@/components/projects/diff-modal";
+import { EditorialVersionBadge } from "@/components/projects/editorial-version-badge";
 import type { ChapterPlaceholder } from "@/lib/db/schema";
 import { getLatestGenerationError } from "@/lib/generation-errors";
 import {
@@ -110,6 +111,9 @@ interface GenerationData {
     model?: string;
     provider?: string;
     effort?: string;
+    editorialBriefId?: string;
+    editorialBriefVersion?: number;
+    editorialBriefHash?: string;
   } | null;
   assembledContent: string | null;
   assemblyMetadata: AssemblyMetadata | null;
@@ -128,6 +132,7 @@ interface ChapterDetail {
     title: string;
   };
   generations: GenerationData[];
+  activeBrief: { id: string; version: number; hash: string } | null;
 }
 
 interface PromptData {
@@ -921,6 +926,7 @@ export default function ChapterPage() {
         onSaveDefinition={saveDefinition}
         onFillComplete={fetchPlaceholders}
         currentPromptsHash={currentPromptsHash}
+        activeBriefHash={data?.activeBrief?.hash ?? null}
       />
 
       {/* No prompts */}
@@ -1318,6 +1324,10 @@ export default function ChapterPage() {
                 {selectedAssemblyVersionNumber > 0 && (
                   <Badge variant="secondary">v{selectedAssemblyVersionNumber}</Badge>
                 )}
+                <EditorialVersionBadge
+                  generationMetadata={selectedAssemblyVersion.generationMetadata}
+                  activeBrief={data.activeBrief}
+                />
                 {selectedAssemblyVersion.completedAt && (
                   <span>
                     {new Date(selectedAssemblyVersion.completedAt).toLocaleString()}
@@ -1462,6 +1472,10 @@ export default function ChapterPage() {
                     {new Date(selectedCritique.completedAt).toLocaleString()}
                   </span>
                 )}
+                <EditorialVersionBadge
+                  generationMetadata={selectedCritique.generationMetadata}
+                  activeBrief={data.activeBrief}
+                />
                 <div className="flex-1" />
                 <Button
                   size="sm"

@@ -171,9 +171,9 @@ describe("withProjectLock", () => {
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 
-  it("returns locked=false when lock busy, does not run fn", async () => {
+  it("returns locked=false when lock busy and no stale holder", async () => {
     const { mockUnsafe, mockRelease } = setupLockClient(false);
-    // recovery query returns empty — no stale lock to terminate
+    // Recovery query returns empty — no stale lock to terminate
     mockUnsafe.mockResolvedValueOnce([]);
     const fn = vi.fn();
 
@@ -181,17 +181,17 @@ describe("withProjectLock", () => {
 
     expect(r.locked).toBe(false);
     expect(fn).not.toHaveBeenCalled();
-    expect(mockRelease).toHaveBeenCalledOnce();
     expect(mockUnsafe).toHaveBeenCalledTimes(2); // acquire + recovery
+    expect(mockRelease).toHaveBeenCalledOnce();
   });
 
   it("recovers stale lock when holder is idle, then runs fn", async () => {
     const { mockUnsafe, mockRelease } = setupLockClient(false);
-    // recovery query returns killed=true — stale lock terminated
+    // Recovery query returns killed=true — stale lock terminated
     mockUnsafe.mockResolvedValueOnce([{ killed: true }]);
-    // retry acquire succeeds
+    // Retry acquire succeeds
     mockUnsafe.mockResolvedValueOnce([{ acquired: true }]);
-    // release succeeds
+    // Release succeeds
     mockUnsafe.mockResolvedValueOnce(undefined);
     const fn = vi.fn().mockResolvedValue("recovered");
 
@@ -217,6 +217,7 @@ describe("withProjectLock", () => {
   });
 
   it("releases reserved connection even when unlock fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { mockRelease } = setupLockClient(true, true);
     const fn = vi.fn().mockResolvedValue("ok");
 
@@ -225,5 +226,7 @@ describe("withProjectLock", () => {
     expect(r.locked).toBe(true);
     if (r.locked) expect(r.result).toBe("ok");
     expect(mockRelease).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledOnce();
+    consoleError.mockRestore();
   });
 });

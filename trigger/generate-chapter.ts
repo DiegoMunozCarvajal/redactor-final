@@ -14,10 +14,11 @@ import { getChapterPlaceholders, extractPlaceholders, syncChapterPlaceholders } 
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope } from "@/lib/editorial-brief/context";
 
 export const generateChapter = task({
   id: "generate-chapter",
-  maxDuration: 600, // 10 minutes — chapter generation can make multiple LLM calls
+  maxDuration: 1800, // 30 minutes — chapter generation can make multiple LLM calls
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -27,6 +28,9 @@ export const generateChapter = task({
   run: async (payload: {
       generationId: string;
       projectId: string;
+      editorialBriefId?: string;
+      editorialBriefVersion?: number;
+      editorialBriefHash?: string;
       model?: string;
       effort?: "off" | "max" | "xhigh";
       skipAssembly?: boolean;
@@ -139,6 +143,35 @@ export const generateChapter = task({
       .where(eq(chapters.id, gen.chapterId))
       .limit(1);
     if (!chapter) throw new Error(`Chapter ${gen.chapterId} not found`);
+
+    // Resolve editorial brief snapshot from generation metadata.
+    // The API route captures the snapshot before the advisory lock and stores it
+    // in generationMetadata. We reconstruct the snapshot here and load the exact
+    // bundle that was current at generation time (using expectedHash to detect
+    // version drift between queuing and execution).
+    const genSnapshot = snapshotFromGenerationMetadata(
+      (gen.generationMetadata as Record<string, unknown> | null) ?? {},
+    );
+
+    let editorialBundle: Awaited<ReturnType<typeof loadEditorialBundle>> = null;
+    if (genSnapshot) {
+      try {
+        editorialBundle = await loadEditorialBundle({
+          projectId,
+          briefId: genSnapshot.editorialBriefId,
+          expectedHash: genSnapshot.editorialBriefHash,
+        });
+      } catch (err) {
+        await db
+          .update(chapterGenerations)
+          .set({
+            status: "failed",
+            error: `Editorial brief hash mismatch: ${sanitizeError(err)}`,
+          })
+          .where(eq(chapterGenerations.id, generationId));
+        throw err;
+      }
+    }
 
     // Load project prompts for this chapter
     const promptList = await db
@@ -295,6 +328,9 @@ export const generateChapter = task({
               placeholders,
               projectTopic: project.topic,
               projectId,
+              editorialContext: editorialBundle
+                ? renderEditorialScope(editorialBundle, { scope: "fragment", chapterId: gen.chapterId })
+                : null,
               ...(model ? { model } : {}),
               ...(effort !== undefined ? { effort } : {}),
             });
@@ -351,16 +387,17 @@ export const generateChapter = task({
             ? generateChapterAssemblyHalves
             : generateChapterAssemblyHierarchical;
 
-        const assembled = await assemble(
+        const assembled = await assemble({
           assemblyPrompt,
-          fragmentContents,
+          fragments: fragmentContents,
           placeholders,
           model,
-          undefined,
           effort,
-          undefined,
-          project.topic ?? null,
-        );
+          projectTopic: project.topic ?? null,
+          editorialContext: editorialBundle
+            ? renderEditorialScope(editorialBundle, { scope: "assembly", chapterId: gen.chapterId })
+            : null,
+        });
 
         await db
           .update(chapterGenerations)

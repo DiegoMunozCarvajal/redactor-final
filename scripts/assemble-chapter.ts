@@ -4,6 +4,7 @@
 import postgres from "postgres";
 import { getChapterPlaceholders } from "../lib/placeholders";
 import { generateChapterAssemblyHalves } from "../lib/generate";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "../lib/editorial-brief/context";
 
 const CHAPTER_ID = "299a019c-2436-4a05-9b2f-d08118c5e2bf";
 const PROJECT_ID = "d15fd234-0845-4d55-86e2-563565c128f9";
@@ -79,6 +80,17 @@ async function main() {
   // Load placeholders
   const placeholders = await getChapterPlaceholders(CHAPTER_ID, project.topic);
 
+  // Load current approved editorial brief for snapshot capture
+  const briefBundle = await loadEditorialBundle({ projectId: PROJECT_ID });
+  const briefSnapshot = briefBundle ? snapshotFromBundle(briefBundle) : null;
+  const editorialContext = briefBundle
+    ? renderEditorialScope(briefBundle, { scope: "assembly", chapterId: CHAPTER_ID })
+    : null;
+
+  if (briefBundle) {
+    console.log(`Using editorial brief v${briefBundle.version} (${briefBundle.hash.slice(0, 12)}...)`);
+  }
+
   // Create generation record
   const [gen] = await sql`
     INSERT INTO chapter_generations (project_id, chapter_id, status, generation_metadata)
@@ -90,6 +102,7 @@ async function main() {
         effort: "max",
         algorithm: "halves",
         fragmentIds,
+        ...(briefSnapshot ? metadataFromSnapshot(briefSnapshot) : {}),
       })}::jsonb
     )
     RETURNING id
@@ -99,15 +112,14 @@ async function main() {
   console.log(`Fragments: ${fragmentContents.length}, total chars: ${fragmentContents.reduce((s, f) => s + f.content.length, 0)}`);
 
   try {
-    const result = await generateChapterAssemblyHalves(
-      { content: assemblyPrompt.content as string, userPrompt: (assemblyPrompt.user_prompt as string) ?? null },
-      fragmentContents,
+    const result = await generateChapterAssemblyHalves({
+      assemblyPrompt: { content: assemblyPrompt.content as string, userPrompt: (assemblyPrompt.user_prompt as string) ?? null },
+      fragments: fragmentContents,
       placeholders,
-      "deepseek-v4-pro",
-      undefined,
-      "max",
-      undefined,
-    );
+      model: "deepseek-v4-pro",
+      effort: "max",
+      editorialContext,
+    });
 
     console.log(`Assembly done. Content length: ${result.text.length} chars`);
     console.log(`Tokens: ${result.usage.inputTokens} in / ${result.usage.outputTokens} out`);

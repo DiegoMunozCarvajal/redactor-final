@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { chapterPlaceholders, chapters } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
 import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
+import type { EditorialBundle } from "@/lib/editorial-brief/schema";
+import { renderEditorialScope } from "@/lib/editorial-brief/render";
 
 export type { SearchResult };
 
@@ -33,6 +35,10 @@ export interface PlaceholderFillEvent {
   current?: number;
   /** Total placeholders to fill */
   total?: number;
+  /** Evidence query from editorial brief contract, if applicable */
+  evidenceQuery?: string;
+  /** Source IDs searched for evidence (from approved brief) */
+  evidenceSourceIds?: string[];
 }
 
 // Default model for generation if none specified
@@ -357,6 +363,17 @@ export function validateDefinition(
   return { ok: true };
 }
 
+/**
+ * Thrown when a required evidence need has no matching chunks in approved sources.
+ * This prevents the LLM from fabricating data for evidence-critical placeholders.
+ */
+export class RequiredEvidenceMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RequiredEvidenceMissingError";
+  }
+}
+
 async function generateAndValidate(
   model: string,
   userPrompt: string,
@@ -469,6 +486,37 @@ export interface FillOneResult {
   sources: SearchResult[];
   ragChunks?: number;
   provider: string;
+  /** Evidence query from the editorial brief contract, if applicable */
+  evidenceQuery?: string;
+  /** Source IDs searched for evidence (from approved brief) */
+  evidenceSourceIds?: string[];
+}
+
+export interface FillOnePlaceholderParams {
+  /** Placeholder definition with name, function, and notes */
+  placeholder: PlaceholderDef;
+  /** Project topic (used for query construction and direct resolution) */
+  projectTopic: string | null;
+  /** Project ID for DB-scoped operations */
+  projectId: string;
+  /** Current chapter ID (for cross-chapter reuse and editorial contract matching) */
+  chapterId?: string;
+  /** Prompt contents for context */
+  promptContents: string[];
+  /** Source contexts for each prompt (same index as promptContents). Null entries allowed. */
+  sourceContexts?: Array<string | null>;
+  /** Existing definitions for other placeholders (for context and reuse) */
+  existingDefinitions: Record<string, string>;
+  /** Optional editorial bundle for evidence-driven RAG overrides */
+  editorialBundle?: EditorialBundle | null;
+  /** Model override */
+  model?: string;
+  /** Reasoning effort */
+  effort?: ReasoningEffort;
+  /** Temperature for LLM generation */
+  temperature?: number;
+  /** Abort signal for cancellation */
+  signal?: AbortSignal;
 }
 
 /**
@@ -479,32 +527,64 @@ export interface FillOneResult {
  * Used by both the sequential batch fill and the single-placeholder API endpoint.
  */
 export async function fillOnePlaceholder(
-  ph: PlaceholderDef,
-  projectTopic: string | null,
-  projectId: string,
-  promptContents: string[],
-  existingDefs: Record<string, string>,
-  model: string = DEFAULT_MODEL,
-  effort?: ReasoningEffort,
-  temperature?: number,
-  currentChapterId?: string,
-  /** Source context for each prompt (same index as promptContents). Used to
-   *  understand the original material without copying it. Null entries allowed. */
-  sourceContexts?: (string | null)[],
-  signal?: AbortSignal,
+  params: FillOnePlaceholderParams,
 ): Promise<FillOneResult> {
+  const {
+    placeholder: ph,
+    projectTopic,
+    projectId,
+    promptContents,
+    existingDefinitions: existingDefs,
+    model = DEFAULT_MODEL,
+    effort,
+    temperature,
+    chapterId: currentChapterId,
+    sourceContexts,
+    signal,
+    editorialBundle,
+  } = params;
   // Phase 0: Direct resolution
   const direct = resolveDirectly(ph.name, projectTopic);
   if (direct) {
     return { name: ph.name, definition: direct, sources: [], provider: "direct" };
   }
 
-  // Classify once for Phase 0.5 + Phase 1
-  const provider = inferPlaceholderProvider(ph.name, ph.function);
+  // Classify once for Phase 1.
+  // May be overridden by editorial brief evidence contracts below.
+  let provider = inferPlaceholderProvider(ph.name, ph.function);
 
-  // Phase 0.5: Cross-chapter reuse
-  // Only for non-RAG, non-direct placeholders — examples/anecdotes are chapter-specific
-  if (currentChapterId) {
+  // Evidence-driven override from editorial brief contract.
+  // When an editorial brief exists and the current chapter has an evidence need
+  // for this placeholder, the contract overrides both provider and query.
+  let evidenceQuery: string | undefined;
+  let isRequiredEvidence = false;
+  let evidenceSourceIds: string[] | undefined;
+
+  if (editorialBundle && currentChapterId) {
+    const contract = editorialBundle.contracts.find(
+      (c) => c.chapterId === currentChapterId,
+    );
+    if (contract) {
+      const evidenceNeed = contract.evidenceNeeds.find(
+        (en) => en.placeholderName === ph.name,
+      );
+      if (evidenceNeed) {
+        evidenceQuery = evidenceNeed.query;
+        isRequiredEvidence = evidenceNeed.required;
+        evidenceSourceIds = editorialBundle.evidenceSourceIds;
+
+        // Force RAG for ALL evidence needs (required and optional).
+        // Evidence needs dictate the search strategy — the contract query
+        // is more targeted than auto-generated keyword matching.
+        provider = "rag";
+      }
+    }
+  }
+
+  // Cross-chapter reuse: only for placeholders without evidence needs.
+  // Evidence needs (required or optional) must go through RAG with the
+  // contract's exact source list — never reuse another chapter's definition.
+  if (currentChapterId && !evidenceSourceIds) {
     if (provider !== "rag" && provider !== "direct") {
       const otherDefs = await db
         .select({ definition: chapterPlaceholders.definition })
@@ -528,6 +608,16 @@ export async function fillOnePlaceholder(
           provider: "reused",
         };
       }
+    }
+  }
+
+  // Editorial brief context: market, audience, thesis, voice, and guardrails
+  // that constrain placeholder definitions to the project niche.
+  let editorialContextSection = "";
+  if (editorialBundle && currentChapterId) {
+    const scope = renderEditorialScope(editorialBundle, { scope: "placeholder-fill", chapterId: currentChapterId });
+    if (scope) {
+      editorialContextSection = `\n${scope}\n\n`;
     }
   }
 
@@ -560,25 +650,49 @@ export async function fillOnePlaceholder(
   let sources: SearchResult[] = [];
   let ragContext = "";
   let ragChunks = 0;
+  let optionalEvidenceEmpty = false;
 
   const skipResearch = provider === "llm" || provider === "direct";
 
   if (!skipResearch) {
-    const query = buildSearchQuery(ph, projectTopic);
+    const query = evidenceQuery ?? buildSearchQuery(ph, projectTopic);
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[placeholder-fill] {${ph.name}} provider=${provider} query="${query}"`);
+      console.log(`[placeholder-fill] {${ph.name}} provider=${provider} query="${query}"${evidenceQuery ? " (evidence override)" : ""}`);
     }
 
     if (provider === "rag") {
-      const result = await retrieveContext(query, projectId, {
+      // Required evidence with no approved sources → fail early with clear message
+      if (isRequiredEvidence && (!evidenceSourceIds || evidenceSourceIds.length === 0)) {
+        throw new RequiredEvidenceMissingError(
+          `Required evidence "${ph.name}" has no approved sources in the editorial brief`,
+        );
+      }
+
+      const ragOptions: { topK: number; tokenBudget: number; sourceIds?: string[] } = {
         topK: 5,
         tokenBudget: 15000,
-      });
+      };
+      // When evidence source IDs are available (even empty), restrict RAG.
+      // Empty array → no approved sources → RAG returns empty, LLM warned.
+      if (evidenceSourceIds !== undefined) {
+        ragOptions.sourceIds = evidenceSourceIds;
+      }
+      const result = await retrieveContext(query, projectId, ragOptions);
       if (result.contextText) {
         ragContext = result.contextText;
         ragChunks = result.chunks.length;
       } else {
         console.warn(`[placeholder-fill] {${ph.name}} RAG empty for query "${query}"`);
+      }
+      // Check required evidence: throw if no chunks found in approved sources
+      if (isRequiredEvidence && ragChunks === 0) {
+        throw new RequiredEvidenceMissingError(
+          `Required evidence "${ph.name}" has no matching chunks in approved sources`,
+        );
+      }
+      // Track optional evidence with empty results for prompt-level warning
+      if (ragChunks === 0 && evidenceQuery && !isRequiredEvidence) {
+        optionalEvidenceEmpty = true;
       }
       // Fall through — empty RAG uses LLM fallback below
     } else if (provider === "semantic-scholar") {
@@ -591,10 +705,14 @@ export async function fillOnePlaceholder(
   }
 
   // Phase 2: Build research context for the prompt
+  const ragAdaptSuffix = editorialContextSection
+    ? "alineado con el contexto editorial de arriba"
+    : "transferible a cualquier dominio";
+
   let researchSection = "";
   if (ragContext) {
     const strippedRag = ragContext.replace(/^## (?:Source Material|Documentos subidos)\n?\n?/, "");
-    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${escapeXmlText(strippedRag)}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
+    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${escapeXmlText(strippedRag)}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y ${ragAdaptSuffix}. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
   } else if (sources.length > 0) {
     researchSection = `\n## Research Results (Semantic Scholar · papers académicos)\n\n<research_results source="${provider}">`;
     for (let idx = 0; idx < sources.length; idx++) {
@@ -608,6 +726,9 @@ export async function fillOnePlaceholder(
     researchSection += "\n</research_results>";
   } else if (skipResearch) {
     researchSection = "\n## Nota\n\nEste placeholder no requiere búsqueda externa. Usa tu conocimiento para dar una definición pertinente, específica y alineada con el tema del proyecto.";
+  } else if (optionalEvidenceEmpty) {
+    const providerLabel = provider === "rag" ? "RAG" : provider === "semantic-scholar" ? "Semantic Scholar" : provider;
+    researchSection = `\n## Nota\n\nLa búsqueda en ${providerLabel || "fuentes externas"} no arrojó resultados para el contenido esperado. No inventes estadísticas, citas ni casos de estudio. Si no hay material de investigación disponible, elabora una definición conceptual concisa basada en principios generales.`;
   } else {
     const providerLabel = provider === "rag" ? "RAG" : provider === "semantic-scholar" ? "Semantic Scholar" : provider;
     researchSection = `\n## Nota\n\nLa búsqueda en ${providerLabel || "fuentes externas"} no arrojó resultados. Usa tu mejor conocimiento para elaborar una definición pertinente y alineada con el tema del proyecto.`;
@@ -633,7 +754,7 @@ export async function fillOnePlaceholder(
       existingEntries.map(([k, v]) => `- {${k}}: ${v}`).join("\n");
   }
 
-  const userPrompt = `## Placeholder a definir
+  const userPrompt = `${editorialContextSection}## Placeholder a definir
 
 {${ph.name}}
 ${functionSection}
@@ -668,6 +789,8 @@ Responde ÚNICAMENTE con JSON: {"definition": "tu definición (extensión según
     sources,
     ragChunks: ragChunks || undefined,
     provider,
+    ...(evidenceQuery ? { evidenceQuery } : {}),
+    ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
   };
 }
 export async function* fillPlaceholdersSequential(
@@ -681,6 +804,7 @@ export async function* fillPlaceholdersSequential(
   currentChapterId?: string,
   sourceContexts?: (string | null)[],
   signal?: AbortSignal,
+  editorialBundle?: EditorialBundle | null,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const total = placeholders.length;
   const existingDefs: Record<string, string> = {};
@@ -694,19 +818,20 @@ export async function* fillPlaceholdersSequential(
     const ph = placeholders[i];
 
     try {
-      const result = await fillOnePlaceholder(
-        ph,
+      const result = await fillOnePlaceholder({
+        placeholder: ph,
         projectTopic,
         projectId,
         promptContents,
-        existingDefs,
+        existingDefinitions: existingDefs,
         model,
         effort,
         temperature,
-        currentChapterId,
+        chapterId: currentChapterId,
         sourceContexts,
         signal,
-      );
+        editorialBundle,
+      });
 
       if (result.definition) {
         existingDefs[ph.name] = result.definition;
@@ -719,6 +844,8 @@ export async function* fillPlaceholdersSequential(
           provider: result.provider,
           current: i,
           total,
+          ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
+          ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
         };
       } else {
         yield {

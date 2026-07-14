@@ -107,7 +107,8 @@ export async function withProjectLock<T>(
  * (stale connection killed), false if the holder is still active.
  */
 async function recoverStaleLock(
-  client: { unsafe: (query: string, params?: any[]) => Promise<Record<string, unknown>[]> },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: { unsafe: (query: string, params?: any[]) => Promise<any[]> },
   key1: number,
   key2: number,
 ): Promise<boolean> {

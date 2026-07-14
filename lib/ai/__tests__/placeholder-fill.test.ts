@@ -1,8 +1,35 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // placeholder-fill.ts transitively imports drizzle which reads DATABASE_URL.
 // Mock the DB module so pure-function tests don't need a real database.
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({
+  db: {
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        innerJoin: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      }),
+    }),
+  },
+}));
+
+// Mock heavy dependencies for fillOnePlaceholder integration tests
+vi.mock("@/lib/ai/rag", () => ({ retrieveContext: vi.fn() }));
+vi.mock("@/lib/ai/completion", () => ({ generateCompletion: vi.fn() }));
+vi.mock("@/lib/ai/web-search", () => ({ searchSemanticScholar: vi.fn() }));
+vi.mock("@/lib/ai/originality-check", () => ({
+  checkBlocklist: vi.fn().mockResolvedValue({ blocked: false }),
+  assertOriginalEnough: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/placeholder-research", () => ({
+  inferPlaceholderProvider: vi.fn().mockReturnValue("llm"),
+}));
+vi.mock("@/lib/editorial-brief/render", () => ({
+  renderEditorialScope: vi.fn().mockReturnValue(""),
+}));
 
 import {
   extractJson,
@@ -10,8 +37,13 @@ import {
   buildSearchQuery,
   isNarrativePlaceholder,
   validateDefinition,
+  fillOnePlaceholder,
+  RequiredEvidenceMissingError,
 } from "@/lib/ai/placeholder-fill";
-import type { PlaceholderDef } from "@/lib/ai/placeholder-fill";
+import type { PlaceholderDef, FillOnePlaceholderParams } from "@/lib/ai/placeholder-fill";
+import { retrieveContext } from "@/lib/ai/rag";
+import { generateCompletion } from "@/lib/ai/completion";
+import { createTestEditorialBundle, createTestChapterContract } from "@/lib/editorial-brief/__tests__/fixtures";
 
 // ---------------------------------------------------------------------------
 // extractJson — 4-phase JSON parser
@@ -233,5 +265,93 @@ describe("validateDefinition", () => {
       ph({ name: "tema" }),
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fillOnePlaceholder — evidence-driven RAG source restriction
+// ---------------------------------------------------------------------------
+
+const CHAPTER_ID = "10000000-0000-4000-8000-000000000001";
+
+describe("fillOnePlaceholder evidence-driven sourceIds", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(retrieveContext).mockResolvedValue({ chunks: [], contextText: "" });
+    vi.mocked(generateCompletion).mockResolvedValue({
+      data: '{"definition": "A valid definition that is at least thirty characters long for the evidence placeholder test case."}',
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30, costUsd: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      durationMs: 100,
+    });
+  });
+
+  const baseParams: FillOnePlaceholderParams = {
+    placeholder: { name: "evidence_placeholder" },
+    projectTopic: "Test Topic",
+    projectId: "proj-1",
+    promptContents: ["Content 1"],
+    existingDefinitions: {},
+    chapterId: CHAPTER_ID,
+  };
+
+  it("passes sourceIds:[] to retrieveContext when evidenceSourceIds is empty array", async () => {
+    const bundle = createTestEditorialBundle({
+      evidenceSourceIds: [],
+      contracts: [
+        createTestChapterContract(CHAPTER_ID, {
+          evidenceNeeds: [
+            { placeholderName: "evidence_placeholder", query: "test query", required: false },
+          ],
+        }),
+      ],
+    });
+
+    await fillOnePlaceholder({ ...baseParams, editorialBundle: bundle });
+
+    expect(retrieveContext).toHaveBeenCalledWith(
+      expect.any(String),
+      "proj-1",
+      expect.objectContaining({ sourceIds: [] }),
+    );
+  });
+
+  it("does NOT set sourceIds when no evidence need matches placeholder", async () => {
+    const bundle = createTestEditorialBundle({
+      evidenceSourceIds: [],
+      contracts: [
+        createTestChapterContract(CHAPTER_ID, {
+          evidenceNeeds: [
+            { placeholderName: "other_placeholder", query: "other query", required: false },
+          ],
+        }),
+      ],
+    });
+
+    // When placeholder doesn't match any evidence need, evidenceSourceIds stays undefined
+    await fillOnePlaceholder({ ...baseParams, placeholder: { name: "unrelated" }, editorialBundle: bundle });
+
+    // provider is "llm" (no evidence match), so RAG not called at all
+    expect(retrieveContext).not.toHaveBeenCalled();
+  });
+
+  it("throws RequiredEvidenceMissingError when required evidence has no approved sources", async () => {
+    const bundle = createTestEditorialBundle({
+      evidenceSourceIds: [],
+      contracts: [
+        createTestChapterContract(CHAPTER_ID, {
+          evidenceNeeds: [
+            { placeholderName: "required_evidence", query: "required query", required: true },
+          ],
+        }),
+      ],
+    });
+
+    await expect(
+      fillOnePlaceholder({
+        ...baseParams,
+        placeholder: { name: "required_evidence" },
+        editorialBundle: bundle,
+      }),
+    ).rejects.toThrow(RequiredEvidenceMissingError);
   });
 });

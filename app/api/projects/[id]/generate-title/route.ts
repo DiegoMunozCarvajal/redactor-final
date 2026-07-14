@@ -9,6 +9,7 @@ import { getChapterPlaceholders } from "@/lib/placeholders";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialScope } from "@/lib/editorial-brief/context";
 
 const titleResponseSchema = z.object({
   title: z.string().min(1),
@@ -55,6 +56,11 @@ export async function POST(
     );
   }
 
+  // Resolve editorial brief snapshot before the lock so we can capture
+  // the exact approved version at queue time.
+  const briefBundle = await loadEditorialBundle({ projectId });
+  const briefSnapshot = briefBundle ? snapshotFromBundle(briefBundle) : null;
+
   // Serialize rate limit check + generation row insert under advisory lock.
   // Creating a chapterGenerations row (type "title") ensures checkProjectRateLimit
   // counts it — preventing unlimited title generations per project.
@@ -79,7 +85,10 @@ export async function POST(
         projectId,
         chapterId: firstChapter.id,
         status: "generating",
-        generationMetadata: { type: "title" },
+        generationMetadata: {
+          type: "title",
+          ...(briefSnapshot ? metadataFromSnapshot(briefSnapshot) : {}),
+        },
       })
       .returning();
 
@@ -115,6 +124,12 @@ export async function POST(
   // LLM call outside the lock
   const placeholders = await getChapterPlaceholders(firstChapter.id, project.topic);
 
+  // Render title-scoped editorial context (no chapter contract — title scope
+  // uses audience, promise, packaging, and guardrails only).
+  const editorialContext = briefBundle
+    ? renderEditorialScope(briefBundle, { scope: "title" })
+    : null;
+
   let result;
   try {
     result = await generatePromptContent({
@@ -124,6 +139,8 @@ export async function POST(
       },
       placeholders,
       projectTopic: project.topic,
+      projectId,
+      editorialContext,
       schema: titleResponseSchema,
     });
   } catch (err) {

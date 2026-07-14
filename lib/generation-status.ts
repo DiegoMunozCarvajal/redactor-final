@@ -12,6 +12,9 @@ export interface GenerationStatusState {
     model?: string;
     provider?: string;
     effort?: string;
+    editorialBriefId?: string;
+    editorialBriefVersion?: number;
+    editorialBriefHash?: string;
   } | null;
 }
 

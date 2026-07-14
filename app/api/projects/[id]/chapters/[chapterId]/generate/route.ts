@@ -10,6 +10,7 @@ import { generateChapter } from "@/trigger/generate-chapter";
 import { sanitizeError } from "@/lib/sanitize-error";
 import type { AssemblyAlgorithm } from "@/lib/generate";
 import { logAudit } from "@/lib/audit";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -55,6 +56,12 @@ export async function POST(
       ? "halves"
       : "merge-sort";
 
+  // Capture editorial bundle snapshot before the advisory lock.
+  // loadEditorialBundle reads from the DB — never hold advisory lock during DB reads
+  // that are not part of the critical section.
+  const bundle = await loadEditorialBundle({ projectId });
+  const snapshot = bundle ? snapshotFromBundle(bundle) : null;
+
   const VALID_EFFORT_VALUES = ["off", "xhigh", "max"] as const;
   if (effortRaw !== undefined && !(VALID_EFFORT_VALUES as readonly string[]).includes(effortRaw)) {
     return NextResponse.json(
@@ -98,7 +105,14 @@ export async function POST(
 
     const [row] = await db
       .insert(chapterGenerations)
-      .values({ projectId, chapterId, status: "pending" })
+      .values({
+        projectId,
+        chapterId,
+        status: "pending",
+        generationMetadata: {
+          ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
+        },
+      })
       .returning();
 
     return { rateLimited: false as const, gen: row };
@@ -127,6 +141,13 @@ export async function POST(
       {
         generationId: gen.id,
         projectId,
+        ...(snapshot
+          ? {
+              editorialBriefId: snapshot.editorialBriefId,
+              editorialBriefVersion: snapshot.editorialBriefVersion,
+              editorialBriefHash: snapshot.editorialBriefHash,
+            }
+          : {}),
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
         skipAssembly,
