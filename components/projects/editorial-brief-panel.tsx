@@ -4,6 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditorialBriefForm } from "./editorial-brief-form";
 import { ChapterContractEditor } from "./chapter-contract-editor";
@@ -28,6 +36,11 @@ interface BriefListResponse {
   }>;
 }
 
+interface ProjectSource {
+  id: string;
+  fileName: string;
+}
+
 export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,6 +50,9 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
   const [draftContent, setDraftContent] = useState<EditorialBundle | null>(null);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showNewVersion, setShowNewVersion] = useState(false);
+  const [sources, setSources] = useState<ProjectSource[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -53,9 +69,37 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
     }
   }, [projectId]);
 
+  const fetchSources = useCallback(async () => {
+    setSourcesLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sources`);
+      if (res.ok) {
+        const json = await res.json();
+        const mapped: ProjectSource[] = json.map(
+          (s: { id: string; fileName: string }) => ({
+            id: s.id,
+            fileName: s.fileName,
+          }),
+        );
+        setSources(mapped);
+        if (mapped.length > 0 && !selectedSourceId) {
+          setSelectedSourceId(mapped[0].id);
+        }
+      }
+    } catch {
+      // Non-critical; extraction button simply won't show
+    } finally {
+      setSourcesLoading(false);
+    }
+  }, [projectId, selectedSourceId]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    fetchSources();
+  }, [fetchSources]);
 
   const handleSave = async () => {
     if (!draftContent) return;
@@ -91,15 +135,33 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
     if (!draftContent) return;
     setApproving(true);
     try {
-      const res = await fetch(
+      // Save first to preserve edits
+      const saveRes = await fetch(
+        `/api/projects/${projectId}/editorial-briefs/${draftContent.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: draftContent.content,
+            contracts: draftContent.contracts,
+            evidenceSourceIds: draftContent.evidenceSourceIds,
+          }),
+        },
+      );
+      if (!saveRes.ok) {
+        const err = await saveRes.json();
+        throw new Error(err.error || `Save failed (${saveRes.status})`);
+      }
+      // Now approve
+      const approveRes = await fetch(
         `/api/projects/${projectId}/editorial-briefs/${draftContent.id}/approve`,
         { method: "POST" },
       );
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || `Approval failed (${res.status})`);
+      if (!approveRes.ok) {
+        const err = await approveRes.json();
+        throw new Error(err.error || `Approval failed (${approveRes.status})`);
       }
-      toast.success("Brief aprobado");
+      toast.success("Brief guardado y aprobado");
       setShowApproveConfirm(false);
       await fetchData();
     } catch (err) {
@@ -201,9 +263,44 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
             No hay brief editorial. Sube un documento de investigación como fuente
             y extráelo, o crea un borrador vacío.
           </p>
+          {sources.length > 0 && (
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Fuente de investigación</Label>
+                <Select
+                  value={selectedSourceId}
+                  onValueChange={setSelectedSourceId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar fuente..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sources.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.fileName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="default"
+                onClick={() => handleExtractDraft(selectedSourceId)}
+                disabled={saving || !selectedSourceId}
+              >
+                Extraer borrador
+              </Button>
+            </div>
+          )}
+          {sourcesLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando fuentes...
+            </div>
+          )}
           <div className="flex gap-2">
             <Button
-              variant="default"
+              variant="outline"
               onClick={() => handleCreateDraft()}
               disabled={saving}
             >

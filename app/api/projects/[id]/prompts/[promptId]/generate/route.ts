@@ -199,6 +199,7 @@ export async function POST(
             model: result.model,
             provider: getProviderForModel(result.model),
             ...(effort ? { effort } : {}),
+            ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
           },
           completedAt: new Date(),
         })

@@ -8,6 +8,7 @@ import { chapterPlaceholders, chapters } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
 import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
 import type { EditorialBundle } from "@/lib/editorial-brief/schema";
+import { renderEditorialScope } from "@/lib/editorial-brief/render";
 
 export type { SearchResult };
 
@@ -548,38 +549,9 @@ export async function fillOnePlaceholder(
     return { name: ph.name, definition: direct, sources: [], provider: "direct" };
   }
 
-  // Classify once for Phase 0.5 + Phase 1.
+  // Classify once for Phase 1.
   // May be overridden by editorial brief evidence contracts below.
   let provider = inferPlaceholderProvider(ph.name, ph.function);
-
-  // Phase 0.5: Cross-chapter reuse
-  // Only for non-RAG, non-direct placeholders — examples/anecdotes are chapter-specific
-  if (currentChapterId) {
-    if (provider !== "rag" && provider !== "direct") {
-      const otherDefs = await db
-        .select({ definition: chapterPlaceholders.definition })
-        .from(chapterPlaceholders)
-        .innerJoin(chapters, eq(chapters.id, chapterPlaceholders.chapterId))
-        .where(
-          and(
-            eq(chapters.projectId, projectId),
-            eq(chapterPlaceholders.name, ph.name),
-            isNotNull(chapterPlaceholders.definition),
-            not(eq(chapterPlaceholders.chapterId, currentChapterId)),
-          ),
-        )
-        .limit(1);
-
-      if (otherDefs.length > 0 && otherDefs[0].definition) {
-        return {
-          name: ph.name,
-          definition: otherDefs[0].definition,
-          sources: [],
-          provider: "reused",
-        };
-      }
-    }
-  }
 
   // Evidence-driven override from editorial brief contract.
   // When an editorial brief exists and the current chapter has an evidence need
@@ -608,6 +580,45 @@ export async function fillOnePlaceholder(
         // For both required and optional evidence with RAG, use the contract query
         // (the query from the evidence need is more targeted than auto-generated)
       }
+    }
+  }
+
+  // Cross-chapter reuse: only for non-evidence, non-RAG, non-direct placeholders
+  // that don't require evidence (required evidence must go through RAG).
+  if (currentChapterId && !isRequiredEvidence) {
+    if (provider !== "rag" && provider !== "direct") {
+      const otherDefs = await db
+        .select({ definition: chapterPlaceholders.definition })
+        .from(chapterPlaceholders)
+        .innerJoin(chapters, eq(chapters.id, chapterPlaceholders.chapterId))
+        .where(
+          and(
+            eq(chapters.projectId, projectId),
+            eq(chapterPlaceholders.name, ph.name),
+            isNotNull(chapterPlaceholders.definition),
+            not(eq(chapterPlaceholders.chapterId, currentChapterId)),
+          ),
+        )
+        .limit(1);
+
+      if (otherDefs.length > 0 && otherDefs[0].definition) {
+        return {
+          name: ph.name,
+          definition: otherDefs[0].definition,
+          sources: [],
+          provider: "reused",
+        };
+      }
+    }
+  }
+
+  // Editorial brief context: market, audience, thesis, voice, and guardrails
+  // that constrain placeholder definitions to the project niche.
+  let editorialContextSection = "";
+  if (editorialBundle && currentChapterId) {
+    const scope = renderEditorialScope(editorialBundle, { scope: "placeholder-fill", chapterId: currentChapterId });
+    if (scope) {
+      editorialContextSection = `\n${scope}\n\n`;
     }
   }
 
@@ -694,10 +705,14 @@ export async function fillOnePlaceholder(
   }
 
   // Phase 2: Build research context for the prompt
+  const ragAdaptSuffix = editorialContextSection
+    ? "alineado con el contexto editorial de arriba"
+    : "transferible a cualquier dominio";
+
   let researchSection = "";
   if (ragContext) {
     const strippedRag = ragContext.replace(/^## (?:Source Material|Documentos subidos)\n?\n?/, "");
-    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${escapeXmlText(strippedRag)}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y transferible a cualquier dominio. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
+    researchSection = `\n## Research Results (RAG · documentos subidos)\n\n<research_results source="rag">\n<result id="1">\n<content>${escapeXmlText(strippedRag)}</content>\n</result>\n</research_results>\n\n⚠️ **Instrucción para este material**: ADAPTA el contenido de tus documentos subidos. Extrae el patrón o principio subyacente y transfórmalo en un ejemplo genérico y ${ragAdaptSuffix}. No copies nombres reales, empresas, fechas concretas ni detalles identificables.`;
   } else if (sources.length > 0) {
     researchSection = `\n## Research Results (Semantic Scholar · papers académicos)\n\n<research_results source="${provider}">`;
     for (let idx = 0; idx < sources.length; idx++) {

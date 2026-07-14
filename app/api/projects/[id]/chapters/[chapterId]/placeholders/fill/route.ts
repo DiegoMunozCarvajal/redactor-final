@@ -142,9 +142,11 @@ export async function POST(
   const toFill = onlyMissingOrStale
     ? placeholderRows.filter((p) => {
         if (!p.definition) return true; // Missing — always fill
-        const meta = p.fillMetadata as { promptsHash?: string } | null;
-        if (!meta?.promptsHash) return true; // No hash — fill (stale detection impossible)
-        return meta.promptsHash !== promptsHash; // Stale — prompts changed, re-fill
+        const meta = p.fillMetadata as { promptsHash?: string; editorialBriefHash?: string } | null;
+        if (!meta?.promptsHash && !meta?.editorialBriefHash) return true; // No hash — fill (stale detection impossible)
+        if (meta.promptsHash && meta.promptsHash !== promptsHash) return true; // Prompts changed
+        if (meta.editorialBriefHash && briefBundle && meta.editorialBriefHash !== briefBundle.hash) return true; // Brief changed
+        return false;
       })
     : placeholderRows;
 

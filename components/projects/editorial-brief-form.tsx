@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -456,19 +457,29 @@ interface FieldTextareaArrayProps {
 }
 
 function FieldTextareaArray({ label, value, onChange }: FieldTextareaArrayProps) {
+  const [raw, setRaw] = useState(value.join("\n"));
+  const joined = value.join("\n");
+
+  useEffect(() => {
+    setRaw(joined);
+  }, [joined]);
+
+  const handleBlur = () => {
+    const lines = raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    onChange(lines.length === 0 ? ["-"] : lines);
+  };
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
       <textarea
         className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-        value={value.join("\n")}
-        onChange={(e) => {
-          const lines = e.target.value
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          onChange(lines.length === 0 ? ["-"] : lines);
-        }}
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        onBlur={handleBlur}
       />
     </div>
   );
