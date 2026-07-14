@@ -189,6 +189,7 @@ export async function generatePromptContent(
     systemPrompt,
     projectTopic,
     projectId,
+    editorialContext,
     schema,
     signal,
   } = params;
@@ -210,12 +211,27 @@ export async function generatePromptContent(
     effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
   }
 
+  // Compose system prompt with editorial context
+  // For Anthropic cached calls: static prompt → cached, editorial → dynamic non-cached
+  // For non-Anthropic or no metaprompt: join both into systemPrompt
+  let systemPromptForCall: string;
+  let cachedForCall: string | undefined;
+
+  if (useCache) {
+    cachedForCall = effectiveSystemPrompt;
+    systemPromptForCall = editorialContext ?? "";
+  } else {
+    systemPromptForCall = editorialContext
+      ? effectiveSystemPrompt + "\n\n" + editorialContext
+      : effectiveSystemPrompt;
+  }
+
   const baseOptions = {
     model,
-    systemPrompt: useCache ? "" : effectiveSystemPrompt,
+    systemPrompt: systemPromptForCall,
     userPrompt: content,
     ...(useCache
-      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true }
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -284,6 +300,7 @@ async function mergeTwoFragments(
     effort,
     maxTokens,
     projectTopic,
+    editorialContext,
   } = options;
 
   const baseSystemPrompt = assemblyPrompt.userPrompt
@@ -324,13 +341,26 @@ async function mergeTwoFragments(
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!assemblyPrompt.userPrompt;
 
+  // Compose system prompt with editorial context
+  let systemPromptForCall: string;
+  let cachedForCall: string | undefined;
+
+  if (useCache) {
+    cachedForCall = systemPrompt;
+    systemPromptForCall = editorialContext ?? "";
+  } else {
+    systemPromptForCall = editorialContext
+      ? systemPrompt + "\n\n" + editorialContext
+      : systemPrompt;
+  }
+
   const result = await generateCompletion({
     model,
-    systemPrompt: useCache ? "" : systemPrompt,
+    systemPrompt: systemPromptForCall,
     userPrompt: userContent,
     maxTokens: effectiveMaxTokens,
     ...(useCache
-      ? { cachedSystemPrompt: systemPrompt, cacheSystemPrompt: true }
+      ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true }
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
@@ -572,6 +602,7 @@ export async function generateChapterAssembly(
     effort,
     maxTokens,
     projectTopic,
+    editorialContext,
   } = options;
   // Legacy format (### Fragment N) — used by old markers
   const fragmentsText = fragments
@@ -630,13 +661,26 @@ export async function generateChapterAssembly(
   const isAnthropic = getProviderForModel(model) === "anthropic";
   const useCache = isAnthropic && !!assemblyPrompt.userPrompt;
 
+  // Compose system prompt with editorial context
+  let systemPromptForCall: string;
+  let cachedForCall: string | undefined;
+
+  if (useCache) {
+    cachedForCall = effectiveSystemPrompt;
+    systemPromptForCall = editorialContext ?? "";
+  } else {
+    systemPromptForCall = editorialContext
+      ? effectiveSystemPrompt + "\n\n" + editorialContext
+      : effectiveSystemPrompt;
+  }
+
   const result = await generateCompletion({
     model,
-    systemPrompt: useCache ? "" : effectiveSystemPrompt,
+    systemPrompt: systemPromptForCall,
     userPrompt: content,
     maxTokens: effectiveMaxTokens,
     ...(useCache
-      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true }
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),
@@ -693,6 +737,7 @@ export async function generateChapterCritique(
     effort,
     maxTokens,
     projectTopic,
+    editorialContext,
     signal,
   } = params;
 
@@ -742,13 +787,26 @@ export async function generateChapterCritique(
     effectiveSystemPrompt = applyPlaceholders(effectiveSystemPrompt, placeholders, projectTopic);
   }
 
+  // Compose system prompt with editorial context
+  let systemPromptForCall: string;
+  let cachedForCall: string | undefined;
+
+  if (useCache) {
+    cachedForCall = effectiveSystemPrompt;
+    systemPromptForCall = editorialContext ?? "";
+  } else {
+    systemPromptForCall = editorialContext
+      ? effectiveSystemPrompt + "\n\n" + editorialContext
+      : effectiveSystemPrompt;
+  }
+
   const result = await generateCompletion({
     model,
-    systemPrompt: useCache ? "" : effectiveSystemPrompt,
+    systemPrompt: systemPromptForCall,
     userPrompt: processedUserContent,
     maxTokens: effectiveMaxTokens,
     ...(useCache
-      ? { cachedSystemPrompt: effectiveSystemPrompt, cacheSystemPrompt: true }
+      ? { cachedSystemPrompt: cachedForCall, cacheSystemPrompt: true }
       : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(effort !== undefined ? { effort } : {}),

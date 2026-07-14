@@ -28,7 +28,7 @@ import { createHash } from "crypto";
 // ---------------------------------------------------------------------------
 
 type PgSchema = typeof schema;
-type DB = PostgresJsDatabase<PgSchema> | PgTransaction<PgQueryResultHKT, PgSchema, ExtractTablesWithRelations<PgSchema>>;
+export type DB = PostgresJsDatabase<PgSchema> | PgTransaction<PgQueryResultHKT, PgSchema, ExtractTablesWithRelations<PgSchema>>;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
