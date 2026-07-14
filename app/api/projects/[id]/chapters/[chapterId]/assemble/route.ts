@@ -12,6 +12,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_GENERATION_MODEL, getModelDefinition } from "@/lib/ai/providers";
 import type { AssemblyAlgorithm } from "@/lib/generate";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, snapshotFromGenerationMetadata } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -100,6 +101,50 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Pre-flight: resolve editorial brief snapshot for assembly consistency.
+  // Load fragment parents' generation metadata to check for mixed brief versions.
+  const fragmentParents = await db
+    .select({
+      id: chapterGenerations.id,
+      generationMetadata: chapterGenerations.generationMetadata,
+    })
+    .from(chapterGenerations)
+    .innerJoin(fragments, eq(fragments.chapterGenerationId, chapterGenerations.id))
+    .where(inArray(fragments.id, fragmentIds));
+
+  const fragmentSnapshots = fragmentParents
+    .map((p) =>
+      snapshotFromGenerationMetadata(
+        (p.generationMetadata as Record<string, unknown> | null) ?? {},
+      ),
+    )
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  // Check for mixed brief hashes — reject if fragments reference different versions.
+  if (fragmentSnapshots.length > 0) {
+    const hashes = new Set(fragmentSnapshots.map((s) => s.editorialBriefHash));
+    if (hashes.size > 1) {
+      return NextResponse.json(
+        {
+          error:
+            "Fragments were generated with different editorial brief versions. Regenerate them under the same approved brief.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  // Resolve the snapshot for this assembly:
+  // - All versioned fragments share the same hash → use that snapshot
+  // - All legacy fragments (no snapshots) → capture current approved brief (or null)
+  const currentBundle = await loadEditorialBundle({ projectId });
+  const assemblySnapshot =
+    fragmentSnapshots.length > 0
+      ? fragmentSnapshots[0]
+      : currentBundle
+        ? snapshotFromBundle(currentBundle)
+        : null;
 
   // Pre-flight: verify an assembly prompt will be available at task execution.
   // Priority: explicit assemblyPromptId > project default > chapter embedded.
@@ -212,6 +257,7 @@ export async function POST(
       algorithm: assemblyAlgorithm,
       fragmentIds,
       ...(assemblyPromptId ? { assemblyPromptId } : {}),
+      ...(assemblySnapshot ? metadataFromSnapshot(assemblySnapshot) : {}),
     };
     const [row] = await db
       .insert(chapterGenerations)
@@ -254,6 +300,13 @@ export async function POST(
         assemblyAlgorithm,
         fragmentIds,
         ...(assemblyPromptId ? { assemblyPromptId } : {}),
+        ...(assemblySnapshot
+          ? {
+              editorialBriefId: assemblySnapshot.editorialBriefId,
+              editorialBriefVersion: assemblySnapshot.editorialBriefVersion,
+              editorialBriefHash: assemblySnapshot.editorialBriefHash,
+            }
+          : {}),
       },
       { idempotencyKey: gen.id },
     );

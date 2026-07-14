@@ -11,6 +11,7 @@ import { generateCritique } from "@/trigger/generate-critique";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -160,6 +161,10 @@ export async function POST(
 
   const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
 
+  // Capture editorial bundle snapshot before the advisory lock.
+  const bundle = await loadEditorialBundle({ projectId });
+  const snapshot = bundle ? snapshotFromBundle(bundle) : null;
+
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale critique rows before rate check (inside lock for TOCTOU safety).
     await cleanupStaleGenerations(projectId, "critique", { chapterId });
@@ -180,6 +185,7 @@ export async function POST(
           promptId: critiquePromptId ?? "inline",
           promptTitle: cpName,
           model: resolvedModel,
+          ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
         },
       })
       .returning();
@@ -217,6 +223,13 @@ export async function POST(
         },
         contentToCritique,
         projectTopic: project.topic,
+        ...(snapshot
+          ? {
+              editorialBriefId: snapshot.editorialBriefId,
+              editorialBriefVersion: snapshot.editorialBriefVersion,
+              editorialBriefHash: snapshot.editorialBriefHash,
+            }
+          : {}),
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
       },

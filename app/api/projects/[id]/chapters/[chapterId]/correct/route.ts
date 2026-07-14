@@ -11,6 +11,7 @@ import { generateCorrection } from "@/trigger/generate-correction";
 import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeholders";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -105,6 +106,13 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Correction inherits editorial snapshot from the critique generation metadata.
+  // We do NOT capture the current approved brief — the correction must reference
+  // the same brief version that was used for the critique it responds to.
+  const critiqueSnapshot = snapshotFromGenerationMetadata(
+    (critiqueGen.generationMetadata as Record<string, unknown> | null) ?? {},
+  );
 
   // Determine what content to correct: use provided content or fetch latest assembly
   let contentToCorrect: string;
@@ -212,6 +220,7 @@ export async function POST(
           // When promptId === "inline", future reviewers need to know
           // what correction instructions were actually sent to the LLM.
           ...(correctorPrompt && { promptContent: correctorPrompt.content }),
+          ...(critiqueSnapshot ? metadataFromSnapshot(critiqueSnapshot) : {}),
         },
       })
       .returning();
@@ -250,6 +259,13 @@ export async function POST(
         contentToCorrect,
         critiqueContent: critiqueGen.assembledContent!,
         projectTopic: project.topic,
+        ...(critiqueSnapshot
+          ? {
+              editorialBriefId: critiqueSnapshot.editorialBriefId,
+              editorialBriefVersion: critiqueSnapshot.editorialBriefVersion,
+              editorialBriefHash: critiqueSnapshot.editorialBriefHash,
+            }
+          : {}),
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
       },

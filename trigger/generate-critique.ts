@@ -6,6 +6,7 @@ import { generateChapterCritique } from "@/lib/generate";
 import { getChapterPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope } from "@/lib/editorial-brief/context";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -27,11 +28,15 @@ export const generateCritique = task({
     critiquePrompt: { content: string; userPrompt: string | null };
     contentToCritique: string;
     projectTopic: string | null;
+    editorialBriefId?: string;
+    editorialBriefVersion?: number;
+    editorialBriefHash?: string;
     model?: string;
     effort?: "off" | "max" | "xhigh";
   }, { ctx }: { ctx: Context }) => {
     const {
       generationId,
+      projectId,
       chapterId,
       critiquePrompt,
       contentToCritique,
@@ -47,6 +52,20 @@ export const generateCritique = task({
       .where(eq(chapterGenerations.id, generationId))
       .limit(1);
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
+
+    // Resolve editorial brief snapshot from generation metadata.
+    const critGenSnapshot = snapshotFromGenerationMetadata(
+      (gen.generationMetadata as Record<string, unknown> | null) ?? {},
+    );
+
+    let critEditorialBundle: Awaited<ReturnType<typeof loadEditorialBundle>> = null;
+    if (critGenSnapshot) {
+      critEditorialBundle = await loadEditorialBundle({
+        projectId,
+        briefId: critGenSnapshot.editorialBriefId,
+        expectedHash: critGenSnapshot.editorialBriefHash,
+      });
+    }
 
     // Only "completed" is truly terminal. "failed" is NOT terminal —
     // transient LLM/provider errors should retry. See generate-chapter.ts.
@@ -118,6 +137,9 @@ export const generateCritique = task({
         model,
         effort,
         projectTopic,
+        editorialContext: critEditorialBundle
+          ? renderEditorialScope(critEditorialBundle, { scope: "critique", chapterId })
+          : null,
         signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       });
 
