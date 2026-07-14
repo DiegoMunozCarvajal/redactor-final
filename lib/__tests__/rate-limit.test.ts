@@ -148,8 +148,6 @@ describe("withProjectLock", () => {
       } else {
         mockUnsafe.mockResolvedValueOnce(undefined);
       }
-    } else {
-      mockUnsafe.mockResolvedValueOnce([{ killed: false }]);
     }
 
     const mockRelease = vi.fn();
@@ -174,39 +172,14 @@ describe("withProjectLock", () => {
   });
 
   it("returns locked=false when lock busy, does not run fn", async () => {
-    const { mockRelease } = setupLockClient(false);
+    const { mockUnsafe, mockRelease } = setupLockClient(false);
     const fn = vi.fn();
 
     const r = await withProjectLock("550e8400-e29b-41d4-a716-446655440002", fn);
 
     expect(r.locked).toBe(false);
     expect(fn).not.toHaveBeenCalled();
-    expect(mockRelease).toHaveBeenCalledOnce();
-  });
-
-  it("recovers an idle stale lock and retries acquisition", async () => {
-    const mockUnsafe = vi
-      .fn()
-      .mockResolvedValueOnce([{ acquired: false }])
-      .mockResolvedValueOnce([{ killed: true }])
-      .mockResolvedValueOnce([{ acquired: true }])
-      .mockResolvedValueOnce(undefined);
-    const mockRelease = vi.fn();
-    vi.mocked(lockClient.reserve).mockResolvedValue({
-      unsafe: mockUnsafe,
-      release: mockRelease,
-    } as unknown as Awaited<ReturnType<typeof lockClient.reserve>>);
-    const fn = vi.fn().mockResolvedValue("recovered");
-
-    const result = await withProjectLock(
-      "550e8400-e29b-41d4-a716-446655440005",
-      fn,
-    );
-
-    expect(result).toEqual({ locked: true, result: "recovered" });
-    expect(fn).toHaveBeenCalledOnce();
-    expect(mockUnsafe).toHaveBeenCalledTimes(4);
-    expect(mockUnsafe.mock.calls[1][0]).toContain("pg_terminate_backend");
+    expect(mockUnsafe).toHaveBeenCalledOnce();
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 

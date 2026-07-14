@@ -70,20 +70,7 @@ export async function withProjectLock<T>(
     );
 
     if (!row.acquired) {
-      // Lock is held by another session. Check if the holder is idle (stale
-      // lock from a crashed process). If idle > 30s, terminate it and retry.
-      const recovered = await recoverStaleLock(reserved, key1, key2);
-      if (recovered) {
-        const [retry] = await reserved.unsafe(
-          `SELECT pg_try_advisory_lock($1::int4, $2::int4) AS acquired`,
-          [key1, key2]
-        );
-        if (!retry.acquired) {
-          return { locked: false };
-        }
-      } else {
-        return { locked: false };
-      }
+      return { locked: false };
     }
 
     try {
@@ -99,32 +86,6 @@ export async function withProjectLock<T>(
   } finally {
     reserved.release();
   }
-}
-
-/**
- * If the advisory lock (key1, key2) is held by a connection that has been idle
- * for >30s, terminate that backend. Returns true if the lock was recovered
- * (stale connection killed), false if the holder is still active.
- */
-async function recoverStaleLock(
-  client: { unsafe: (query: string, params?: any[]) => Promise<Record<string, unknown>[]> },
-  key1: number,
-  key2: number,
-): Promise<boolean> {
-  const STALE_IDLE_SEC = 30;
-  const [row] = await client.unsafe(
-    `SELECT pg_terminate_backend(l.pid) AS killed
-     FROM pg_locks l
-     JOIN pg_stat_activity a ON a.pid = l.pid
-     WHERE l.locktype = 'advisory'
-       AND l.classid = $1::int4
-       AND l.objid = $2::int4
-       AND a.state = 'idle'
-       AND a.state_change < now() - make_interval(secs => $3::int)
-     LIMIT 1`,
-    [key1, key2, STALE_IDLE_SEC]
-  );
-  return row?.killed === true;
 }
 
 export async function checkProjectRateLimit(
