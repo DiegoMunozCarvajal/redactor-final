@@ -41,6 +41,6 @@ export function buildPlaceholderFillMetadata(params: {
     ...(params.editorialBriefVersion ? { editorialBriefVersion: params.editorialBriefVersion } : {}),
     ...(params.editorialBriefHash ? { editorialBriefHash: params.editorialBriefHash } : {}),
     ...(params.evidenceQuery ? { evidenceQuery: params.evidenceQuery } : {}),
-    ...(params.evidenceSourceIds ? { evidenceSourceIds: params.evidenceSourceIds } : {}),
+    ...(params.evidenceSourceIds && params.evidenceSourceIds.length > 0 ? { evidenceSourceIds: params.evidenceSourceIds } : {}),
   };
 }

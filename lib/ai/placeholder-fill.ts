@@ -651,12 +651,19 @@ export async function fillOnePlaceholder(
     }
 
     if (provider === "rag") {
+      // Required evidence with no approved sources → fail early with clear message
+      if (isRequiredEvidence && (!evidenceSourceIds || evidenceSourceIds.length === 0)) {
+        throw new RequiredEvidenceMissingError(
+          `Required evidence "${ph.name}" has no approved sources in the editorial brief`,
+        );
+      }
+
       const ragOptions: { topK: number; tokenBudget: number; sourceIds?: string[] } = {
         topK: 5,
         tokenBudget: 15000,
       };
       // When evidence source IDs are available, restrict RAG to approved sources only
-      if (evidenceSourceIds) {
+      if (evidenceSourceIds && evidenceSourceIds.length > 0) {
         ragOptions.sourceIds = evidenceSourceIds;
       }
       const result = await retrieveContext(query, projectId, ragOptions);
