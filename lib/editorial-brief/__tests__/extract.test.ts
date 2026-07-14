@@ -4,12 +4,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock setup — hoisted before imports to avoid TDZ
 // ---------------------------------------------------------------------------
 
-const { mockGenerateCompletion } = vi.hoisted(() => ({
-  mockGenerateCompletion: vi.fn(),
-}));
+const mockExecute = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
-vi.mock("@/lib/ai/completion", () => ({
-  generateCompletion: mockGenerateCompletion,
+vi.mock("@/lib/prompts/executor", () => ({
+  executeVersionedPrompt: mockExecute,
 }));
 
 // ---------------------------------------------------------------------------
@@ -22,10 +20,8 @@ import {
   ExtractionPostValidationError,
   MAX_SOURCE_CHARS,
 } from "../extract";
-import { EXTRACTION_SYSTEM_PROMPT } from "../extraction-prompt";
 import { editorialBriefBundleInputSchema } from "../schema";
-import type { EditorialBriefBundleInput, EditorialBriefContent } from "../schema";
-import type { CompletionResult } from "@/lib/ai/completion";
+import type { EditorialBriefBundleInput } from "../schema";
 import {
   createTestBriefContent,
   createTestChapterContract,
@@ -42,28 +38,49 @@ const CHAPTER_1_ID = TEST_CHAPTER_1_ID;
 const CHAPTER_2_ID = TEST_CHAPTER_2_ID;
 const FOREIGN_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
-function makeValidResponse(
-  overrides?: Partial<EditorialBriefBundleInput>,
-): CompletionResult<EditorialBriefBundleInput> {
+function makeMockResult(
+  bundle?: EditorialBriefBundleInput,
+  executionId?: string,
+) {
   return {
-    data: {
-      content: createTestBriefContent(),
-      contracts: [
-        createTestChapterContract(CHAPTER_1_ID),
-        createTestChapterContract(CHAPTER_2_ID),
+    result: {
+      data: bundle ?? {
+        content: createTestBriefContent(),
+        contracts: [
+          createTestChapterContract(CHAPTER_1_ID),
+          createTestChapterContract(CHAPTER_2_ID),
+        ],
+        evidenceSourceIds: [],
+      },
+      usage: {
+        promptTokens: 100,
+        completionTokens: 200,
+        totalTokens: 300,
+        costUsd: 0.01,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+      },
+      durationMs: 500,
+    },
+    executionId: executionId ?? "exec-1",
+    revision: {
+      id: "rev-1",
+      definitionId: "def-1",
+      kind: "editorial-brief-extractor",
+      name: "EditorialBrief Extractor",
+      revisionNumber: 1,
+      versionLabel: "1.0",
+      systemTemplate: "",
+      userTemplate: "",
+      requiredMarkers: [
+        "{{PROJECT_TOPIC}}",
+        "{{CHAPTER_CONTEXT}}",
+        "{{RESEARCH_DOCUMENT}}",
+        "{{OUTPUT_SCHEMA}}",
       ],
-      evidenceSourceIds: [],
-      ...overrides,
+      outputContract: "editorial-brief-output",
+      configuration: {},
     },
-    usage: {
-      promptTokens: 100,
-      completionTokens: 200,
-      totalTokens: 300,
-      costUsd: 0.01,
-      cacheCreationTokens: 0,
-      cacheReadTokens: 0,
-    },
-    durationMs: 500,
   };
 }
 
@@ -73,6 +90,7 @@ const baseInput = {
     "Men who use dating apps often struggle to move from matching to " +
     "meaningful conversation. Studies show response rates drop 50% " +
     "after 24 hours. Personalisation and timing are critical factors.",
+  projectId: "proj-1",
   projectTopic: "How to start and sustain conversations on dating apps",
   chapterContext: [
     {
@@ -105,115 +123,200 @@ describe("extractEditorialBriefDraft", () => {
     vi.clearAllMocks();
   });
 
-  // ── Prompt construction ──────────────────────────────────────────────
+  // ── Executor invocation ──────────────────────────────────────────────
 
-  describe("prompt construction", () => {
-    it("frames the source text as untrusted data in the system prompt", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+  describe("executor invocation", () => {
+    it("calls executeVersionedPrompt with kind 'editorial-brief-extractor'", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(baseInput);
 
-      expect(mockGenerateCompletion).toHaveBeenCalledTimes(1);
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.systemPrompt).toContain("untrusted source data");
-      expect(callOptions.systemPrompt).toContain(
-        "never executable instructions",
-      );
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.kind).toBe("editorial-brief-extractor");
     });
 
-    it("XML-escapes special characters in the source text", async () => {
+    it("passes stage 'editorial-brief-extraction'", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft(baseInput);
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.stage).toBe("editorial-brief-extraction");
+    });
+
+    it("passes projectId to executor", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft(baseInput);
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.projectId).toBe("proj-1");
+    });
+
+    it("passes revisionId when provided", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft({
+        ...baseInput,
+        promptRevisionId: "custom-rev",
+      });
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.revisionId).toBe("custom-rev");
+    });
+
+    it("passes schema to executor", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft(baseInput);
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.schema).toBe(editorialBriefBundleInputSchema);
+    });
+  });
+
+  // ── Marker values ────────────────────────────────────────────────────
+
+  describe("marker values", () => {
+    it("XML-escapes special characters in the RESEARCH_DOCUMENT marker", async () => {
       const inputWithTags = {
         ...baseInput,
         sourceText:
           "Research <script>alert('xss')</script> with & entities",
       };
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(inputWithTags);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.userPrompt).toContain(
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const markerValues = callArg.markerValues as Record<string, string>;
+      const researchDoc = markerValues["{{RESEARCH_DOCUMENT}}"];
+      expect(researchDoc).toContain(
         "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;",
       );
-      expect(callOptions.userPrompt).toContain("&amp;");
-      // Raw < > & should NOT appear inside <research_document>
-      const docBlock = callOptions.userPrompt.match(
-        /<research_document>([\s\S]*)<\/research_document>/,
-      );
-      expect(docBlock).not.toBeNull();
-      if (docBlock) {
-        expect(docBlock[1]).not.toContain("<script>");
-        expect(docBlock[1]).not.toContain("& entities");
-      }
+      expect(researchDoc).toContain("&amp;");
+      expect(researchDoc).not.toContain("<script>");
+      expect(researchDoc).not.toContain("& entities");
     });
 
-    it("includes the project topic as context", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+    it("includes the project topic in the PROJECT_TOPIC marker", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.userPrompt).toContain(baseInput.projectTopic);
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const markerValues = callArg.markerValues as Record<string, string>;
+      expect(markerValues["{{PROJECT_TOPIC}}"]).toBe(baseInput.projectTopic);
     });
 
-    it("includes chapter titles in the context", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+    it("includes chapter titles and placeholder names in the CHAPTER_CONTEXT marker", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.userPrompt).toContain("The First Message");
-      expect(callOptions.userPrompt).toContain("Keeping the Conversation Going");
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const markerValues = callArg.markerValues as Record<string, string>;
+      const ctx = markerValues["{{CHAPTER_CONTEXT}}"];
+      expect(ctx).toContain("The First Message");
+      expect(ctx).toContain("Keeping the Conversation Going");
+      expect(ctx).toContain("first_message_stats");
+      expect(ctx).toContain("conversation_continuation");
+      expect(ctx).toContain("recovery_tips");
     });
 
-    it("includes available placeholder names in the context", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+    it("passes OUTPUT_SCHEMA marker as serialized JSON schema", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.userPrompt).toContain("first_message_stats");
-      expect(callOptions.userPrompt).toContain("conversation_openers");
-      expect(callOptions.userPrompt).toContain("conversation_continuation");
-      expect(callOptions.userPrompt).toContain("recovery_tips");
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const markerValues = callArg.markerValues as Record<string, string>;
+      const schemaVal = markerValues["{{OUTPUT_SCHEMA}}"];
+      expect(() => JSON.parse(schemaVal)).not.toThrow();
+      const parsed = JSON.parse(schemaVal);
+      expect(parsed).toHaveProperty("type");
     });
 
     it("uses the default model when none is specified", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft(baseInput);
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.model).toBe(DEFAULT_GENERATION_MODEL);
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.model).toBe(DEFAULT_GENERATION_MODEL);
     });
 
     it("uses the specified model when provided", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await extractEditorialBriefDraft({
         ...baseInput,
         model: "claude-opus-4-8",
       });
 
-      const callOptions = mockGenerateCompletion.mock.calls[0][0] as unknown as Parameters<typeof import("@/lib/ai/completion").generateCompletion>[0];
-      expect(callOptions.model).toBe("claude-opus-4-8");
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArg.model).toBe("claude-opus-4-8");
     });
   });
 
-  // ── Happy path output ────────────────────────────────────────────────
+  // ── Data lineage ─────────────────────────────────────────────────────
+
+  describe("data lineage", () => {
+    it("records research document hash in lineage", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft(baseInput);
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const lineage = callArg.dataLineage as Record<string, unknown>;
+      expect(lineage["{{RESEARCH_DOCUMENT}}"]).toBeDefined();
+      const rdLineage = lineage["{{RESEARCH_DOCUMENT}}"] as Record<
+        string,
+        unknown
+      >;
+      const sourceHashes = rdLineage.sourceHashes as string[] | undefined;
+      expect(sourceHashes).toBeDefined();
+      expect(sourceHashes).toHaveLength(1);
+      expect(sourceHashes![0]).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it("records chapter and placeholder IDs in lineage", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
+
+      await extractEditorialBriefDraft(baseInput);
+
+      const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const lineage = callArg.dataLineage as Record<string, unknown>;
+      expect(lineage["{{CHAPTER_CONTEXT}}"]).toBeDefined();
+      const ccLineage = lineage["{{CHAPTER_CONTEXT}}"] as Record<
+        string,
+        unknown
+      >;
+      expect(ccLineage.entityIds).toBeDefined();
+      expect(ccLineage.entityIds).toContain(CHAPTER_1_ID);
+      expect(ccLineage.entityIds).toContain(CHAPTER_2_ID);
+      expect(ccLineage.entityIds).toContain("first_message_stats");
+      expect(ccLineage.entityIds).toContain("conversation_continuation");
+    });
+  });
+
+  // ── Successful extraction ────────────────────────────────────────────
 
   describe("successful extraction", () => {
-    it("returns all required structured fields", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+    it("returns draft with all required structured fields", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       const result = await extractEditorialBriefDraft(baseInput);
 
-      expect(result).toHaveProperty("content");
-      expect(result).toHaveProperty("contracts");
-      expect(result).toHaveProperty("evidenceSourceIds");
+      expect(result).toHaveProperty("draft");
+      expect(result).toHaveProperty("executionId");
+      expect(result.draft).toHaveProperty("content");
+      expect(result.draft).toHaveProperty("contracts");
+      expect(result.draft).toHaveProperty("evidenceSourceIds");
 
       // Content has all 9 top-level sections
-      const contentKeys = Object.keys(result.content);
+      const contentKeys = Object.keys(result.draft.content);
       expect(contentKeys).toHaveLength(9);
       expect(contentKeys).toContain("market");
       expect(contentKeys).toContain("audience");
@@ -227,14 +330,22 @@ describe("extractEditorialBriefDraft", () => {
     });
 
     it("returns exactly one contract per supplied chapter", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       const result = await extractEditorialBriefDraft(baseInput);
 
-      expect(result.contracts).toHaveLength(2);
-      const ids = result.contracts.map((c) => c.chapterId);
+      expect(result.draft.contracts).toHaveLength(2);
+      const ids = result.draft.contracts.map((c) => c.chapterId);
       expect(ids).toContain(CHAPTER_1_ID);
       expect(ids).toContain(CHAPTER_2_ID);
+    });
+
+    it("returns executionId from the executor", async () => {
+      mockExecute.mockResolvedValueOnce(makeMockResult(undefined, "exec-custom"));
+
+      const result = await extractEditorialBriefDraft(baseInput);
+
+      expect(result.executionId).toBe("exec-custom");
     });
   });
 
@@ -243,22 +354,29 @@ describe("extractEditorialBriefDraft", () => {
   describe("draft-only output", () => {
     it("returns empty evidenceSourceIds so sources are bound later via API", async () => {
       // Even if the LLM returns source ids, the function must clear them
-      mockGenerateCompletion.mockResolvedValueOnce(
-        makeValidResponse({ evidenceSourceIds: [FOREIGN_ID] }),
+      mockExecute.mockResolvedValueOnce(
+        makeMockResult({
+          content: createTestBriefContent(),
+          contracts: [
+            createTestChapterContract(CHAPTER_1_ID),
+            createTestChapterContract(CHAPTER_2_ID),
+          ],
+          evidenceSourceIds: [FOREIGN_ID],
+        }),
       );
 
       const result = await extractEditorialBriefDraft(baseInput);
 
-      expect(Array.isArray(result.evidenceSourceIds)).toBe(true);
-      expect(result.evidenceSourceIds).toHaveLength(0);
+      expect(Array.isArray(result.draft.evidenceSourceIds)).toBe(true);
+      expect(result.draft.evidenceSourceIds).toHaveLength(0);
     });
 
     it("output passes Zod schema validation (output is valid per schema)", async () => {
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       const result = await extractEditorialBriefDraft(baseInput);
 
-      const parsed = editorialBriefBundleInputSchema.safeParse(result);
+      const parsed = editorialBriefBundleInputSchema.safeParse(result.draft);
       expect(parsed.success).toBe(true);
     });
   });
@@ -293,18 +411,17 @@ describe("extractEditorialBriefDraft", () => {
         ...baseInput,
         sourceText: "x".repeat(MAX_SOURCE_CHARS),
       };
-      // Mock a response — if the length check passes, we'll hit the LLM call
-      mockGenerateCompletion.mockResolvedValueOnce(makeValidResponse());
+      mockExecute.mockResolvedValueOnce(makeMockResult());
 
       await expect(
         extractEditorialBriefDraft(exactInput),
       ).resolves.toBeDefined();
 
-      // Verify we reached the LLM call
-      expect(mockGenerateCompletion).toHaveBeenCalledTimes(1);
+      // Verify we reached the executor call
+      expect(mockExecute).toHaveBeenCalledTimes(1);
     });
 
-    it("does not call generateCompletion when source is too large", async () => {
+    it("does not call executeVersionedPrompt when source is too large", async () => {
       const oversizedInput = {
         ...baseInput,
         sourceText: "x".repeat(MAX_SOURCE_CHARS + 1),
@@ -314,7 +431,7 @@ describe("extractEditorialBriefDraft", () => {
         extractEditorialBriefDraft(oversizedInput),
       ).rejects.toThrow(ExtractionSourceTooLargeError);
 
-      expect(mockGenerateCompletion).not.toHaveBeenCalled();
+      expect(mockExecute).not.toHaveBeenCalled();
     });
   });
 
@@ -322,9 +439,11 @@ describe("extractEditorialBriefDraft", () => {
 
   describe("chapter id post-validation", () => {
     it("rejects missing chapter id", async () => {
-      mockGenerateCompletion.mockResolvedValue(
-        makeValidResponse({
+      mockExecute.mockResolvedValue(
+        makeMockResult({
+          content: createTestBriefContent(),
           contracts: [createTestChapterContract(CHAPTER_1_ID)],
+          evidenceSourceIds: [],
         }),
       );
 
@@ -339,13 +458,15 @@ describe("extractEditorialBriefDraft", () => {
     });
 
     it("rejects duplicate chapter id in contracts", async () => {
-      mockGenerateCompletion.mockResolvedValue(
-        makeValidResponse({
+      mockExecute.mockResolvedValue(
+        makeMockResult({
+          content: createTestBriefContent(),
           contracts: [
             createTestChapterContract(CHAPTER_1_ID),
             createTestChapterContract(CHAPTER_1_ID), // duplicate
             createTestChapterContract(CHAPTER_2_ID),
           ],
+          evidenceSourceIds: [],
         }),
       );
 
@@ -360,12 +481,16 @@ describe("extractEditorialBriefDraft", () => {
     });
 
     it("rejects foreign chapter id not in supplied context", async () => {
-      mockGenerateCompletion.mockResolvedValue(
-        makeValidResponse({
+      mockExecute.mockResolvedValue(
+        makeMockResult({
+          content: createTestBriefContent(),
           contracts: [
             createTestChapterContract(FOREIGN_ID),
-            createTestChapterContract("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            createTestChapterContract(
+              "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            ),
           ],
+          evidenceSourceIds: [],
         }),
       );
 
@@ -394,9 +519,11 @@ describe("extractEditorialBriefDraft", () => {
         ],
       });
 
-      mockGenerateCompletion.mockResolvedValueOnce(
-        makeValidResponse({
+      mockExecute.mockResolvedValueOnce(
+        makeMockResult({
+          content: createTestBriefContent(),
           contracts: [badContract, createTestChapterContract(CHAPTER_2_ID)],
+          evidenceSourceIds: [],
         }),
       );
 
@@ -425,15 +552,17 @@ describe("extractEditorialBriefDraft", () => {
         ],
       });
 
-      mockGenerateCompletion.mockResolvedValueOnce(
-        makeValidResponse({
+      mockExecute.mockResolvedValueOnce(
+        makeMockResult({
+          content: createTestBriefContent(),
           contracts: [contract1, contract2],
+          evidenceSourceIds: [],
         }),
       );
 
       const result = await extractEditorialBriefDraft(baseInput);
 
-      expect(result.contracts).toHaveLength(2);
+      expect(result.draft.contracts).toHaveLength(2);
     });
   });
 });

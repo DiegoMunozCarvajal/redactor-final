@@ -127,6 +127,7 @@ export async function POST(
     // Extract via LLM
     const extracted = await extractEditorialBriefDraft({
       sourceText: source.extractedText,
+      projectId,
       projectTopic: project.topic ?? "",
       chapterContext,
       model: body.model,
@@ -135,8 +136,8 @@ export async function POST(
     // Create draft from extraction result, binding the extracted source
     const brief = await createEditorialBriefDraft({
       projectId,
-      content: extracted.content,
-      contracts: extracted.contracts,
+      content: extracted.draft.content,
+      contracts: extracted.draft.contracts,
       evidenceSourceIds: [source.id],
     });
 
@@ -148,7 +149,10 @@ export async function POST(
       metadata: { projectId, sourceId: body.sourceId, version: brief.version },
     });
 
-    return NextResponse.json(brief, { status: 201 });
+    return NextResponse.json(
+      { ...brief, executionId: extracted.executionId },
+      { status: 201 },
+    );
   } catch (err) {
     // Forward source-text-size errors as 400 (they are payload-size issues,
     // not repository conflicts) before falling through to the shared mapper.
