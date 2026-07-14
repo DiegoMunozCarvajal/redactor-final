@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, chapterPlaceholders, generationSystemPrompts } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
-import { UUID_RE } from "@/lib/constants";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 
 export async function GET(
@@ -124,7 +123,21 @@ export async function PATCH(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { title, subtitle, topic, generationSystemPromptId } = body;
+  const { title, subtitle, topic, generationSystemPromptId, assemblyPromptId } = body;
+
+  // Legacy field rejection — these must now be configured through prompt registry bindings.
+  if (generationSystemPromptId !== undefined) {
+    return NextResponse.json(
+      { error: "generationSystemPromptId is deprecated. Use the prompt registry API to set a project binding for kind 'generation-system'." },
+      { status: 400 },
+    );
+  }
+  if (assemblyPromptId !== undefined) {
+    return NextResponse.json(
+      { error: "assemblyPromptId is deprecated. Use the prompt registry API to set a project binding for kind 'assembly'." },
+      { status: 400 },
+    );
+  }
 
   // Server-side validation
   if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
@@ -136,22 +149,6 @@ export async function PATCH(
   if (subtitle !== undefined && (typeof subtitle !== "string" || subtitle.length > 300)) {
     return NextResponse.json({ error: "subtitle too long" }, { status: 400 });
   }
-  if (generationSystemPromptId !== undefined) {
-    if (generationSystemPromptId !== null) {
-      if (typeof generationSystemPromptId !== "string" || !UUID_RE.test(generationSystemPromptId)) {
-        return NextResponse.json({ error: "invalid generationSystemPromptId" }, { status: 400 });
-      }
-      // Verify FK exists
-      const [prompt] = await db
-        .select({ id: generationSystemPrompts.id })
-        .from(generationSystemPrompts)
-        .where(eq(generationSystemPrompts.id, generationSystemPromptId))
-        .limit(1);
-      if (!prompt) {
-        return NextResponse.json({ error: "generationSystemPromptId not found" }, { status: 400 });
-      }
-    }
-  }
 
   // Update project and sync {tema} placeholder in a single transaction
   // so topic change and placeholder sync are atomic
@@ -162,7 +159,6 @@ export async function PATCH(
         ...(title !== undefined && { title }),
         ...(subtitle !== undefined && { subtitle }),
         ...(topic !== undefined && { topic }),
-        ...(generationSystemPromptId !== undefined && { generationSystemPromptId }),
       })
       .where(eq(projects.id, id))
       .returning();
