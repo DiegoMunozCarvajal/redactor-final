@@ -89,7 +89,7 @@ export async function PATCH(
   // stay completed — manual override would hide valid content from assembly views.
   const whereConditions = [eq(chapterGenerations.id, id)];
   if (status === "failed") {
-    whereConditions.push(inArray(chapterGenerations.status, ["pending", "generating", "assembling"]));
+    whereConditions.push(inArray(chapterGenerations.status, ["pending", "generating", "planning", "assembling"]));
   }
 
   const [updated] = await db

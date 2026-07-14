@@ -6,15 +6,16 @@ import {
   projects,
   chapters,
   prompts,
-  promptLibrary,
 } from "@/lib/db/schema";
 import { eq, asc, and, inArray } from "drizzle-orm";
-import { generatePromptContent, generateChapterAssemblyHierarchical, generateChapterAssemblySequential, generateChapterAssemblyHalves, type PromptLike, type AssemblyAlgorithm } from "@/lib/generate";
-import { getChapterPlaceholders, extractPlaceholders, syncChapterPlaceholders } from "@/lib/placeholders";
+import { generatePromptContent } from "@/lib/generate";
+import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope } from "@/lib/editorial-brief/context";
+import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialScope, renderEditorialData } from "@/lib/editorial-brief/context";
+import { runAssemblyPlanner } from "@/lib/assembly/planner";
+import { runAssemblyAssembler } from "@/lib/assembly/assembler";
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -33,12 +34,8 @@ export const generateChapter = task({
       editorialBriefHash?: string;
       model?: string;
       effort?: "off" | "max" | "xhigh";
-      skipAssembly?: boolean;
-      assemblyAlgorithm?: AssemblyAlgorithm;
-      fragmentIds?: string[];
-      assemblyPromptId?: string;
     }, { ctx }: { ctx: Context }) => {
-    const { generationId, projectId, model, effort, skipAssembly, assemblyAlgorithm, fragmentIds, assemblyPromptId: payloadAssemblyPromptId } = payload;
+    const { generationId, projectId, model, effort } = payload;
 
     // Load generation
     const [gen] = await db
@@ -49,9 +46,6 @@ export const generateChapter = task({
     if (!gen) throw new Error(`ChapterGeneration ${generationId} not found`);
 
     // Idempotency guard — skip if already in a terminal state.
-    // "failed" is NOT terminal — retries recover from transient LLM errors.
-    // Blocking on "failed" would defeat Trigger.dev retries entirely
-    // (catch sets failed → next retry sees failed → returns).
     const terminalStatuses = ["completed", "awaiting_assembly"];
     if (terminalStatuses.includes(gen.status)) {
       return;
@@ -62,7 +56,7 @@ export const generateChapter = task({
     if (gen.status === "failed") {
       const maxAttempts = ctx.run.maxAttempts ?? 3;
       if (ctx.attempt.number >= maxAttempts) {
-        return; // Final attempt already failed — skip
+        return;
       }
       await db
         .update(chapterGenerations)
@@ -70,11 +64,15 @@ export const generateChapter = task({
         .where(eq(chapterGenerations.id, generationId));
       gen.status = "pending";
     }
+
     // If stale (worker likely died), recover. If fresh, guard against retry race.
-    if (gen.status === "generating" || gen.status === "assembling") {
+    if (
+      gen.status === "generating" ||
+      gen.status === "planning" ||
+      gen.status === "assembling"
+    ) {
       const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
       if (gen.createdAt && new Date(gen.createdAt) > staleCutoff) {
-        // Fresh — likely a retry racing with the first attempt
         return;
       }
       // Stale — previous attempt died; reset to pending and recover below
@@ -85,16 +83,11 @@ export const generateChapter = task({
       gen.status = "pending";
     }
 
-    // The generation_status enum has exactly 6 values. All are handled above.
-    // If execution reaches here, the DB enum acquired a new value without a
-    // corresponding code update — fail loudly rather than proceeding blindly.
-    // Must set failed BEFORE throwing: this code is outside the try/catch below
-    // so the catch block won't fire. On retry, the "failed" handler above
-    // will reset to "pending" if attempts remain, or return if final attempt.
+    // Guard against unrecognized status values
     if (gen.status !== "pending") {
       const msg =
         `Unrecognized generation status "${gen.status}" for ${generationId} — ` +
-        `expected one of: pending, generating, assembling, completed, failed, awaiting_assembly`;
+        `expected one of: pending, generating, planning, assembling, completed, failed, awaiting_assembly`;
       await db
         .update(chapterGenerations)
         .set({ status: "failed", error: msg })
@@ -114,7 +107,6 @@ export const generateChapter = task({
       )
       .returning({ id: chapterGenerations.id });
     if (!updated) {
-      // Another process claimed this generation — let it finish
       return;
     }
 
@@ -144,11 +136,7 @@ export const generateChapter = task({
       .limit(1);
     if (!chapter) throw new Error(`Chapter ${gen.chapterId} not found`);
 
-    // Resolve editorial brief snapshot from generation metadata.
-    // The API route captures the snapshot before the advisory lock and stores it
-    // in generationMetadata. We reconstruct the snapshot here and load the exact
-    // bundle that was current at generation time (using expectedHash to detect
-    // version drift between queuing and execution).
+    // Resolve editorial brief snapshot from generation metadata
     const genSnapshot = snapshotFromGenerationMetadata(
       (gen.generationMetadata as Record<string, unknown> | null) ?? {},
     );
@@ -188,84 +176,18 @@ export const generateChapter = task({
     const contentPrompts = promptList.filter(
       (p) => !p.isAssembly && !p.isCritique && !p.isCorrector,
     );
-    const assemblyPromptRow = promptList.find((p) => p.isAssembly);
-    let assemblyPrompt: PromptLike | undefined = assemblyPromptRow;
-    let assemblyMetadata:
-      | {
-          promptId?: string;
-          promptTitle?: string;
-          promptSource?: string;
-        }
-      | undefined;
-    if (assemblyPromptRow) {
-      assemblyMetadata = {
-        promptId: assemblyPromptRow.id,
-        promptTitle: assemblyPromptRow.title,
-        promptSource: "chapter",
-      };
-    }
 
-    // Resolve assembly prompt with priority: payload > project > chapter
-    const effectiveAssemblyPromptId = payloadAssemblyPromptId ?? project.assemblyPromptId;
-    if (effectiveAssemblyPromptId) {
-      const [globalAp] = await db
-        .select()
-        .from(promptLibrary)
-        .where(and(
-          eq(promptLibrary.id, effectiveAssemblyPromptId),
-          eq(promptLibrary.category, 'assembly'),
-        ))
-        .limit(1);
-      if (globalAp) {
-        assemblyPrompt = {
-          content: globalAp.content,
-          userPrompt: globalAp.userPrompt,
-        };
-        assemblyMetadata = {
-          promptId: globalAp.id,
-          promptTitle: globalAp.name,
-          promptSource: "library",
-        };
-        // Sync placeholders from assembly + content prompts to chapterPlaceholders.
-        // Using only assembly prompt contents causes syncChapterPlaceholders to
-        // delete placeholders only referenced by content prompts (e.g., {autor}
-        // appears in content but not in assembly → gets dropped on next sync).
-        const apContents = [globalAp.content, globalAp.userPrompt].filter(
-          (s): s is string => typeof s === "string" && s.length > 0,
-        );
-        const cpContents = contentPrompts.flatMap((p) =>
-          [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
-        );
-        const allContents = [...cpContents, ...apContents];
-        if (allContents.length > 0) {
-          await syncChapterPlaceholders(gen.chapterId, allContents, project.topic);
-        }
-      }
-    }
-
-    const fragmentContents: { title: string; content: string }[] = [];
+    const fragmentContents: { id: string; title: string; content: string }[] = [];
 
     try {
       // Load placeholders
       const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
-      // Mandatory placeholder validation: all {name} tokens in content AND assembly
-      // prompts must have definitions before generating fragments.
-      // In assembly-only mode, content prompts are irrelevant — only validate assembly.
-      const contentPromptStrings = fragmentIds?.length
-        ? []
-        : contentPrompts.flatMap((p) =>
-            [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
-          );
-      const assemblyPromptStrings = assemblyPrompt
-        ? [assemblyPrompt.content, assemblyPrompt.userPrompt].filter(
-            (s): s is string => typeof s === "string" && s.length > 0,
-          )
-        : [];
-      const requiredTokens = extractPlaceholders([
-        ...contentPromptStrings,
-        ...assemblyPromptStrings,
-      ]);
+      // Mandatory placeholder validation
+      const contentPromptStrings = contentPrompts.flatMap((p) =>
+        [p.content, p.userPrompt].filter((s): s is string => typeof s === "string" && s.length > 0),
+      );
+      const requiredTokens = extractPlaceholders(contentPromptStrings);
       const missingPlaceholders = requiredTokens.filter(
         (name) => !(name in placeholders),
       );
@@ -280,141 +202,63 @@ export const generateChapter = task({
         throw new Error(msg);
       }
 
-      if (fragmentIds && fragmentIds.length > 0) {
-        // Assembly-only mode: use pre-selected fragments, skip content generation.
-        // Transition generating → assembling immediately.
-        await db
-          .update(chapterGenerations)
-          .set({ status: "assembling" })
-          .where(eq(chapterGenerations.id, generationId));
-
-        const selectedFragments = await db
-          .select({
-            id: fragments.id,
-            content: fragments.content,
-            position: fragments.position,
-            promptTitle: prompts.title,
-          })
-          .from(fragments)
-          .leftJoin(
-            prompts,
-            eq(fragments.projectPromptId, prompts.id),
-          )
-          .where(inArray(fragments.id, fragmentIds))
-          .orderBy(asc(fragments.position));
-
-        if (selectedFragments.length !== fragmentIds.length) {
-          throw new Error(
-            `Some fragments not found. Expected ${fragmentIds.length}, found ${selectedFragments.length}.`,
-          );
-        }
-
-        for (const f of selectedFragments) {
-          fragmentContents.push({
-            title: (f.promptTitle ?? "Fragment") as string,
-            content: f.content ?? "",
+      // ── Phase 1: Generate content fragments ──────────────────────────
+      const PARALLEL_FRAGMENTS = 3;
+      const results = await runSettledWithConcurrency(
+        contentPrompts,
+        PARALLEL_FRAGMENTS,
+        async (prompt) => {
+          const result = await generatePromptContent({
+            prompt,
+            placeholders,
+            projectTopic: project.topic,
+            projectId,
+            editorialContext: editorialBundle
+              ? renderEditorialScope(editorialBundle, { scope: "fragment", chapterId: gen.chapterId })
+              : null,
+            ...(model ? { model } : {}),
+            ...(effort !== undefined ? { effort } : {}),
           });
-        }
-      } else {
-        // Generate content fragments in parallel with bounded concurrency.
-        // Each fragment is independent — no shared state beyond the DB insert.
-        const PARALLEL_FRAGMENTS = 3;
-        const results = await runSettledWithConcurrency(
-          contentPrompts,
-          PARALLEL_FRAGMENTS,
-          async (prompt) => {
-            const result = await generatePromptContent({
-              prompt,
-              placeholders,
-              projectTopic: project.topic,
-              projectId,
-              editorialContext: editorialBundle
-                ? renderEditorialScope(editorialBundle, { scope: "fragment", chapterId: gen.chapterId })
-                : null,
-              ...(model ? { model } : {}),
-              ...(effort !== undefined ? { effort } : {}),
+
+          await db
+            .insert(fragments)
+            .values({
+              chapterGenerationId: generationId,
+              projectPromptId: prompt.id,
+              position: prompt.position,
+              content: result.text,
+              modelUsed: result.model,
+              tokensUsed:
+                (result.usage?.inputTokens ?? 0) +
+                (result.usage?.outputTokens ?? 0),
+              metadata: {
+                provider: result.provider,
+                ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
+                ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
+                ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
+                ...(result.durationMs ? { durationMs: result.durationMs } : {}),
+              },
             });
 
-            await db
-              .insert(fragments)
-              .values({
-                chapterGenerationId: generationId,
-                projectPromptId: prompt.id,
-                position: prompt.position,
-                content: result.text,
-                modelUsed: result.model,
-                tokensUsed:
-                  (result.usage?.inputTokens ?? 0) +
-                  (result.usage?.outputTokens ?? 0),
-                metadata: {
-                  provider: result.provider,
-                  ...(result.usage?.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
-                  ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
-                  ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
-                  ...(result.durationMs ? { durationMs: result.durationMs } : {}),
-                },
-              });
+          return {
+            id: prompt.id,
+            title: prompt.title,
+            content: result.text,
+          };
+        },
+      );
 
-            return {
-              title: prompt.title,
-              content: result.text,
-            };
-          },
-        );
-
-        // Preserve original order — results array matches input array index
-        for (let i = 0; i < results.length; i++) {
-          const r = results[i];
-          if (r.status === "fulfilled") {
-            fragmentContents.push(r.value);
-          } else {
-            throw r.reason;
-          }
+      // Preserve original order
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "fulfilled") {
+          fragmentContents.push(r.value);
+        } else {
+          throw r.reason;
         }
-
-        // Transition generating → assembling
-        await db
-          .update(chapterGenerations)
-          .set({ status: "assembling" })
-          .where(eq(chapterGenerations.id, generationId));
       }
 
-      // Assemble chapter (unless skipped)
-      if (assemblyPrompt && fragmentContents.length > 0 && !skipAssembly) {
-        const assemble = assemblyAlgorithm === "sequential"
-          ? generateChapterAssemblySequential
-          : assemblyAlgorithm === "halves"
-            ? generateChapterAssemblyHalves
-            : generateChapterAssemblyHierarchical;
-
-        const assembled = await assemble({
-          assemblyPrompt,
-          fragments: fragmentContents,
-          placeholders,
-          model,
-          effort,
-          projectTopic: project.topic ?? null,
-          editorialContext: editorialBundle
-            ? renderEditorialScope(editorialBundle, { scope: "assembly", chapterId: gen.chapterId })
-            : null,
-        });
-
-        await db
-          .update(chapterGenerations)
-          .set({
-            status: "completed",
-            assembledContent: assembled.text,
-            assemblyMetadata: {
-              algorithm: assemblyAlgorithm ?? "merge-sort",
-              ...assemblyMetadata,
-              model: assembled.model,
-              fragmentCount: fragmentContents.length,
-            },
-            completedAt: new Date(),
-          })
-          .where(eq(chapterGenerations.id, generationId));
-      } else {
-        // No assembly prompt configured — mark as awaiting manual assembly
+      if (fragmentContents.length === 0) {
         await db
           .update(chapterGenerations)
           .set({
@@ -422,23 +266,115 @@ export const generateChapter = task({
             completedAt: new Date(),
           })
           .where(eq(chapterGenerations.id, generationId));
+        return;
       }
+
+      // ── Phase 2: Planning ────────────────────────────────────────────
+      // Transition generating → planning
+      await db
+        .update(chapterGenerations)
+        .set({ status: "planning" })
+        .where(eq(chapterGenerations.id, generationId));
+
+      // Build editorial data context (data-only, no instructions)
+      const editorialData = editorialBundle
+        ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
+        : null;
+
+      // Derive mustCover from chapter contract
+      let mustCover: string[] = [];
+      if (editorialBundle) {
+        const contract = editorialBundle.contracts.find(
+          (c) => c.chapterId === gen.chapterId,
+        );
+        if (contract) {
+          mustCover = contract.mustCover;
+        }
+      }
+
+      const plannerResult = await runAssemblyPlanner({
+        projectId,
+        model: model ?? "claude-sonnet-4-20250514",
+        editorialContext: editorialData ?? "",
+        fragments: fragmentContents.map((f) => ({
+          id: f.id,
+          title: f.title,
+          content: f.content,
+        })),
+        validationContext: {
+          fragmentIds: fragmentContents.map((f) => f.id),
+          mustCover,
+        },
+        effort,
+      });
+
+      // Store the assembly plan and planning metadata
+      await db
+        .update(chapterGenerations)
+        .set({
+          assemblyPlan: plannerResult.plan as unknown as Record<string, unknown>,
+          planningMetadata: {
+            model: plannerResult.model,
+            tokensUsed: plannerResult.usage.totalTokens,
+            costUsd: plannerResult.usage.costUsd,
+            durationMs: plannerResult.durationMs,
+            plannerExecutionId: plannerResult.executionId,
+            pipeline: "planned-editorial-v1",
+          },
+          plannerPromptRevisionId: null, // resolved at runtime by executeVersionedPrompt
+        })
+        .where(eq(chapterGenerations.id, generationId));
+
+      // ── Phase 3: Assembly ────────────────────────────────────────────
+      // Transition planning → assembling
+      await db
+        .update(chapterGenerations)
+        .set({ status: "assembling" })
+        .where(eq(chapterGenerations.id, generationId));
+
+      const assemblerResult = await runAssemblyAssembler({
+        projectId,
+        model: model ?? "claude-sonnet-4-20250514",
+        editorialContext: editorialData ?? "",
+        plan: plannerResult.plan,
+        fragments: fragmentContents.map((f) => ({
+          id: f.id,
+          title: f.title,
+          content: f.content,
+        })),
+        effort,
+      });
+
+      // Store assembled content
+      await db
+        .update(chapterGenerations)
+        .set({
+          status: "completed",
+          assembledContent: assemblerResult.chapterText,
+          assemblyMetadata: {
+            algorithm: "planned-editorial-v1",
+            model: assemblerResult.model,
+            fragmentCount: fragmentContents.length,
+            plannerExecutionId: plannerResult.executionId,
+            assemblyExecutionId: assemblerResult.executionId,
+            pipeline: "planned-editorial-v1",
+          },
+          completedAt: new Date(),
+        })
+        .where(eq(chapterGenerations.id, generationId));
 
     } catch (err) {
       const message = sanitizeError(err);
       const maxAttempts = ctx.run.maxAttempts ?? 3;
       const isLastAttempt = ctx.attempt.number >= maxAttempts;
 
-      // Prevent orphaned fragments from partial runs (Finding 6).
-      // Best-effort — don't mask the original error if deletion fails.
+      // Prevent orphaned fragments from partial runs
       await db
         .delete(fragments)
         .where(eq(fragments.chapterGenerationId, generationId))
         .catch(() => {});
 
-      // Mark terminal only on last attempt (Finding 10).
-      // Non-final attempts reset to "pending" so Trigger.dev retry
-      // picks up from a clean state rather than seeing "failed".
+      // Mark terminal only on last attempt
       await db
         .update(chapterGenerations)
         .set({ status: isLastAttempt ? "failed" : "pending", error: message })

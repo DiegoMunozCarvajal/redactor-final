@@ -1,4 +1,4 @@
-const IN_FLIGHT_STATUSES = new Set(["pending", "generating", "assembling"]);
+const IN_FLIGHT_STATUSES = new Set(["pending", "generating", "planning", "assembling"]);
 const DEFAULT_STALE_MS = 30 * 60 * 1000;
 
 export interface GenerationStatusState {

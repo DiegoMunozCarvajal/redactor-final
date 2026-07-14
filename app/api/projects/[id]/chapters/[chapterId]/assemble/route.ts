@@ -254,7 +254,7 @@ export async function POST(
     // Clean up stale assembly rows before rate check.
     await cleanupStaleGenerations(projectId, "assembly", {
       chapterId,
-      statuses: ["pending", "generating", "assembling"],
+      statuses: ["pending", "generating", "planning", "assembling"],
     });
 
     // Rate check BEFORE creating our own row — otherwise it self-counts
@@ -311,9 +311,6 @@ export async function POST(
         projectId,
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
-        assemblyAlgorithm,
-        fragmentIds,
-        ...(assemblyPromptId ? { assemblyPromptId } : {}),
         ...(assemblySnapshot
           ? {
               editorialBriefId: assemblySnapshot.editorialBriefId,

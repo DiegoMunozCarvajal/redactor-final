@@ -8,7 +8,6 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
 import { generateChapter } from "@/trigger/generate-chapter";
 import { sanitizeError } from "@/lib/sanitize-error";
-import type { AssemblyAlgorithm } from "@/lib/generate";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 
@@ -49,16 +48,8 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model = body.model as string | undefined;
   const effortRaw = body.effort as string | undefined;
-  const skipAssembly = body.skipAssembly === true;
-  const assemblyAlgorithm: AssemblyAlgorithm = body.assemblyAlgorithm === "sequential"
-    ? "sequential"
-    : body.assemblyAlgorithm === "halves"
-      ? "halves"
-      : "merge-sort";
 
   // Capture editorial bundle snapshot before the advisory lock.
-  // loadEditorialBundle reads from the DB — never hold advisory lock during DB reads
-  // that are not part of the critical section.
   const bundle = await loadEditorialBundle({ projectId });
   const snapshot = bundle ? snapshotFromBundle(bundle) : null;
 
@@ -92,7 +83,7 @@ export async function POST(
         and(
           eq(chapterGenerations.projectId, projectId),
           eq(chapterGenerations.chapterId, chapterId),
-          inArray(chapterGenerations.status, ["pending", "generating", "assembling"]),
+          inArray(chapterGenerations.status, ["pending", "generating", "planning", "assembling"]),
           sql`${chapterGenerations.generationMetadata}->>'type' IS NULL`,
           lt(chapterGenerations.createdAt, staleCutoff),
         ),
@@ -150,8 +141,6 @@ export async function POST(
           : {}),
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
-        skipAssembly,
-        assemblyAlgorithm,
       },
       { idempotencyKey: gen.id },
     );

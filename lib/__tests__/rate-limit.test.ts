@@ -125,8 +125,8 @@ describe("cleanupStaleGenerations", () => {
   });
 
   it("default cleanup covers same statuses as rate limiter checks", () => {
-    const rateLimitStatuses = ["pending", "generating", "assembling"];
-    const cleanupDefaults = ["pending", "generating", "assembling"];
+    const rateLimitStatuses = ["pending", "generating", "planning", "assembling"];
+    const cleanupDefaults = ["pending", "generating", "planning", "assembling"];
 
     for (const status of rateLimitStatuses) {
       expect(cleanupDefaults).toContain(status);

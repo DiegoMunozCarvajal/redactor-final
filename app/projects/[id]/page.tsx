@@ -89,7 +89,7 @@ interface ProjectData {
     const hasActive = project.chapters.some(
       (ch) => {
         const status = ch.latestGeneration?.status;
-        if (status !== "pending" && status !== "generating" && status !== "assembling") return false;
+        if (status !== "pending" && status !== "generating" && status !== "planning" && status !== "assembling") return false;
         // Skip stale — generation was created > 30 min ago, likely crashed.
         const createdAt = ch.latestGeneration?.createdAt;
         if (createdAt && now - new Date(createdAt).getTime() > STALE_MS) return false;

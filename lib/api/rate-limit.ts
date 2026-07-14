@@ -20,14 +20,14 @@ export async function cleanupStaleGenerations(
   type: string,
   opts?: {
     chapterId?: string;
-    statuses?: Array<"pending" | "generating" | "assembling" | "completed" | "failed" | "awaiting_assembly">;
+    statuses?: Array<"pending" | "generating" | "planning" | "assembling" | "completed" | "failed" | "awaiting_assembly">;
     errorMessage?: string;
   },
 ): Promise<void> {
   const staleCutoff = new Date(Date.now() - STALE_TIMEOUT_MS);
   const conditions: SQL[] = [
     eq(chapterGenerations.projectId, projectId),
-    inArray(chapterGenerations.status, opts?.statuses ?? ["pending", "generating", "assembling"]),
+    inArray(chapterGenerations.status, opts?.statuses ?? ["pending", "generating", "planning", "assembling"]),
     sql`${chapterGenerations.generationMetadata}->>'type' = ${type}`,
     lt(chapterGenerations.createdAt, staleCutoff),
   ];
@@ -140,7 +140,7 @@ export async function checkProjectRateLimit(
       and(
         eq(chapterGenerations.projectId, projectId),
         gte(chapterGenerations.createdAt, staleCutoff),
-        inArray(chapterGenerations.status, ["pending", "generating", "assembling"])
+        inArray(chapterGenerations.status, ["pending", "generating", "planning", "assembling"])
       )
     );
 
