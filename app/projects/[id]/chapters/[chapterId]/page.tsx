@@ -926,6 +926,7 @@ export default function ChapterPage() {
         onSaveDefinition={saveDefinition}
         onFillComplete={fetchPlaceholders}
         currentPromptsHash={currentPromptsHash}
+        activeBriefHash={data?.activeBrief?.hash ?? null}
       />
 
       {/* No prompts */}

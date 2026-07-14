@@ -754,7 +754,7 @@ export async function fillOnePlaceholder(
       existingEntries.map(([k, v]) => `- {${k}}: ${v}`).join("\n");
   }
 
-  const userPrompt = `## Placeholder a definir
+  const userPrompt = `${editorialContextSection}## Placeholder a definir
 
 {${ph.name}}
 ${functionSection}
