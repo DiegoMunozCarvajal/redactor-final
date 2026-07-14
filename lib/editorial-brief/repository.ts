@@ -191,7 +191,7 @@ export async function createEditorialBriefDraft(
   // row serializes concurrent draft creation so version allocation is safe.
   return dbCtx.transaction(async (tx) => {
     // Lock the project row first — serializes brief creation across concurrent calls
-    await lockProjectAndLoadChapterIds(input.projectId, tx);
+    const currentChapterIds = await lockProjectAndLoadChapterIds(input.projectId, tx);
 
     // Validate cross-project references inside the transaction
     const chapterIds = normalized.contracts.map((c) => c.chapterId);
@@ -203,6 +203,9 @@ export async function createEditorialBriefDraft(
         tx,
       ),
     ]);
+
+    // Validate exact chapter coverage on create — every project chapter needs a contract
+    assertExactChapterCoverage(chapterIds, currentChapterIds);
 
     // Check for existing draft BEFORE inserting. The partial unique
     // index uq_editorial_briefs_project_draft enforces at most one draft per
@@ -303,8 +306,9 @@ export async function replaceEditorialBriefDraft(
   const contentHash = hashEditorialBundle(bundleForHash);
 
   return dbCtx.transaction(async (tx) => {
-    // Lock the project row first — serializes brief operations
-    await lockProjectAndLoadChapterIds(input.projectId, tx);
+    // Lock the project row first — serializes brief operations and loads
+    // current chapter IDs for coverage validation on save.
+    const currentChapterIds = await lockProjectAndLoadChapterIds(input.projectId, tx);
 
     // Validate cross-project references inside the transaction to prevent
     // TOCTOU (chapter/source reassignment between validation and delete+insert).
@@ -317,6 +321,9 @@ export async function replaceEditorialBriefDraft(
         tx,
       ),
     ]);
+
+    // Validate exact chapter coverage on save — prevents incomplete drafts
+    assertExactChapterCoverage(chapterIds, currentChapterIds);
 
     // Load existing brief and verify it's a draft for this project
     const [existing] = await tx
