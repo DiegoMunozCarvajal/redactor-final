@@ -81,6 +81,7 @@
     "eslint": "^9.18.0",
     "eslint-config-next": "^15.3.0",
     "postcss": "^8.5.1",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4.0.0",
     "trigger.dev": "4.4.6",
     "tsx": "^4.21.0",

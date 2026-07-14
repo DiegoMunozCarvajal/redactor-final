@@ -40,7 +40,31 @@ export async function DELETE(
   }
 
   // Delete DB row (chunks cascade-delete via FK)
-  await db.delete(sources).where(eq(sources.id, sourceId));
+  try {
+    await db.delete(sources).where(eq(sources.id, sourceId));
+  } catch (err) {
+    // Catch FK violation when the source is referenced by editorial_brief_sources.
+    // Drizzle wraps PostgresError in `Error("Failed query: ...")` — the
+    // original PG error code/text may live in `cause` or in the message.
+    const msg = err instanceof Error ? err.message : String(err);
+    const causeMsg = err instanceof Error && (err as { cause?: Error }).cause
+      ? (err as { cause: Error }).cause.message
+      : "";
+    const full = `${msg} ${causeMsg}`;
+    if (
+      full.includes("editorial_brief_sources") ||
+      full.includes("foreign key constraint")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "La fuente está vinculada a un brief editorial; crea una nueva versión sin esa fuente antes de eliminarla.",
+        },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 
   // Best-effort: also remove the file from Supabase Storage if it exists.
   // Storage path follows the same convention as uploadSourceFile().
