@@ -1,11 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, fragments, prompts } from "@/lib/db/schema";
+import {
+  projects,
+  chapters,
+  chapterGenerations,
+  chapterEditorialContracts,
+  fragments,
+  prompts,
+} from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, sql, inArray, isNotNull, ne } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { z } from "zod";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
+
+function chapterHasEditorialHistoryResponse() {
+  return NextResponse.json(
+    {
+      error: "chapter has editorial history",
+      code: "chapter_has_editorial_history",
+    },
+    { status: 409 },
+  );
+}
+
+function isEditorialHistoryForeignKeyError(error: unknown): boolean {
+  let current = error;
+
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+
+    const candidate = current as Record<string, unknown>;
+    const constraint = candidate.constraint_name ?? candidate.constraint;
+    if (
+      candidate.code === "23503" &&
+      typeof constraint === "string" &&
+      constraint.startsWith("chapter_editorial_contracts_chapter_id")
+    ) {
+      return true;
+    }
+
+    current = candidate.cause;
+  }
+
+  return false;
+}
 
 export async function GET(
   _req: NextRequest,
@@ -239,12 +278,36 @@ export async function DELETE(
     .limit(1);
   if (!chapter) return NextResponse.json({ error: "chapter not found" }, { status: 404 });
 
-  // Delete associated records in a transaction so partial failure doesn't
-  // leave orphaned generations or prompts without a chapter.
-  await db.transaction(async (tx) => {
-    await tx.delete(chapterGenerations).where(eq(chapterGenerations.chapterId, chapterId));
-    await tx.delete(prompts).where(and(eq(prompts.chapterId, chapterId), isNotNull(prompts.projectId)));
-    await tx.delete(chapters).where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)));
-  });
+  // Keep approved and archived editorial history immutable. Check inside the
+  // delete transaction before removing any dependent generation data.
+  let result: "chapter_has_editorial_history" | "deleted";
+  try {
+    result = await db.transaction(async (tx) => {
+      const [editorialContract] = await tx
+        .select({ id: chapterEditorialContracts.id })
+        .from(chapterEditorialContracts)
+        .where(eq(chapterEditorialContracts.chapterId, chapterId))
+        .limit(1);
+
+      if (editorialContract) return "chapter_has_editorial_history" as const;
+
+      await tx.delete(chapterGenerations).where(eq(chapterGenerations.chapterId, chapterId));
+      await tx.delete(prompts).where(and(eq(prompts.chapterId, chapterId), isNotNull(prompts.projectId)));
+      await tx.delete(chapters).where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)));
+      return "deleted" as const;
+    });
+  } catch (error) {
+    // Close the read/delete race: a contract inserted after the preflight
+    // check is still reported as the same domain conflict, not as a 500.
+    if (isEditorialHistoryForeignKeyError(error)) {
+      return chapterHasEditorialHistoryResponse();
+    }
+    throw error;
+  }
+
+  if (result === "chapter_has_editorial_history") {
+    return chapterHasEditorialHistoryResponse();
+  }
+
   return NextResponse.json({ ok: true });
 }
