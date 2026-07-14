@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 import { csrfCheck } from "@/lib/api/csrf";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 
 export async function PUT(
   req: NextRequest,
@@ -84,15 +85,8 @@ export async function PUT(
   // Version insert, prompt update, and placeholder sync in one transaction
   // so partial failure doesn't leave phantom versions or stale placeholders.
   const updated = await db.transaction(async (tx) => {
-    // Save version before updating assembly or critique prompt
-    if (isAssembly || isCritique || isCorrector || existing.isAssembly || existing.isCritique || existing.isCorrector) {
-      await tx.insert(promptVersions).values({
-        promptId: existing.id,
-        title: existing.title,
-        content: existing.content,
-        userPrompt: existing.userPrompt,
-      });
-    }
+    // Capture current state as a full version snapshot before any edit
+    await writeCurrentChapterPromptRevision(promptId, user.id, tx);
 
     const [u] = await tx
       .update(prompts)

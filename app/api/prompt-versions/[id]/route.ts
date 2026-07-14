@@ -15,7 +15,15 @@ export async function GET(
 
   const { id } = await params;
   const [version] = await db
-    .select({ id: promptVersions.id, title: promptVersions.title, content: promptVersions.content, createdAt: promptVersions.createdAt, promptId: promptVersions.promptId })
+    .select({
+      id: promptVersions.id,
+      title: promptVersions.title,
+      content: promptVersions.content,
+      revisionNumber: promptVersions.revisionNumber,
+      createdAt: promptVersions.createdAt,
+      promptId: promptVersions.promptId,
+      snapshot: promptVersions.snapshot,
+    })
     .from(promptVersions)
     .where(eq(promptVersions.id, id))
     .limit(1);
@@ -58,6 +66,9 @@ export async function GET(
     id: version.id,
     title: version.title,
     content: version.content,
+    revisionNumber: version.revisionNumber,
+    promptId: version.promptId,
+    snapshot: version.snapshot,
     createdAt: version.createdAt,
   });
 }

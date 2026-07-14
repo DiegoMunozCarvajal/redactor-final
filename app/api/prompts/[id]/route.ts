@@ -6,6 +6,7 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 
 // NOTE: Uses PUT for partial update (PATCH semantics).
 // Kept as PUT for backward compatibility with admin UI.
@@ -53,20 +54,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Version insert, prompt update, and placeholder sync in one transaction
   // so partial failure doesn't leave phantom versions or stale placeholders.
   const prompt = await db.transaction(async (tx) => {
-    // Save version before updating
-    const [current] = await tx
-      .select()
-      .from(prompts)
-      .where(eq(prompts.id, id))
-      .limit(1);
-    if (current) {
-      await tx.insert(promptVersions).values({
-        promptId: current.id,
-        title: current.title,
-        content: current.content,
-        userPrompt: current.userPrompt,
-      });
-    }
+    // Capture current state as a full version snapshot before updating
+    await writeCurrentChapterPromptRevision(id, admin.user.id, tx);
 
     const [updated] = await tx
       .update(prompts)
