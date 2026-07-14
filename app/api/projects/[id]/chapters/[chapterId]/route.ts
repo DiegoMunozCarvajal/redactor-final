@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, sql, inArray, isNotNull, ne } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { z } from "zod";
+import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 
 export async function GET(
   _req: NextRequest,
@@ -106,6 +107,14 @@ export async function GET(
     fragments: fragsByGenId.get(gen.id) ?? [],
   }));
 
+  // Load active editorial brief summary for staleness checks
+  const activeBundle = await loadEditorialBundle({ projectId }).catch(
+    () => null,
+  );
+  const activeBrief = activeBundle
+    ? { id: activeBundle.id, version: activeBundle.version, hash: activeBundle.hash }
+    : null;
+
   return NextResponse.json({
     projectName: project.title ?? project.name,
     projectTopic: project.topic,
@@ -116,6 +125,7 @@ export async function GET(
       chapterNumber,
     },
     generations: generationsWithFragments,
+    activeBrief,
   });
 }
 

@@ -36,6 +36,11 @@ interface GenerationData {
   assembledContent: string | null;
   error: string | null;
   createdAt: string;
+  generationMetadata?: {
+    editorialBriefId?: string | null;
+    editorialBriefVersion?: number | null;
+    editorialBriefHash?: string | null;
+  } | null;
 }
 
 interface ChapterData {
@@ -43,6 +48,27 @@ interface ChapterData {
   position: number;
   title: string;
   latestGeneration: GenerationData | null;
+}
+
+function StaleDot({
+  generationMetadata,
+  activeBrief,
+}: {
+  generationMetadata?: GenerationData["generationMetadata"];
+  activeBrief?: { id: string; version: number; hash: string } | null;
+}) {
+  if (!activeBrief) return null;
+  const hash = generationMetadata?.editorialBriefHash;
+  if (!hash) return null;
+  if (hash !== activeBrief.hash) {
+    return (
+      <span
+        className="inline-block w-2 h-2 rounded-full bg-amber-400 ml-1"
+        title={`Brief v${generationMetadata?.editorialBriefVersion ?? "?"} — versión actual: v${activeBrief.version}`}
+      />
+    );
+  }
+  return null;
 }
 
 function statusBadge(status: string) {
@@ -70,10 +96,12 @@ function SortableChapter({
   chapter,
   projectId,
   onDelete,
+  activeBrief,
 }: {
   chapter: ChapterData;
   projectId: string;
   onDelete: (id: string) => void;
+  activeBrief?: { id: string; version: number; hash: string } | null;
 }) {
   const router = useRouter();
   const {
@@ -115,6 +143,10 @@ function SortableChapter({
             <CardTitle className="text-base">{chapter.title}</CardTitle>
             {chapter.latestGeneration &&
               statusBadge(chapter.latestGeneration.status)}
+            <StaleDot
+              generationMetadata={chapter.latestGeneration?.generationMetadata}
+              activeBrief={activeBrief}
+            />
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -139,10 +171,12 @@ export function SortableChapterList({
   chapters: initialChapters,
   projectId,
   onDelete,
+  activeBrief,
 }: {
   chapters: ChapterData[];
   projectId: string;
   onDelete: (id: string) => void;
+  activeBrief?: { id: string; version: number; hash: string } | null;
 }) {
   const [chapters, setChapters] = useState(initialChapters);
 
@@ -205,6 +239,7 @@ export function SortableChapterList({
               chapter={ch}
               projectId={projectId}
               onDelete={onDelete}
+              activeBrief={activeBrief}
             />
           ))}
         </div>

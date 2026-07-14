@@ -6,6 +6,7 @@ import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { UUID_RE } from "@/lib/constants";
+import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 
 export async function GET(
   _req: NextRequest,
@@ -83,9 +84,18 @@ export async function GET(
     .execute()
     .catch((err) => console.warn("[projects] Failed to touch lastAccessedAt:", err));
 
+  // Load active editorial brief summary for staleness checks
+  const activeBundle = await loadEditorialBundle({ projectId: id }).catch(
+    () => null,
+  );
+  const activeBrief = activeBundle
+    ? { id: activeBundle.id, version: activeBundle.version, hash: activeBundle.hash }
+    : null;
+
   return NextResponse.json({
     ...project,
     chapters: chaptersWithGenerations,
+    activeBrief,
   });
 }
 

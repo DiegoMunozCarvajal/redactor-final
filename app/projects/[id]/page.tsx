@@ -37,6 +37,7 @@ interface ProjectData {
   title: string | null;
   subtitle: string | null;
   chapters: ChapterData[];
+  activeBrief?: { id: string; version: number; hash: string } | null;
 }export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<ProjectData | null>(null);
@@ -331,6 +332,7 @@ interface ProjectData {
             chapters={project.chapters}
             projectId={project.id}
             onDelete={deleteChapter}
+            activeBrief={project.activeBrief}
           />
 
           <div className="mt-4">
