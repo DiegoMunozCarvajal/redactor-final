@@ -99,15 +99,13 @@ async function main() {
   console.log(`Fragments: ${fragmentContents.length}, total chars: ${fragmentContents.reduce((s, f) => s + f.content.length, 0)}`);
 
   try {
-    const result = await generateChapterAssemblyHalves(
-      { content: assemblyPrompt.content as string, userPrompt: (assemblyPrompt.user_prompt as string) ?? null },
-      fragmentContents,
+    const result = await generateChapterAssemblyHalves({
+      assemblyPrompt: { content: assemblyPrompt.content as string, userPrompt: (assemblyPrompt.user_prompt as string) ?? null },
+      fragments: fragmentContents,
       placeholders,
-      "deepseek-v4-pro",
-      undefined,
-      "max",
-      undefined,
-    );
+      model: "deepseek-v4-pro",
+      effort: "max",
+    });
 
     console.log(`Assembly done. Content length: ${result.text.length} chars`);
     console.log(`Tokens: ${result.usage.inputTokens} in / ${result.usage.outputTokens} out`);

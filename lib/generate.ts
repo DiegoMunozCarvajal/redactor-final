@@ -88,6 +88,8 @@ export interface GeneratePromptParams {
   projectTopic?: string | null;
   /** Project ID. Used to resolve project-level system prompt override. */
   projectId?: string;
+  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  editorialContext?: string | null;
   /** Zod schema for structured output. When set, the LLM returns parsed JSON. */
   schema?: ZodType;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
@@ -257,17 +259,33 @@ export async function generatePromptContent(
   };
 }
 
+export interface AssemblyGenerationOptions {
+  assemblyPrompt: PromptLike;
+  fragments: Array<{ title?: string; content: string }>;
+  placeholders: Record<string, string>;
+  model?: string;
+  temperature?: number;
+  effort?: ReasoningEffort;
+  maxTokens?: number;
+  projectTopic?: string | null;
+  editorialContext?: string | null;
+}
+
 async function mergeTwoFragments(
   a: { title?: string; content: string },
   b: { title?: string; content: string },
-  assemblyPrompt: PromptLike,
-  placeholders: Record<string, string>,
-  model: string,
-  temperature?: number,
-  effort?: ReasoningEffort,
-  maxTokens?: number,
-  projectTopic?: string | null,
+  options: AssemblyGenerationOptions,
 ): Promise<GenerateResult> {
+  const {
+    assemblyPrompt,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = options;
+
   const baseSystemPrompt = assemblyPrompt.userPrompt
     ? assemblyPrompt.content
     : "";
@@ -334,15 +352,19 @@ async function mergeTwoFragments(
 }
 
 export async function generateChapterAssemblyHierarchical(
-  assemblyPrompt: PromptLike,
-  fragments: { title?: string; content: string }[],
-  placeholders: Record<string, string>,
-  model = DEFAULT_GENERATION_MODEL,
-  temperature?: number,
-  effort?: ReasoningEffort,
-  maxTokens?: number,
-  projectTopic?: string | null,
+  options: AssemblyGenerationOptions,
 ): Promise<GenerateResult> {
+  const {
+    assemblyPrompt,
+    fragments,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = options;
+
   if (fragments.length === 0) {
     throw new Error("No fragments to assemble");
   }
@@ -370,13 +392,7 @@ export async function generateChapterAssemblyHierarchical(
         const result = await mergeTwoFragments(
           currentLevel[i],
           currentLevel[i + 1],
-          assemblyPrompt,
-          placeholders,
-          model,
-          temperature,
-          effort,
-          maxTokens,
-          projectTopic,
+          options,
         );
         nextLevel.push({ content: result.text });
         totalUsage.inputTokens += result.usage.inputTokens;
@@ -401,15 +417,19 @@ export async function generateChapterAssemblyHierarchical(
 }
 
 export async function generateChapterAssemblyHalves(
-  assemblyPrompt: PromptLike,
-  fragments: { title?: string; content: string }[],
-  placeholders: Record<string, string>,
-  model = DEFAULT_GENERATION_MODEL,
-  temperature?: number,
-  effort?: ReasoningEffort,
-  maxTokens?: number,
-  projectTopic?: string | null,
+  options: AssemblyGenerationOptions,
 ): Promise<GenerateResult> {
+  const {
+    assemblyPrompt,
+    fragments,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = options;
+
   if (fragments.length === 0) {
     throw new Error("No fragments to assemble");
   }
@@ -427,13 +447,7 @@ export async function generateChapterAssemblyHalves(
     return mergeTwoFragments(
       fragments[0],
       fragments[1],
-      assemblyPrompt,
-      placeholders,
-      model,
-      temperature,
-      effort,
-      maxTokens,
-      projectTopic,
+      options,
     );
   }
 
@@ -457,16 +471,10 @@ export async function generateChapterAssemblyHalves(
         usage: { inputTokens: 0, outputTokens: 0 },
       };
     }
-    const result = await generateChapterAssembly(
-      assemblyPrompt,
-      half,
-      placeholders,
-      model,
-      temperature,
-      effort,
-      maxTokens,
-      projectTopic,
-    );
+    const result = await generateChapterAssembly({
+      ...options,
+      fragments: half,
+    });
     return { text: result.text, usage: result.usage };
   };
 
@@ -482,13 +490,7 @@ export async function generateChapterAssemblyHalves(
   const merged = await mergeTwoFragments(
     { content: leftResult.text },
     { content: rightResult.text },
-    assemblyPrompt,
-    placeholders,
-    model,
-    temperature,
-    effort,
-    maxTokens,
-    projectTopic,
+    options,
   );
   totalUsage.inputTokens += merged.usage.inputTokens;
   totalUsage.outputTokens += merged.usage.outputTokens;
@@ -507,15 +509,19 @@ export async function generateChapterAssemblyHalves(
 export type AssemblyAlgorithm = "merge-sort" | "sequential" | "halves";
 
 export async function generateChapterAssemblySequential(
-  assemblyPrompt: PromptLike,
-  fragments: { title?: string; content: string }[],
-  placeholders: Record<string, string>,
-  model = DEFAULT_GENERATION_MODEL,
-  temperature?: number,
-  effort?: ReasoningEffort,
-  maxTokens?: number,
-  projectTopic?: string | null,
+  options: AssemblyGenerationOptions,
 ): Promise<GenerateResult> {
+  const {
+    assemblyPrompt,
+    fragments,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = options;
+
   if (fragments.length === 0) {
     throw new Error("No fragments to assemble");
   }
@@ -536,13 +542,7 @@ export async function generateChapterAssemblySequential(
     const result = await mergeTwoFragments(
       accumulator,
       { title: fragments[i].title, content: fragments[i].content },
-      assemblyPrompt,
-      placeholders,
-      model,
-      temperature,
-      effort,
-      maxTokens,
-      projectTopic,
+      options,
     );
     accumulator = { content: result.text };
     totalUsage.inputTokens += result.usage.inputTokens;
@@ -561,15 +561,18 @@ export async function generateChapterAssemblySequential(
 }
 
 export async function generateChapterAssembly(
-  assemblyPrompt: PromptLike,
-  fragments: { title?: string; content: string }[],
-  placeholders: Record<string, string>,
-  model = DEFAULT_GENERATION_MODEL,
-  temperature?: number,
-  effort?: ReasoningEffort,
-  maxTokens?: number,
-  projectTopic?: string | null,
+  options: AssemblyGenerationOptions,
 ): Promise<GenerateResult> {
+  const {
+    assemblyPrompt,
+    fragments,
+    placeholders,
+    model = DEFAULT_GENERATION_MODEL,
+    temperature,
+    effort,
+    maxTokens,
+    projectTopic,
+  } = options;
   // Legacy format (### Fragment N) — used by old markers
   const fragmentsText = fragments
     .map((f, i) => `### Fragment ${i + 1}\n\n${f.content}`)
@@ -667,6 +670,8 @@ export interface GenerateCritiqueParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
+  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  editorialContext?: string | null;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
   signal?: AbortSignal;
 }
@@ -780,6 +785,8 @@ export interface GenerateCorrectionParams {
   effort?: ReasoningEffort;
   maxTokens?: number;
   projectTopic?: string | null;
+  /** Editorial brief context. Passed through for downstream use. Currently unused — wired in Task 7. */
+  editorialContext?: string | null;
   /** Per-call abort signal. Set below Trigger task maxDuration so errors are caught before hard kill. */
   signal?: AbortSignal;
 }

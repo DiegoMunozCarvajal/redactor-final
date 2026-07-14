@@ -151,17 +151,17 @@ describe("assembly algorithms — no-LLM paths", () => {
   describe("generateChapterAssemblyHierarchical", () => {
     it("throws on empty fragments", async () => {
       await expect(
-        generateChapterAssemblyHierarchical(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+        generateChapterAssemblyHierarchical({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
       ).rejects.toThrow("No fragments to assemble");
     });
 
     it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblyHierarchical(
-        dummyPrompt,
-        [{ content: "solo" }],
-        emptyPlaceholders,
-        "deepseek-v4-pro",
-      );
+      const r = await generateChapterAssemblyHierarchical({
+        assemblyPrompt: dummyPrompt,
+        fragments: [{ content: "solo" }],
+        placeholders: emptyPlaceholders,
+        model: "deepseek-v4-pro",
+      });
       expect(r.text).toBe("solo");
       expect(r.usage.inputTokens).toBe(0);
     });
@@ -170,17 +170,17 @@ describe("assembly algorithms — no-LLM paths", () => {
   describe("generateChapterAssemblyHalves", () => {
     it("throws on empty fragments", async () => {
       await expect(
-        generateChapterAssemblyHalves(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+        generateChapterAssemblyHalves({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
       ).rejects.toThrow("No fragments to assemble");
     });
 
     it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblyHalves(
-        dummyPrompt,
-        [{ content: "uno" }],
-        emptyPlaceholders,
-        "deepseek-v4-pro",
-      );
+      const r = await generateChapterAssemblyHalves({
+        assemblyPrompt: dummyPrompt,
+        fragments: [{ content: "uno" }],
+        placeholders: emptyPlaceholders,
+        model: "deepseek-v4-pro",
+      });
       expect(r.text).toBe("uno");
     });
   });
@@ -188,17 +188,17 @@ describe("assembly algorithms — no-LLM paths", () => {
   describe("generateChapterAssemblySequential", () => {
     it("throws on empty fragments", async () => {
       await expect(
-        generateChapterAssemblySequential(dummyPrompt, [], emptyPlaceholders, "deepseek-v4-pro"),
+        generateChapterAssemblySequential({ assemblyPrompt: dummyPrompt, fragments: [], placeholders: emptyPlaceholders, model: "deepseek-v4-pro" }),
       ).rejects.toThrow("No fragments to assemble");
     });
 
     it("returns single fragment as-is", async () => {
-      const r = await generateChapterAssemblySequential(
-        dummyPrompt,
-        [{ content: "uno" }],
-        emptyPlaceholders,
-        "deepseek-v4-pro",
-      );
+      const r = await generateChapterAssemblySequential({
+        assemblyPrompt: dummyPrompt,
+        fragments: [{ content: "uno" }],
+        placeholders: emptyPlaceholders,
+        model: "deepseek-v4-pro",
+      });
       expect(r.text).toBe("uno");
     });
   });

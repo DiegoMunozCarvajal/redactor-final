@@ -351,16 +351,14 @@ export const generateChapter = task({
             ? generateChapterAssemblyHalves
             : generateChapterAssemblyHierarchical;
 
-        const assembled = await assemble(
+        const assembled = await assemble({
           assemblyPrompt,
-          fragmentContents,
+          fragments: fragmentContents,
           placeholders,
           model,
-          undefined,
           effort,
-          undefined,
-          project.topic ?? null,
-        );
+          projectTopic: project.topic ?? null,
+        });
 
         await db
           .update(chapterGenerations)
