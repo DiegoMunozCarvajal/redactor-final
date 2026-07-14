@@ -20,6 +20,9 @@ import {
 import {
   editorialBriefBundleInputSchema,
 } from "@/lib/editorial-brief/schema";
+import {
+  assertExactChapterCoverage,
+} from "@/lib/editorial-brief/coverage";
 import type {
   EditorialBriefContent,
   ChapterEditorialContract,
@@ -72,6 +75,39 @@ async function validateSourcesBelongToProject(
 }
 
 /**
+ * Lock the project row and load current chapter IDs.
+ *
+ * Locking the project row serializes editorial brief operations at the project
+ * level. Loading chapter IDs after the lock gives us a consistent snapshot
+ * for coverage validation — no TOCTOU between chapter CRUD and brief save.
+ *
+ * Must be called inside a transaction before any editorial brief table access.
+ */
+async function lockProjectAndLoadChapterIds(
+  projectId: string,
+  tx: DB,
+): Promise<string[]> {
+  // Lock the project row — blocks concurrent brief creation/approval
+  const projectRows = await tx
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, projectId))
+    .for("update");
+
+  if (projectRows.length === 0) {
+    throw new Error("Project not found");
+  }
+
+  // Load current chapter IDs under the same lock for consistent coverage
+  const chapterRows = await tx
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(eq(chapters.projectId, projectId));
+
+  return chapterRows.map((ch) => ch.id);
+}
+
+/**
  * Enrich a raw brief row into an EditorialBundle.
  *
  * Validates stored JSONB contracts and content against the current Zod schemas.
@@ -116,9 +152,7 @@ async function enrichToBundle(
  * Create a new editorial brief draft for a project.
  * Allocates the next version number and validates chapter/source ownership.
  *
- * Version allocation is serialized via row-level FOR UPDATE lock on existing
- * brief rows. For the first-ever brief (no rows to lock), a unique-constraint
- * retry guard handles the narrow concurrent-creation window.
+ * Version allocation is serialized via a project-row FOR UPDATE lock.
  */
 export async function createEditorialBriefDraft(
   input: {
@@ -153,10 +187,12 @@ export async function createEditorialBriefDraft(
   };
   const contentHash = hashEditorialBundle(bundleForHash);
 
-  // Allocate version and insert inside a transaction.  Ownership validation
-  // runs inside the same tx to prevent TOCTOU (chapter/source reassignment
-  // between validation and insert).
+  // Allocate version and insert inside a transaction.  Locking the project
+  // row serializes concurrent draft creation so version allocation is safe.
   return dbCtx.transaction(async (tx) => {
+    // Lock the project row first — serializes brief creation across concurrent calls
+    await lockProjectAndLoadChapterIds(input.projectId, tx);
+
     // Validate cross-project references inside the transaction
     const chapterIds = normalized.contracts.map((c) => c.chapterId);
     await Promise.all([
@@ -168,7 +204,7 @@ export async function createEditorialBriefDraft(
       ),
     ]);
 
-    // Check for existing draft BEFORE locking/inserting. The partial unique
+    // Check for existing draft BEFORE inserting. The partial unique
     // index uq_editorial_briefs_project_draft enforces at most one draft per
     // project — we surface a clear error instead of hitting the constraint.
     const [existingDraft] = await tx
@@ -184,19 +220,7 @@ export async function createEditorialBriefDraft(
       throw new Error("A draft editorial brief already exists for this project");
     }
 
-    // Lock existing brief rows for this project to serialize version
-    // allocation. When creating the first draft, no rows match the WHERE
-    // clause so no rows are locked. The draft-exists check above handles
-    // the duplicate-draft case; the UNIQUE (project_id, version) constraint
-    // acts as the fallback guard against version conflicts.
-    // We lock with a non-aggregate SELECT because FOR UPDATE is not
-    // allowed with aggregate functions like max().
-    await tx
-      .select({ id: editorialBriefs.id })
-      .from(editorialBriefs)
-      .where(eq(editorialBriefs.projectId, input.projectId))
-      .for("update");
-
+    // Compute next version — safe under the project lock
     const existing = await tx
       .select({ maxVersion: max(editorialBriefs.version) })
       .from(editorialBriefs)
@@ -205,95 +229,40 @@ export async function createEditorialBriefDraft(
     const latestVersion = existing[0]?.maxVersion ?? 0;
     const nextVersion = latestVersion + 1;
 
-    try {
-      const [brief] = await tx
-        .insert(editorialBriefs)
-        .values({
-          projectId: input.projectId,
-          version: nextVersion,
-          status: "draft",
-          content: normalized.content as unknown as Record<string, unknown>,
-          contentHash,
-        })
-        .returning();
+    const [brief] = await tx
+      .insert(editorialBriefs)
+      .values({
+        projectId: input.projectId,
+        version: nextVersion,
+        status: "draft",
+        content: normalized.content as unknown as Record<string, unknown>,
+        contentHash,
+      })
+      .returning();
 
-      // Insert contracts
-      if (normalized.contracts.length > 0) {
-        await tx.insert(chapterEditorialContracts).values(
-          normalized.contracts.map((contract) => ({
-            editorialBriefId: brief.id,
-            chapterId: contract.chapterId,
-            content: contract as unknown as Record<string, unknown>,
-            contentHash: hashEditorialContract(contract),
-          })),
-        );
-      }
-
-      // Insert source bindings
-      if (normalized.evidenceSourceIds.length > 0) {
-        await tx.insert(editorialBriefSources).values(
-          normalized.evidenceSourceIds.map((sourceId) => ({
-            editorialBriefId: brief.id,
-            sourceId,
-          })),
-        );
-      }
-
-      return enrichToBundle(brief, tx);
-    } catch (err: unknown) {
-      // Guard against the narrow window where two concurrent calls create the
-      // first brief for a project.  FOR UPDATE locks nothing when no rows
-      // exist, so the UNIQUE (project_id, version) constraint is the only
-      // serialization mechanism.  On collision, recompute the version once
-      // and retry — the second attempt sees the concurrently-inserted row
-      // via the FOR UPDATE lock.
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err as { code: string }).code === "23505"
-      ) {
-        const retryMax = await tx
-          .select({ maxVersion: max(editorialBriefs.version) })
-          .from(editorialBriefs)
-          .where(eq(editorialBriefs.projectId, input.projectId));
-
-        const retryVersion = (retryMax[0]?.maxVersion ?? 0) + 1;
-
-        const [brief] = await tx
-          .insert(editorialBriefs)
-          .values({
-            projectId: input.projectId,
-            version: retryVersion,
-            status: "draft",
-            content: normalized.content as unknown as Record<string, unknown>,
-            contentHash,
-          })
-          .returning();
-
-        if (normalized.contracts.length > 0) {
-          await tx.insert(chapterEditorialContracts).values(
-            normalized.contracts.map((contract) => ({
-              editorialBriefId: brief.id,
-              chapterId: contract.chapterId,
-              content: contract as unknown as Record<string, unknown>,
-              contentHash: hashEditorialContract(contract),
-            })),
-          );
-        }
-
-        if (normalized.evidenceSourceIds.length > 0) {
-          await tx.insert(editorialBriefSources).values(
-            normalized.evidenceSourceIds.map((sourceId) => ({
-              editorialBriefId: brief.id,
-              sourceId,
-            })),
-          );
-        }
-
-        return enrichToBundle(brief, tx);
-      }
-      throw err;
+    // Insert contracts
+    if (normalized.contracts.length > 0) {
+      await tx.insert(chapterEditorialContracts).values(
+        normalized.contracts.map((contract) => ({
+          editorialBriefId: brief.id,
+          chapterId: contract.chapterId,
+          content: contract as unknown as Record<string, unknown>,
+          contentHash: hashEditorialContract(contract),
+        })),
+      );
     }
+
+    // Insert source bindings
+    if (normalized.evidenceSourceIds.length > 0) {
+      await tx.insert(editorialBriefSources).values(
+        normalized.evidenceSourceIds.map((sourceId) => ({
+          editorialBriefId: brief.id,
+          sourceId,
+        })),
+      );
+    }
+
+    return enrichToBundle(brief, tx);
   });
 }
 
@@ -334,6 +303,9 @@ export async function replaceEditorialBriefDraft(
   const contentHash = hashEditorialBundle(bundleForHash);
 
   return dbCtx.transaction(async (tx) => {
+    // Lock the project row first — serializes brief operations
+    await lockProjectAndLoadChapterIds(input.projectId, tx);
+
     // Validate cross-project references inside the transaction to prevent
     // TOCTOU (chapter/source reassignment between validation and delete+insert).
     const chapterIds = normalized.contracts.map((c) => c.chapterId);
@@ -424,6 +396,9 @@ export async function deleteEditorialBriefDraft(
   const dbCtx = ctx ?? db;
 
   await dbCtx.transaction(async (tx) => {
+    // Lock the project row first — serializes brief operations
+    await lockProjectAndLoadChapterIds(input.projectId, tx);
+
     const [existing] = await tx
       .select()
       .from(editorialBriefs)
@@ -461,7 +436,10 @@ export async function approveEditorialBrief(
   const dbCtx = ctx ?? db;
 
   return dbCtx.transaction(async (tx) => {
-    // Load the brief first without status filter to differentiate
+    // Lock the project row and load current chapter IDs for coverage validation
+    const currentChapterIds = await lockProjectAndLoadChapterIds(input.projectId, tx);
+
+    // Load the brief without status filter to differentiate
     // "not found" (404) from "found but not a draft" (409).
     const [brief] = await tx
       .select()
@@ -480,6 +458,18 @@ export async function approveEditorialBrief(
     if (brief.status !== "draft") {
       throw new Error("Cannot approve a non-draft editorial brief");
     }
+
+    // Load the brief's contracts for coverage validation
+    const contractRows = await tx
+      .select({ chapterId: chapterEditorialContracts.chapterId })
+      .from(chapterEditorialContracts)
+      .where(eq(chapterEditorialContracts.editorialBriefId, input.briefId));
+
+    // Validate exact chapter coverage before approving
+    assertExactChapterCoverage(
+      contractRows.map((c) => c.chapterId),
+      currentChapterIds,
+    );
 
     // Archive any currently approved version
     await tx

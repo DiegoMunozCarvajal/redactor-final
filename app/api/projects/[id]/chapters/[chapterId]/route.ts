@@ -280,14 +280,22 @@ export async function DELETE(
 
   // Keep approved and archived editorial history immutable. Check inside the
   // delete transaction before removing any dependent generation data.
+  // Lock the project row first to serialize with brief creation/approval.
   let result: "chapter_has_editorial_history" | "deleted";
   try {
     result = await db.transaction(async (tx) => {
+      // Lock the project row — serializes with concurrent brief operations
+      await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .for("update");
+
       const [editorialContract] = await tx
         .select({ id: chapterEditorialContracts.id })
         .from(chapterEditorialContracts)
         .where(eq(chapterEditorialContracts.chapterId, chapterId))
-        .limit(1);
+        .for("update");
 
       if (editorialContract) return "chapter_has_editorial_history" as const;
 

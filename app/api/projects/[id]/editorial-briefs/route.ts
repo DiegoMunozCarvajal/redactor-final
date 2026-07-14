@@ -13,6 +13,10 @@ import {
   getApprovedEditorialBriefBundle,
   getEditorialBriefHistory,
 } from "@/lib/editorial-brief/repository";
+import {
+  reconcileChapterContracts,
+  createEmptyContract,
+} from "@/lib/editorial-brief/coverage";
 import type {
   EditorialBriefContent,
   ChapterEditorialContract,
@@ -58,20 +62,6 @@ const EMPTY_BRIEF_CONTENT: EditorialBriefContent = {
   packaging: { titleAngle: "-", hook: "-", seoTerms: ["-"] },
   researchBasis: { findings: ["-"], inferences: ["-"], limitations: ["-"] },
 };
-
-function createEmptyContract(chapterId: string): ChapterEditorialContract {
-  return {
-    chapterId,
-    jobToBeDone: "-",
-    readerShift: "-",
-    mustCover: ["-"],
-    requiredScenarios: ["-"],
-    evidenceNeeds: [{ placeholderName: "tema", query: "-", required: false }],
-    toneAdjustment: "-",
-    avoidOverlapWith: ["-"],
-    transitionToNext: "-",
-  };
-}
 
 export { mapRepoError } from "./map-repo-error";
 
@@ -175,10 +165,24 @@ export async function POST(
         );
       }
 
+      // Reconcile cloned contracts against current project chapters.
+      // Dropped chapters lose their contracts; new chapters get empty stubs.
+      const currentChapters = await db
+        .select()
+        .from(chapters)
+        .where(eq(chapters.projectId, projectId))
+        .orderBy(asc(chapters.position));
+
+      const reconciled = reconcileChapterContracts(
+        currentChapters.map((ch) => ch.id),
+        source.contracts,
+        createEmptyContract,
+      );
+
       brief = await createEditorialBriefDraft({
         projectId,
         content: source.content,
-        contracts: source.contracts,
+        contracts: reconciled,
         evidenceSourceIds: source.evidenceSourceIds,
       });
     } else {

@@ -29,10 +29,12 @@ function selectBuilder(result: unknown[]) {
     from: vi.fn(),
     where: vi.fn(),
     limit: vi.fn(),
+    for: vi.fn(),
   };
   builder.from.mockReturnValue(builder);
   builder.where.mockReturnValue(builder);
   builder.limit.mockResolvedValue(result);
+  builder.for.mockResolvedValue(result);
   return builder;
 }
 
@@ -93,6 +95,9 @@ describe("DELETE chapter with editorial history", () => {
       code: "chapter_has_editorial_history",
     });
     expect(mockTx.delete).not.toHaveBeenCalled();
+    expect(mockTx.select).toHaveBeenCalledTimes(2);
+    const firstTxSelect = mockTx.select.mock.results[0]?.value;
+    expect(firstTxSelect.for).toHaveBeenCalledWith("update");
   });
 
   it("maps a concurrent editorial FK conflict to the same stable 409", async () => {
