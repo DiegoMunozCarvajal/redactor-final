@@ -672,8 +672,9 @@ export async function fillOnePlaceholder(
         topK: 5,
         tokenBudget: 15000,
       };
-      // When evidence source IDs are available, restrict RAG to approved sources only
-      if (evidenceSourceIds && evidenceSourceIds.length > 0) {
+      // When evidence source IDs are available (even empty), restrict RAG.
+      // Empty array → no approved sources → RAG returns empty, LLM warned.
+      if (evidenceSourceIds !== undefined) {
         ragOptions.sourceIds = evidenceSourceIds;
       }
       const result = await retrieveContext(query, projectId, ragOptions);
