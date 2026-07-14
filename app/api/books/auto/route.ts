@@ -17,13 +17,13 @@ export async function POST(req: NextRequest) {
   if (!admin.authorized) return admin.response;
 
   const body = await req.json().catch(() => ({}));
-  const { name, description, metaPromptId, chapters: chapterList, model, effort } = body;
+  const { name, description, metaPromptRevisionId, chapters: chapterList, model, effort } = body;
 
   if (!name || typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
   }
-  if (!metaPromptId || typeof metaPromptId !== "string") {
-    return NextResponse.json({ error: "metaPromptId is required" }, { status: 400 });
+  if (!metaPromptRevisionId || typeof metaPromptRevisionId !== "string") {
+    return NextResponse.json({ error: "metaPromptRevisionId is required" }, { status: 400 });
   }
   if (!Array.isArray(chapterList) || chapterList.length === 0) {
     return NextResponse.json({ error: "chapters must be a non-empty array" }, { status: 400 });
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     ensureTriggerConfigured();
     await generateTemplate.trigger({
       templateId: template.template.id,
-      metaPromptId,
+      metaPromptRevisionId,
       chapters: chapterPayloads,
       ...(model ? { model } : {}),
       ...(effort ? { effort } : {}),
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       resourceId: template.template.id,
       metadata: {
         name: template.template.name,
-        metaPromptId,
+        metaPromptRevisionId,
         chapterCount: template.createdChapters.length,
       },
     });

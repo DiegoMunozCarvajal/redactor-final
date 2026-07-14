@@ -4,8 +4,7 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   update: vi.fn(),
   transaction: vi.fn(),
-  generateCompletion: vi.fn(),
-  getProviderForModel: vi.fn(),
+  executeVersionedPrompt: vi.fn(),
   checkBlocklist: vi.fn(),
   assertOriginalEnough: vi.fn(),
 }));
@@ -22,13 +21,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/ai/completion", () => ({
-  generateCompletion: (...args: unknown[]) => mocks.generateCompletion(...args),
+vi.mock("@/lib/prompts/executor", () => ({
+  executeVersionedPrompt: (...args: unknown[]) => mocks.executeVersionedPrompt(...args),
 }));
 
 vi.mock("@/lib/ai/providers", () => ({
   DEFAULT_GENERATION_MODEL: "test-model",
-  getProviderForModel: (...args: unknown[]) => mocks.getProviderForModel(...args),
 }));
 
 vi.mock("@/lib/ai/originality-check", () => ({
@@ -41,7 +39,7 @@ import { generateTemplate } from "@/trigger/generate-template";
 type GenerateTemplateRunner = {
   run: (payload: {
     templateId: string;
-    metaPromptId: string;
+    metaPromptRevisionId: string;
     chapters: Array<{
       chapterId: string;
       title: string;
@@ -65,21 +63,12 @@ function selectResult<T>(rows: T[]) {
 describe("generateTemplate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getProviderForModel.mockReturnValue("openai");
     mocks.checkBlocklist.mockReturnValue([]);
     mocks.assertOriginalEnough.mockReturnValue({ flagged: false });
 
-    mocks.select
-      .mockReturnValueOnce(selectResult([{ status: "generating" }]))
-      .mockReturnValueOnce(
-        selectResult([
-          {
-            id: "meta-1",
-            content: "Sistema: {capitulo_en_markdown}",
-            userPrompt: "Usuario: {{CAPITULO_CONTENIDO}}",
-          },
-        ]),
-      );
+    mocks.select.mockReturnValueOnce(
+      selectResult([{ status: "generating" }]),
+    );
 
     mocks.update.mockImplementation(() => ({
       set: vi.fn().mockReturnValue({
@@ -99,34 +88,51 @@ describe("generateTemplate", () => {
       async (callback: (transaction: typeof tx) => Promise<void>) => callback(tx),
     );
 
-    mocks.generateCompletion.mockResolvedValue({
-      text: "",
-      data: {
-        templates: [
-          {
-            name: "Bloque",
-            sourceContext: "",
-            function: "Función",
-            content: "Contenido original",
-            placeholders: [],
-            notes: "Notas",
-          },
-        ],
+    mocks.executeVersionedPrompt.mockResolvedValue({
+      result: {
+        data: {
+          templates: [
+            {
+              name: "Bloque",
+              sourceContext: "",
+              function: "Función",
+              content: "Contenido original",
+              placeholders: [],
+              notes: "Notas",
+            },
+          ],
+        },
+        usage: {
+          promptTokens: 1,
+          completionTokens: 1,
+          totalTokens: 2,
+          costUsd: 0.001,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+        },
+        durationMs: 500,
       },
-      model: "test-model",
-      provider: "openai",
-      usage: {
-        inputTokens: 1,
-        outputTokens: 1,
-        totalTokens: 2,
+      executionId: "exec-1",
+      revision: {
+        id: "rev-1",
+        definitionId: "def-1",
+        kind: "meta-template",
+        name: "Meta Template v1",
+        revisionNumber: 1,
+        versionLabel: "v1",
+        systemTemplate: "",
+        userTemplate: "",
+        requiredMarkers: ["{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
+        outputContract: null,
+        configuration: {},
       },
     });
   });
 
-  it("replaces any CAPITULO placeholder case-insensitively in all prompts", async () => {
+  it("calls executeVersionedPrompt with kind meta-template and stage template-generation", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptId: "meta-1",
+      metaPromptRevisionId: "rev-meta-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -138,11 +144,108 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
-    expect(mocks.generateCompletion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        systemPrompt: "Sistema: # Título\n\nTexto fuente",
-        userPrompt: "Usuario: # Título\n\nTexto fuente",
-      }),
-    );
+    expect(mocks.executeVersionedPrompt).toHaveBeenCalledTimes(1);
+    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.kind).toBe("meta-template");
+    expect(callArg.stage).toBe("template-generation");
+  });
+
+  it("passes metaPromptRevisionId as revisionId to executor", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      metaPromptRevisionId: "rev-meta-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.revisionId).toBe("rev-meta-1");
+  });
+
+  it("replaces CAPITULO_FUENTE marker with chapter content", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      metaPromptRevisionId: "rev-meta-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    const markerValues = callArg.markerValues as Record<string, string>;
+    expect(markerValues["{{CAPITULO_FUENTE}}"]).toBe("# Título\n\nTexto fuente");
+  });
+
+  it("passes {{OUTPUT_SCHEMA}} marker value to executor", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      metaPromptRevisionId: "rev-meta-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    const markerValues = callArg.markerValues as Record<string, string>;
+    expect(markerValues["{{OUTPUT_SCHEMA}}"]).toBeDefined();
+    // Should be a valid JSON string
+    expect(() => JSON.parse(markerValues["{{OUTPUT_SCHEMA}}"])).not.toThrow();
+  });
+
+  it("passes metaPromptOutputSchema as schema to executor", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      metaPromptRevisionId: "rev-meta-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.schema).toBeDefined();
+  });
+
+  it("does not query metaPrompts table", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      metaPromptRevisionId: "rev-meta-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    // Only 1 select call: template status check. No metaPrompts query.
+    expect(mocks.select).toHaveBeenCalledTimes(1);
   });
 });

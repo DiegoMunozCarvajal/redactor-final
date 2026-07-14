@@ -1,10 +1,12 @@
 import { task } from "@trigger.dev/sdk";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { db } from "@/lib/db";
-import { metaPrompts, prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
+import { prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
-import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
+import { executeVersionedPrompt } from "@/lib/prompts/executor";
+import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import type { ReasoningEffort } from "@/lib/ai/completion";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { assertOriginalEnough } from "@/lib/ai/originality-check";
 
@@ -45,12 +47,12 @@ export const generateTemplate = task({
   },
   run: async (payload: {
     templateId: string;
-    metaPromptId: string;
+    metaPromptRevisionId: string;
     chapters: ChapterPayload[];
     model?: string;
     effort?: ReasoningEffort;
   }) => {
-    const { templateId, metaPromptId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
+    const { templateId, metaPromptRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
 
     // Idempotency guard: if the template already completed successfully,
     // don't reprocess. "failed" is NOT terminal — retries recover from
@@ -74,48 +76,36 @@ export const generateTemplate = task({
       .where(eq(bookTemplates.id, templateId));
 
     try {
-      // Load meta-prompt
-      const [metaPrompt] = await db
-        .select()
-        .from(metaPrompts)
-        .where(eq(metaPrompts.id, metaPromptId))
-        .limit(1);
-      if (!metaPrompt) throw new Error(`MetaPrompt ${metaPromptId} not found`);
-
-      // Anthropic ephemeral cache: the meta-prompt content (system prompt) is
-      // static across all chapters — cache it to avoid re-sending per chapter.
-      const isAnthropic = getProviderForModel(model) === "anthropic";
+      // Serialize the output schema for the {{OUTPUT_SCHEMA}} marker — same value
+      // across all chapters, so compute once before the concurrency loop.
+      const outputSchemaStr = JSON.stringify(
+        zodToJsonSchema(metaPromptOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
+        null,
+        2,
+      );
 
       // Process chapters concurrently (3 at a time) to avoid sequential timeout.
       // Each chapter's LLM call and DB inserts are independent — safe to parallelize.
-      // onConflictDoNothing makes retries idempotent.
       const TEMPLATE_CONCURRENCY = 3;
       const results = await runSettledWithConcurrency(
         chapters,
         TEMPLATE_CONCURRENCY,
         async (chapter) => {
           const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
-          // Replace any {CAPITULO_*} or {{CAPITULO_*}} variant (case-insensitive)
-          // so meta-prompts can use {CAPITULO_FUENTE}, {CAPITULO_EN_MARKDOWN}, etc.
-          const replaceCapituloPlaceholder = (text: string) =>
-            text.replace(/\{\{?CAPITULO_[^}]+\}\}?/gi, capituloFuente);
 
-          const userPrompt = replaceCapituloPlaceholder(
-            metaPrompt.userPrompt ??
-              `Descompón el siguiente capítulo fuente en sus unidades naturales de contenido y genera un prompt por cada unidad.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de bloques en formato JSON.`,
-          );
-
-          // Also replace in the system prompt for non-Anthropic providers
-          // (Anthropic uses cachedSystemPrompt below — replacement happens there too)
-          const systemPrompt = replaceCapituloPlaceholder(metaPrompt.content);
-
-          const result = await generateCompletion({
-            systemPrompt: isAnthropic ? "" : systemPrompt,
-            userPrompt,
-            schema: metaPromptOutputSchema,
+          const { result } = await executeVersionedPrompt({
+            stage: 'template-generation',
+            kind: 'meta-template',
+            revisionId: metaPromptRevisionId,
+            bookTemplateId: templateId,
+            chapterId: chapter.chapterId,
+            markerValues: {
+              '{{CAPITULO_FUENTE}}': capituloFuente,
+              '{{OUTPUT_SCHEMA}}': outputSchemaStr,
+            },
             model,
+            schema: metaPromptOutputSchema,
             ...(effort ? { effort } : {}),
-            ...(isAnthropic ? { cachedSystemPrompt: systemPrompt, cacheSystemPrompt: true } : {}),
           });
 
           const blocks = result.data.templates;
