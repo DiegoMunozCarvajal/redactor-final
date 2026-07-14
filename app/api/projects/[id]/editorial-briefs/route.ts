@@ -74,7 +74,7 @@ function createEmptyContract(chapterId: string): ChapterEditorialContract {
   };
 }
 
-function mapRepoError(err: unknown): NextResponse {
+export function mapRepoError(err: unknown): NextResponse {
   const message = err instanceof Error ? err.message : "Unknown error";
   if (
     message.includes("not found") ||
@@ -82,13 +82,16 @@ function mapRepoError(err: unknown): NextResponse {
   ) {
     return NextResponse.json({ error: message }, { status: 404 });
   }
-  if (message.includes("non-draft") || message.includes("hash mismatch")) {
+  if (
+    message.includes("non-draft") ||
+    message.includes("hash mismatch") ||
+    message.includes("already exists")
+  ) {
     return NextResponse.json({ error: message }, { status: 409 });
   }
   if (
     message.includes("Invalid bundle") ||
-    message.includes("exceeds maximum") ||
-    message.includes("Already a draft")
+    message.includes("exceeds maximum")
   ) {
     return NextResponse.json({ error: message }, { status: 400 });
   }

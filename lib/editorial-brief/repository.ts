@@ -180,10 +180,27 @@ export async function createEditorialBriefDraft(
       validateSourcesBelongToProject(input.evidenceSourceIds, input.projectId, tx),
     ]);
 
+    // Check for existing draft BEFORE locking/inserting. The partial unique
+    // index uq_editorial_briefs_project_draft enforces at most one draft per
+    // project — we surface a clear error instead of hitting the constraint.
+    const [existingDraft] = await tx
+      .select({ id: editorialBriefs.id })
+      .from(editorialBriefs)
+      .where(
+        and(
+          eq(editorialBriefs.projectId, input.projectId),
+          eq(editorialBriefs.status, "draft"),
+        ),
+      );
+    if (existingDraft) {
+      throw new Error("A draft editorial brief already exists for this project");
+    }
+
     // Lock existing brief rows for this project to serialize version
     // allocation. When creating the first draft, no rows match the WHERE
-    // clause so no rows are locked. The UNIQUE (project_id, version)
-    // constraint acts as the fallback guard against version conflicts.
+    // clause so no rows are locked. The draft-exists check above handles
+    // the duplicate-draft case; the UNIQUE (project_id, version) constraint
+    // acts as the fallback guard against version conflicts.
     // We lock with a non-aggregate SELECT because FOR UPDATE is not
     // allowed with aggregate functions like max().
     await tx
@@ -451,22 +468,27 @@ export async function approveEditorialBrief(
   const dbCtx = ctx ?? db;
 
   return dbCtx.transaction(async (tx) => {
-    // Load the draft
-    const [draft] = await tx
+    // Load the brief first without status filter to differentiate
+    // "not found" (404) from "found but not a draft" (409).
+    const [brief] = await tx
       .select()
       .from(editorialBriefs)
       .where(
         and(
           eq(editorialBriefs.id, input.briefId),
           eq(editorialBriefs.projectId, input.projectId),
-          eq(editorialBriefs.status, "draft"),
         ),
       )
       .for("update");
 
-    if (!draft) {
-      throw new Error("Draft editorial brief not found");
+    if (!brief) {
+      throw new Error("Editorial brief not found");
     }
+    if (brief.status !== "draft") {
+      throw new Error("Cannot approve a non-draft editorial brief");
+    }
+
+    const draft = brief;
 
     // Archive any currently approved version
     await tx

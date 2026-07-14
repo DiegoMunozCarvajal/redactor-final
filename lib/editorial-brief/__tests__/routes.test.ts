@@ -96,8 +96,6 @@ async function setupProject(userId = USER_ID) {
 
 async function cleanupProject(projectId: string) {
   // Delete in FK-safe order
-  await db.delete(chapterPlaceholders).where(eq(chapterPlaceholders.chapterId, sql`(SELECT id FROM chapters WHERE project_id = ${projectId} LIMIT 1)`));
-  // Simpler: delete all placeholders for chapters in this project
   const chIds = await db.select({ id: chapters.id }).from(chapters).where(eq(chapters.projectId, projectId));
   for (const ch of chIds) {
     await db.delete(chapterPlaceholders).where(eq(chapterPlaceholders.chapterId, ch.id));

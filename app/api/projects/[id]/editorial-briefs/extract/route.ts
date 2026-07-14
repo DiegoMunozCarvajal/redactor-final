@@ -4,12 +4,13 @@ import { db } from "@/lib/db";
 import { projects, sources, chapters } from "@/lib/db/schema";
 import { chapterPlaceholders } from "@/lib/db/schema/chapter-placeholders";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { createEditorialBriefDraft } from "@/lib/editorial-brief/repository";
 import { extractEditorialBriefDraft } from "@/lib/editorial-brief/extract";
+import { mapRepoError } from "@/app/api/projects/[id]/editorial-briefs/route";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -100,21 +101,29 @@ export async function POST(
       );
     }
 
-    // Load available placeholder names for each chapter
-    const chapterContext = [];
-    for (const ch of projectChapters) {
-      const placeholders = await db
-        .select({ name: chapterPlaceholders.name })
-        .from(chapterPlaceholders)
-        .where(eq(chapterPlaceholders.chapterId, ch.id))
-        .orderBy(asc(chapterPlaceholders.name));
+    // Batch-load available placeholder names for all chapters in one query
+    const chapterIds = projectChapters.map((ch) => ch.id);
+    const allPlaceholders = await db
+      .select({
+        chapterId: chapterPlaceholders.chapterId,
+        name: chapterPlaceholders.name,
+      })
+      .from(chapterPlaceholders)
+      .where(inArray(chapterPlaceholders.chapterId, chapterIds))
+      .orderBy(asc(chapterPlaceholders.name));
 
-      chapterContext.push({
-        chapterId: ch.id,
-        title: ch.title,
-        availablePlaceholders: placeholders.map((p) => p.name),
-      });
+    const placeholdersByChapter = new Map<string, string[]>();
+    for (const p of allPlaceholders) {
+      const list = placeholdersByChapter.get(p.chapterId) ?? [];
+      list.push(p.name);
+      placeholdersByChapter.set(p.chapterId, list);
     }
+
+    const chapterContext = projectChapters.map((ch) => ({
+      chapterId: ch.id,
+      title: ch.title,
+      availablePlaceholders: placeholdersByChapter.get(ch.id) ?? [],
+    }));
 
     // Extract via LLM
     const extracted = await extractEditorialBriefDraft({
@@ -142,22 +151,12 @@ export async function POST(
 
     return NextResponse.json(brief, { status: 201 });
   } catch (err) {
+    // Forward source-text-size errors as 400 (they are payload-size issues,
+    // not repository conflicts) before falling through to the shared mapper.
     const message = err instanceof Error ? err.message : "Unknown error";
     if (message.includes("exceeds maximum")) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
-    if (
-      message.includes("not found") ||
-      message.includes("do not belong")
-    ) {
-      return NextResponse.json({ error: message }, { status: 404 });
-    }
-    if (message.includes("Invalid bundle") || message.includes("non-draft")) {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-    return NextResponse.json(
-      { error: sanitizeError(err) },
-      { status: 500 },
-    );
+    return mapRepoError(err);
   }
 }
