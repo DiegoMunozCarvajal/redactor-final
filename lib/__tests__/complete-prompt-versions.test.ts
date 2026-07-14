@@ -202,7 +202,7 @@ describe("writeCurrentChapterPromptRevision", () => {
     const versionId = await writeCurrentChapterPromptRevision(
       "prompt-1",
       "user-1",
-      mockCtx as any,
+      mockCtx as unknown as Parameters<typeof writeCurrentChapterPromptRevision>[2],
     );
 
     // Should compute next revision as maxRevision + 1 = 6
@@ -248,7 +248,7 @@ describe("writeCurrentChapterPromptRevision", () => {
     const versionId = await writeCurrentChapterPromptRevision(
       "prompt-1",
       "user-1",
-      mockCtx as any,
+      mockCtx as unknown as Parameters<typeof writeCurrentChapterPromptRevision>[2],
     );
 
     expect(versionId).toBe("version-1");
@@ -266,7 +266,7 @@ describe("writeCurrentChapterPromptRevision", () => {
     };
 
     await expect(
-      writeCurrentChapterPromptRevision("nonexistent", "user-1", mockCtx as any),
+      writeCurrentChapterPromptRevision("nonexistent", "user-1", mockCtx as unknown as Parameters<typeof writeCurrentChapterPromptRevision>[2]),
     ).rejects.toThrow("Prompt nonexistent not found");
   });
 });

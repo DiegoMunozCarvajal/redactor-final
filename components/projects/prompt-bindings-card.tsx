@@ -69,59 +69,27 @@ export function PromptBindingsCard({
         const res = await fetch(
           `/api/projects/${projectId}/prompt-bindings`,
         );
-        if (!res.ok) {
-          // API may not exist yet — use defaults
-          const defaults = await fetchDefaults();
-          if (!cancelled) setBindings(defaults);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setBindings(data);
+          if (!cancelled) setLoading(false);
           return;
         }
-        const data = await res.json();
-        if (!cancelled) setBindings(data);
       } catch {
-        // Fallback: show all kinds with unknown revision
-        const fallback = PROJECT_KINDS.map((kind) => ({
-          kind,
-          label: KIND_LABELS[kind] ?? kind,
-          effectiveRevision: null,
-          isOverride: false,
-        }));
-        if (!cancelled) setBindings(fallback);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // API not available — fall through to fallback
       }
-    }
 
-    async function fetchDefaults(): Promise<BindingEntry[]> {
-      const results: BindingEntry[] = [];
-      for (const kind of PROJECT_KINDS) {
-        try {
-          const res = await fetch(`/api/prompt-defaults/${kind}`);
-          if (res.ok) {
-            const revision = await res.json();
-            results.push({
-              kind,
-              label: KIND_LABELS[kind] ?? kind,
-              effectiveRevision: revision,
-              isOverride: false,
-            });
-          } else {
-            results.push({
-              kind,
-              label: KIND_LABELS[kind] ?? kind,
-              effectiveRevision: null,
-              isOverride: false,
-            });
-          }
-        } catch {
-          results.push({
-            kind,
-            label: KIND_LABELS[kind] ?? kind,
-            effectiveRevision: null,
-            isOverride: false,
-          });
-        }
-      }
-      return results;
+      // Show all kinds with unresolved revisions. The prompt-defaults API
+      // requires the prompt_defaults table (migration 20260714000002).
+      // When the table exists, each row resolves to its effective revision.
+      const fallback = PROJECT_KINDS.map((kind) => ({
+        kind,
+        label: KIND_LABELS[kind] ?? kind,
+        effectiveRevision: null,
+        isOverride: false,
+      }));
+      if (!cancelled) setBindings(fallback);
+      if (!cancelled) setLoading(false);
     }
 
     load();
