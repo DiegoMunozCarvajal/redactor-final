@@ -337,6 +337,69 @@ const SECTION_RENDERERS: Record<
 };
 
 // ---------------------------------------------------------------------------
+// Data-only editorial context (no instructions)
+// ---------------------------------------------------------------------------
+
+const ALL_DATA_SECTIONS: Array<keyof EditorialBriefContent> = [
+  "market",
+  "audience",
+  "thesis",
+  "voice",
+  "contentStrategy",
+  "guardrails",
+  "evidence",
+  "packaging",
+  "researchBasis",
+];
+
+/**
+ * Render an editorial bundle's data sections as XML, without any instruction
+ * tags, authority markers, or scope-specific prose.
+ *
+ * Useful for planners and other read-only consumers that need the editorial
+ * context as data rather than instructions.
+ *
+ * @param bundle - The editorial bundle to render, or `null` for legacy behavior.
+ * @param params.chapterId - Required for chapter contract inclusion.
+ * @returns Escaped XML string with `<editorial_context>` wrapper and data
+ *          sections only, or `null` when the bundle is `null`.
+ */
+export function renderEditorialData(
+  bundle: EditorialBundle | null,
+  params: { chapterId?: string },
+): string | null {
+  if (bundle === null) return null;
+
+  const { chapterId } = params;
+
+  // Build data sections (all of them — no scope filtering)
+  const parts: string[] = [];
+
+  for (const sectionKey of ALL_DATA_SECTIONS) {
+    const render = SECTION_RENDERERS[sectionKey];
+    parts.push(render(bundle.content[sectionKey]));
+  }
+
+  // Chapter contract
+  if (chapterId) {
+    const contract = bundle.contracts.find((c) => c.chapterId === chapterId);
+    if (!contract) {
+      throw new Error(
+        `Chapter contract not found for chapterId "${chapterId}" in data-only renderer`,
+      );
+    }
+    parts.push(renderChapterContract(contract));
+  }
+
+  // Wrap in editorial_context (no authority, no instructions)
+  return [
+    `<editorial_context version="${bundle.version}" hash="${escapeXml(bundle.hash)}">`,
+    ...parts,
+    "</editorial_context>",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 

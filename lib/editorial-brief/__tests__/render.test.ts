@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderEditorialScope } from "../render";
+import { renderEditorialScope, renderEditorialData } from "../render";
 import { hashEditorialBundle } from "../hash";
 import {
   createTestEditorialBundle,
@@ -414,5 +414,127 @@ describe("empty elements", () => {
     });
     expect(result).not.toContain("<avoidOverlapWith>");
     expect(result).not.toContain("</avoidOverlapWith>");
+  });
+});
+
+describe("renderEditorialData", () => {
+  it("returns null for a null bundle", () => {
+    expect(renderEditorialData(null, {})).toBeNull();
+  });
+
+  it("wraps output in editorial_context tags with version and hash", () => {
+    const { bundle, hash } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+    expect(result).toContain(
+      `<editorial_context version="${bundle.version}" hash="${hash}">`,
+    );
+    expect(result).toContain("</editorial_context>");
+  });
+
+  it("includes all data sections", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+
+    // Market
+    expect(result).toContain("United States");
+    expect(result).toContain("English");
+    // Audience
+    expect(result).toContain("Men aged 25-40");
+    expect(result).toContain("Matches fizzle out");
+    // Thesis / promise
+    expect(result).toContain("Turn every match");
+    expect(result).toContain("Not every match will respond");
+    // Voice
+    expect(result).toContain("Direct");
+    expect(result).toContain("Confident peer");
+    // Content strategy
+    expect(result).toContain("First message");
+    expect(result).toContain("Principle + example pattern");
+    // Guardrails
+    expect(result).toContain("Reciprocity");
+    expect(result).toContain("Guaranteed results");
+    // Evidence
+    expect(result).toContain("rag_optional");
+    expect(result).toContain("Cite specific studies");
+    // Packaging
+    expect(result).toContain("How to turn matches into dates");
+    expect(result).toContain("Stop losing matches");
+    // Research basis
+    expect(result).toContain("70% of matches never message first");
+    expect(result).toContain("Self-reported data");
+  });
+
+  it("includes chapter contract", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+    expect(result).toContain("Craft the first message after matching");
+    expect(result).toContain("first_message_stats");
+  });
+
+  it("does NOT include authority tag", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+    expect(result).not.toContain("<authority>");
+    expect(result).not.toContain("</authority>");
+  });
+
+  it("does NOT include any instruction tags", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+    expect(result).not.toContain("assembly_instructions");
+    expect(result).not.toContain("adherence_rubric");
+    expect(result).not.toContain("correction_instructions");
+    expect(result).not.toContain("fragment_instructions");
+    expect(result).not.toContain("title_instructions");
+    expect(result).not.toContain("placeholder_fill_instructions");
+  });
+
+  it("throws when chapterId is given but contract is not found", () => {
+    const { bundle } = getBundles();
+    const missingId = "99999999-9999-9999-9999-999999999999";
+    expect(() =>
+      renderEditorialData(bundle, { chapterId: missingId }),
+    ).toThrow("Chapter contract not found");
+  });
+
+  it("still works without chapterId (no contract)", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {});
+    expect(result).toContain("United States");
+    expect(result).toContain("Direct");
+    // No chapter contract data
+    expect(result).not.toContain("Craft the first message after matching");
+  });
+
+  it("escapes XML special characters in values", () => {
+    const bundle = createTestEditorialBundle({
+      content: {
+        audience: {
+          primaryReader:
+            "Men & women < 30 years old who say \"it's too much\"",
+        },
+      },
+    });
+    const { bundle: hashedBundle } = (() => {
+      const h = hashEditorialBundle(bundle);
+      return { bundle: { ...bundle, hash: h } };
+    })();
+    const result = renderEditorialData(hashedBundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+
+    expect(result).toContain("Men &amp; women");
+    expect(result).toContain("&lt; 30 years old");
+    expect(result).not.toContain("Men & women");
   });
 });
