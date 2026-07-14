@@ -45,7 +45,7 @@ export function snapshotChapterPrompt(row: Prompt): ChapterPromptSnapshot {
  */
 export async function writeCurrentChapterPromptRevision(
   promptId: string,
-  userId: string,
+  userId: string | null,
   ctx: DB,
 ): Promise<string> {
   const [prompt] = await ctx

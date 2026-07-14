@@ -164,7 +164,7 @@ export const generateTemplate = task({
               }).returning({ id: prompts.id });
 
               // Create immutable revision so currentRevisionId is never null
-              await writeCurrentChapterPromptRevision(inserted.id, 'system', tx);
+              await writeCurrentChapterPromptRevision(inserted.id, null, tx);
 
               // Collect placeholders (first seen wins for function/notes)
               for (const ph of block.placeholders) {

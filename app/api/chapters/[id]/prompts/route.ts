@@ -47,31 +47,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  const existing = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(prompts)
-    .where(eq(prompts.chapterId, id));
+  // Insert prompt + revision atomically in one transaction.
+  // Without this, a crash between insert and revision leaves
+  // currentRevisionId null and generation fails.
+  const prompt = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(prompts)
+      .where(eq(prompts.chapterId, id));
 
-  const pos = position ?? (existing[0]?.count ?? 0);
+    const pos = position ?? (existing[0]?.count ?? 0);
 
-  const [prompt] = await db
-    .insert(prompts)
-    .values({
-      chapterId: id,
-      title,
-      content,
-      userPrompt,
-      position: pos,
-      isAssembly: isAssembly ?? false,
-      isCritique: isCritique ?? false,
-      isCorrector: isCorrector ?? false,
-    })
-    .returning();
+    const [p] = await tx
+      .insert(prompts)
+      .values({
+        chapterId: id,
+        title,
+        content,
+        userPrompt,
+        position: pos,
+        isAssembly: isAssembly ?? false,
+        isCritique: isCritique ?? false,
+        isCorrector: isCorrector ?? false,
+      })
+      .returning();
 
-  // Create immutable revision so currentRevisionId is never null.
-  // Wrap in transaction for atomicity.
-  await db.transaction(async (tx) => {
-    await writeCurrentChapterPromptRevision(prompt.id, admin.user.id, tx);
+    await writeCurrentChapterPromptRevision(p.id, admin.user.id, tx);
+    return p;
   });
 
   await logAudit({

@@ -214,6 +214,7 @@ export const generateChapter = task({
         const existingFragments = await db
           .select({
             id: fragments.id,
+            projectPromptId: fragments.projectPromptId,
             title: prompts.title,
             content: fragments.content,
           })
@@ -223,10 +224,15 @@ export const generateChapter = task({
           .orderBy(asc(fragments.position));
 
         if (existingFragments.length > 0) {
-          // Retry recovery: only reuse fragments when ALL expected content prompts
-          // have a corresponding fragment. A partial set means a parallel failure
-          // mid-generation — delete and regenerate to avoid incomplete chapters.
-          if (existingFragments.length < contentPrompts.length) {
+          // Retry recovery: compare sets of projectPromptId to detect partial
+          // sets and duplicates. Count alone can be fooled by duplicates if
+          // no unique constraint on (generationId, projectPromptId).
+          const expectedIds = new Set(contentPrompts.map((p) => p.id));
+          const actualIds = new Set(existingFragments.map((f) => f.projectPromptId).filter(Boolean));
+          const complete = expectedIds.size === actualIds.size &&
+            [...expectedIds].every((id) => actualIds.has(id));
+
+          if (!complete) {
             await db
               .delete(fragments)
               .where(eq(fragments.chapterGenerationId, generationId));
@@ -349,6 +355,24 @@ export const generateChapter = task({
         ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
         : null;
 
+      // Validate persisted plan if present. Clear invalid plans so the
+      // `if (!plan)` block below re-plans instead of assembling garbage.
+      if (plan) {
+        const parsed = assemblyPlanV1Schema.safeParse(plan);
+        if (parsed.success) {
+          // Extract plannerExecutionId from existing planning metadata
+          const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
+          plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
+        } else {
+          // Persisted plan is invalid — clear and re-plan below
+          plan = null;
+          await db
+            .update(chapterGenerations)
+            .set({ assemblyPlan: null, planningMetadata: null, plannerPromptRevisionId: null })
+            .where(eq(chapterGenerations.id, generationId));
+        }
+      }
+
       if (!plan) {
         // Transition generating → planning
         await db
@@ -407,20 +431,6 @@ export const generateChapter = task({
             plannerPromptRevisionId: plannerResult.revisionId,
           })
           .where(eq(chapterGenerations.id, generationId));
-      } else {
-        // Validate persisted plan against schema
-        const parsed = assemblyPlanV1Schema.safeParse(plan);
-        if (!parsed.success) {
-          // Persisted plan is invalid — clear it and re-plan
-          plan = null;
-          await db
-            .update(chapterGenerations)
-            .set({ assemblyPlan: null, planningMetadata: null, plannerPromptRevisionId: null })
-            .where(eq(chapterGenerations.id, generationId));
-        }
-        // Extract plannerExecutionId from existing planning metadata
-        const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
-        plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
       }
 
       // ── Phase 3: Assembly ────────────────────────────────────────────
@@ -461,7 +471,7 @@ export const generateChapter = task({
             algorithm: "planned-editorial-v1",
             model: assemblerResult.model,
             fragmentCount: fragmentContents.length,
-            plannerExecutionId: plannerExecutionId,
+            plannerExecutionId: plannerExecutionId ?? undefined,
             assemblyExecutionId: assemblerResult.executionId,
             pipeline: "planned-editorial-v1",
           },

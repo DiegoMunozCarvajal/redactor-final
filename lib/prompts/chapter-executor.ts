@@ -81,36 +81,35 @@ export async function executeChapterPrompt(
   const localContent = version.content;
   const localUserPrompt = version.userPrompt;
 
-  // 2. Resolve the generation-system prompt revision
-  const generationSystemRevision = await resolvePromptRevision({
-    kind: 'generation-system',
-    projectId,
-  });
-
-  // 3. Build effective system + user messages
-  //    - If local prompt HAS userPrompt: local content = system, local userPrompt = user
-  //    - Otherwise: generation-system revision = system, local content = user
+  // 2. Build effective system + user messages.
+  //    - If local prompt HAS userPrompt: both system and user from local — no external resolution.
+  //    - Otherwise: resolve generation-system revision as system, local content as user.
   let systemMessage: string;
   let userMessage: string;
+  let generationSystemRevisionId: string | null = null;
 
   if (localUserPrompt) {
     systemMessage = localContent;
     userMessage = localUserPrompt;
   } else {
+    const generationSystemRevision = await resolvePromptRevision({
+      kind: 'generation-system',
+      projectId,
+    });
+    generationSystemRevisionId = generationSystemRevision.id;
     systemMessage = generationSystemRevision.systemTemplate;
     userMessage = localContent;
   }
 
-  // 4. Apply runtime markers ({{EDITORIAL_CONTEXT}}) — replaces BEFORE dynamic placeholders.
-  //    Fail-closed: if the generation-system template lacks the marker, the prompt revision
-  //    is incorrectly configured. Log a warning so operators can fix the revision.
+  // 3. Apply runtime markers ({{EDITORIAL_CONTEXT}}) — replaces BEFORE dynamic placeholders.
+  //    Fail-closed: editorial context requires the marker in the effective messages.
   const editorialMarker = '{{EDITORIAL_CONTEXT}}';
   const resolvedEditorialContext = editorialContext ?? '';
 
   const hasMarker = systemMessage.includes(editorialMarker) || userMessage.includes(editorialMarker);
   if (!hasMarker && editorialContext) {
     throw new Error(
-      `[chapter-executor] Editorial context provided but neither system nor user message contains {{EDITORIAL_CONTEXT}} marker. The generation-system revision (${generationSystemRevision.id}) is missing the marker — update the revision to include {{EDITORIAL_CONTEXT}}.`,
+      `[chapter-executor] Editorial context provided but neither system nor user message contains {{EDITORIAL_CONTEXT}} marker. The prompt revision is missing the marker — update it to include {{EDITORIAL_CONTEXT}}.`,
     );
   }
 
@@ -136,10 +135,12 @@ export async function executeChapterPrompt(
     entityIds: [chapterPromptRevisionId],
   };
 
-  // Generation system revision (prompt_revisions.id)
-  dataManifest['generation-system'] = {
-    entityIds: [generationSystemRevision.id],
-  };
+  // Generation system revision — only when actually used (no local userPrompt)
+  if (generationSystemRevisionId) {
+    dataManifest['generation-system'] = {
+      entityIds: [generationSystemRevisionId],
+    };
+  }
 
   // Editorial context lineage
   if (editorialLineage) {
@@ -163,7 +164,7 @@ export async function executeChapterPrompt(
       chapterId,
       chapterGenerationId,
       stage: 'fragment',
-      promptRevisionId: generationSystemRevision.id,
+      promptRevisionId: generationSystemRevisionId ?? undefined,
       chapterPromptRevisionId,
       model,
       provider,

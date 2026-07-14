@@ -64,16 +64,26 @@ export async function POST(
     if (!parsed.success) {
       return NextResponse.json({ error: "plannerRevisionId must be a valid UUID" }, { status: 400 });
     }
-    await resolvePromptRevision({ kind: "assembly-planner", runRevisionId: parsed.data });
-    plannerRevisionId = parsed.data;
+    try {
+      await resolvePromptRevision({ kind: "assembly-planner", runRevisionId: parsed.data });
+      plannerRevisionId = parsed.data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid revision";
+      return NextResponse.json({ error: `plannerRevisionId: ${message}` }, { status: 400 });
+    }
   }
   if (assemblyRevisionIdRaw !== undefined) {
     const parsed = uuidSchema.safeParse(assemblyRevisionIdRaw);
     if (!parsed.success) {
       return NextResponse.json({ error: "assemblyRevisionId must be a valid UUID" }, { status: 400 });
     }
-    await resolvePromptRevision({ kind: "assembly", runRevisionId: parsed.data });
-    assemblyRevisionId = parsed.data;
+    try {
+      await resolvePromptRevision({ kind: "assembly", runRevisionId: parsed.data });
+      assemblyRevisionId = parsed.data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid revision";
+      return NextResponse.json({ error: `assemblyRevisionId: ${message}` }, { status: 400 });
+    }
   }
 
   // Capture editorial bundle snapshot before the advisory lock.

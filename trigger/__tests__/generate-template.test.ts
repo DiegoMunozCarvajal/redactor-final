@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   executeVersionedPrompt: vi.fn(),
   checkBlocklist: vi.fn(),
   assertOriginalEnough: vi.fn(),
+  writeCurrentChapterPromptRevision: vi.fn(),
 }));
 
 vi.mock("@trigger.dev/sdk", () => ({
@@ -32,6 +33,10 @@ vi.mock("@/lib/ai/providers", () => ({
 vi.mock("@/lib/ai/originality-check", () => ({
   checkBlocklist: (...args: unknown[]) => mocks.checkBlocklist(...args),
   assertOriginalEnough: (...args: unknown[]) => mocks.assertOriginalEnough(...args),
+}));
+
+vi.mock("@/lib/prompts/chapter-revisions", () => ({
+  writeCurrentChapterPromptRevision: (...args: unknown[]) => mocks.writeCurrentChapterPromptRevision(...args),
 }));
 
 import { generateTemplate } from "@/trigger/generate-template";
@@ -65,6 +70,7 @@ describe("generateTemplate", () => {
     vi.clearAllMocks();
     mocks.checkBlocklist.mockReturnValue([]);
     mocks.assertOriginalEnough.mockReturnValue({ flagged: false });
+    mocks.writeCurrentChapterPromptRevision.mockResolvedValue("version-1");
 
     mocks.select.mockReturnValueOnce(
       selectResult([{ status: "generating" }]),
@@ -81,7 +87,9 @@ describe("generateTemplate", () => {
         where: vi.fn().mockResolvedValue(undefined),
       }),
       insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockResolvedValue(undefined),
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: "prompt-1" }]),
+        }),
       }),
     };
     mocks.transaction.mockImplementation(

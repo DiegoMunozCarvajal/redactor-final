@@ -162,8 +162,34 @@ describe("executeChapterPrompt", () => {
     );
   });
 
-  it("resolves a generation-system revision for the project", async () => {
-    await executeChapterPrompt(makeInput());
+  it("resolves a generation-system revision when local prompt has no userPrompt", async () => {
+    // Override version to have no userPrompt — triggers generation-system resolution
+    const chain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn(),
+    };
+    chain.from.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.limit.mockResolvedValue([
+      makeVersion({ userPrompt: null }),
+    ]);
+
+    vi.clearAllMocks();
+    mockDb.select.mockReturnValue(chain);
+    mockDb.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([makeExecution()]),
+      }),
+    } as never);
+    mockDb.update.mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as never);
+    mockResolvePromptRevision.mockResolvedValue(makeSystemRevision());
+    mockGetProviderForModel.mockReturnValue("anthropic");
+    mockGenerateCompletion.mockResolvedValue(makeCompletionResult());
+
+    await executeChapterPrompt(makeInput({ editorialContext: "<editorial>CTX</editorial>" }));
     expect(mockResolvePromptRevision).toHaveBeenCalledWith({
       kind: "generation-system",
       projectId: "proj-1",
