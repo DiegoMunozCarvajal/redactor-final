@@ -159,19 +159,26 @@ export function PromptBindingsCard({
   async function loadRevisions(kind: string) {
     setLoadingRevisions(true);
     try {
-      // Fetch definitions for this kind, then revisions for each definition
+      // Fetch definitions for this kind, then full revision history for each
       const defsRes = await fetch(`/api/prompt-definitions?kind=${encodeURIComponent(kind)}`);
       if (!defsRes.ok) { setAvailableRevisions([]); return; }
-      const defs: { id: string; name: string; latestRevision: { id: string; versionLabel: string } | null }[] = await defsRes.json();
+      const defs: { id: string; name: string }[] = await defsRes.json();
 
       const revisions: RevisionEntry[] = [];
       for (const def of defs) {
-        if (def.latestRevision) {
-          revisions.push({
-            id: def.latestRevision.id,
-            versionLabel: def.latestRevision.versionLabel,
-            name: def.name,
-          });
+        try {
+          const revsRes = await fetch(`/api/prompt-definitions/${def.id}/revisions`);
+          if (!revsRes.ok) continue;
+          const revs: { id: string; versionLabel: string }[] = await revsRes.json();
+          for (const rev of revs) {
+            revisions.push({
+              id: rev.id,
+              versionLabel: rev.versionLabel,
+              name: def.name,
+            });
+          }
+        } catch {
+          // Skip this definition on fetch error
         }
       }
       setAvailableRevisions(revisions);

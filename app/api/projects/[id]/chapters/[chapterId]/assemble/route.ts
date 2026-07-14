@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, fragments, prompts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +13,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_GENERATION_MODEL, getModelDefinition } from "@/lib/ai/providers";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, snapshotFromGenerationMetadata } from "@/lib/editorial-brief/context";
+import { resolvePromptRevision } from "@/lib/prompts/repository";
 
 export async function POST(
   req: NextRequest,
@@ -50,8 +52,31 @@ export async function POST(
   const fragmentIds: string[] = body.fragmentIds ?? [];
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | "xhigh" | undefined;
-  const plannerRevisionId = body.plannerRevisionId as string | undefined;
-  const assemblyRevisionId = body.assemblyRevisionId as string | undefined;
+  const plannerRevisionIdRaw = body.plannerRevisionId as string | undefined;
+  const assemblyRevisionIdRaw = body.assemblyRevisionId as string | undefined;
+
+  // Validate revision IDs with Zod UUID + resolvePromptRevision (kind check)
+  // BEFORE creating the generation — invalid IDs fail synchronously.
+  let plannerRevisionId: string | undefined;
+  let assemblyRevisionId: string | undefined;
+
+  const uuidSchema = z.string().uuid();
+  if (plannerRevisionIdRaw !== undefined) {
+    const parsed = uuidSchema.safeParse(plannerRevisionIdRaw);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "plannerRevisionId must be a valid UUID" }, { status: 400 });
+    }
+    await resolvePromptRevision({ kind: "assembly-planner", runRevisionId: parsed.data });
+    plannerRevisionId = parsed.data;
+  }
+  if (assemblyRevisionIdRaw !== undefined) {
+    const parsed = uuidSchema.safeParse(assemblyRevisionIdRaw);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "assemblyRevisionId must be a valid UUID" }, { status: 400 });
+    }
+    await resolvePromptRevision({ kind: "assembly", runRevisionId: parsed.data });
+    assemblyRevisionId = parsed.data;
+  }
 
   // Reject legacy fields — Plan 2 resolves everything via revision IDs
   if (body.assemblyAlgorithm !== undefined) {

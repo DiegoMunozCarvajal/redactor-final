@@ -16,6 +16,7 @@ import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runAssemblyPlanner } from "@/lib/assembly/planner";
 import { runAssemblyAssembler } from "@/lib/assembly/assembler";
+import { assemblyPlanV1Schema } from "@/lib/assembly/plan-schema";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
 export const generateChapter = task({
@@ -222,14 +223,24 @@ export const generateChapter = task({
           .orderBy(asc(fragments.position));
 
         if (existingFragments.length > 0) {
-          for (const f of existingFragments) {
-            fragmentContents.push({
-              id: f.id,
-              title: f.title ?? "Fragment",
-              content: f.content ?? "",
-            });
+          // Retry recovery: only reuse fragments when ALL expected content prompts
+          // have a corresponding fragment. A partial set means a parallel failure
+          // mid-generation — delete and regenerate to avoid incomplete chapters.
+          if (existingFragments.length < contentPrompts.length) {
+            await db
+              .delete(fragments)
+              .where(eq(fragments.chapterGenerationId, generationId));
+          } else {
+            for (const f of existingFragments) {
+              fragmentContents.push({
+                id: f.id,
+                title: f.title ?? "Fragment",
+                content: f.content ?? "",
+              });
+            }
           }
-        } else {
+        }
+        if (fragmentContents.length === 0) {
           // Load placeholders
           const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
 
@@ -378,7 +389,9 @@ export const generateChapter = task({
         plan = plannerResult.plan as unknown as Record<string, unknown>;
         plannerExecutionId = plannerResult.executionId;
 
-        // Store the assembly plan and planning metadata
+        // Store the assembly plan and planning metadata.
+        // Always persist the resolved revision ID (not the input) so retries
+        // use the same revision even if defaults change.
         await db
           .update(chapterGenerations)
           .set({
@@ -391,10 +404,20 @@ export const generateChapter = task({
               plannerExecutionId: plannerResult.executionId,
               pipeline: "planned-editorial-v1",
             },
-            ...(plannerRevisionId ? { plannerPromptRevisionId: plannerRevisionId } : {}),
+            plannerPromptRevisionId: plannerResult.revisionId,
           })
           .where(eq(chapterGenerations.id, generationId));
       } else {
+        // Validate persisted plan against schema
+        const parsed = assemblyPlanV1Schema.safeParse(plan);
+        if (!parsed.success) {
+          // Persisted plan is invalid — clear it and re-plan
+          plan = null;
+          await db
+            .update(chapterGenerations)
+            .set({ assemblyPlan: null, planningMetadata: null, plannerPromptRevisionId: null })
+            .where(eq(chapterGenerations.id, generationId));
+        }
         // Extract plannerExecutionId from existing planning metadata
         const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
         plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
@@ -426,7 +449,9 @@ export const generateChapter = task({
         ...(assemblyRevisionId ? { revisionId: assemblyRevisionId } : {}),
       });
 
-      // Store assembled content
+      // Store assembled content.
+      // Always persist the resolved revision ID (not the input) so retries
+      // use the same revision even if defaults change.
       await db
         .update(chapterGenerations)
         .set({
@@ -440,7 +465,7 @@ export const generateChapter = task({
             assemblyExecutionId: assemblerResult.executionId,
             pipeline: "planned-editorial-v1",
           },
-          ...(assemblyRevisionId ? { assemblyPromptRevisionId: assemblyRevisionId } : {}),
+          assemblyPromptRevisionId: assemblerResult.revisionId,
           completedAt: new Date(),
         })
         .where(eq(chapterGenerations.id, generationId));

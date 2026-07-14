@@ -22,6 +22,7 @@ export interface PlannerInput {
 export interface PlannerResult {
   plan: AssemblyPlanV1;
   executionId: string;
+  revisionId: string;
   model: string;
   usage: {
     promptTokens: number;
@@ -50,7 +51,7 @@ export async function runAssemblyPlanner(
   const serializedFragments = serializeAssemblyFragments(input.fragments);
   const outputSchema = serializeOutputSchema(assemblyPlanV1Schema);
 
-  const { result, executionId } = await executeVersionedPrompt({
+  const { result, executionId, revision } = await executeVersionedPrompt({
     stage: 'planning',
     kind: 'assembly-planner',
     projectId: input.projectId,
@@ -73,6 +74,7 @@ export async function runAssemblyPlanner(
   return {
     plan,
     executionId,
+    revisionId: revision.id,
     model: input.model,
     usage: {
       promptTokens: result.usage.promptTokens,

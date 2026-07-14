@@ -6,6 +6,7 @@ import { eq, asc, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
@@ -66,6 +67,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       isCorrector: isCorrector ?? false,
     })
     .returning();
+
+  // Create immutable revision so currentRevisionId is never null.
+  // Wrap in transaction for atomicity.
+  await db.transaction(async (tx) => {
+    await writeCurrentChapterPromptRevision(prompt.id, admin.user.id, tx);
+  });
 
   await logAudit({
     userId: admin.user.id,

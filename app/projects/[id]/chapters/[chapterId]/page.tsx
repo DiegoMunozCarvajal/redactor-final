@@ -1336,17 +1336,29 @@ export default function ChapterPage() {
                       {selectedAssemblyVersion.assemblyMetadata?.plannerExecutionId && (
                         <div className="flex items-center gap-1">
                           <span className="shrink-0">Planner:</span>
-                          <code className="truncate">
-                            {selectedAssemblyVersion.assemblyMetadata.plannerExecutionId.slice(0, 12)}...
-                          </code>
+                          <a
+                            href={`/api/prompt-executions/${selectedAssemblyVersion.assemblyMetadata.plannerExecutionId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline truncate"
+                            title="Open planner execution (effective prompt, messages, usage)"
+                          >
+                            {selectedAssemblyVersion.assemblyMetadata.plannerExecutionId.slice(0, 8)}…
+                          </a>
                         </div>
                       )}
                       {selectedAssemblyVersion.assemblyMetadata?.assemblyExecutionId && (
                         <div className="flex items-center gap-1">
                           <span className="shrink-0">Assembly:</span>
-                          <code className="truncate">
-                            {selectedAssemblyVersion.assemblyMetadata.assemblyExecutionId.slice(0, 12)}...
-                          </code>
+                          <a
+                            href={`/api/prompt-executions/${selectedAssemblyVersion.assemblyMetadata.assemblyExecutionId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline truncate"
+                            title="Open assembly execution (effective prompt, messages, usage)"
+                          >
+                            {selectedAssemblyVersion.assemblyMetadata.assemblyExecutionId.slice(0, 8)}…
+                          </a>
                         </div>
                       )}
                     </dd>

@@ -2,6 +2,7 @@ import { executeVersionedPrompt } from '@/lib/prompts/executor';
 import { serializeAssemblyFragments, serializeAssemblyPlan, type AssemblyFragmentInput } from './serialize';
 import type { AssemblyPlanV1 } from './plan-schema';
 import type { ReasoningEffort } from '@/lib/ai/completion';
+import { assertOriginalEnough } from '@/lib/ai/originality-check';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +23,7 @@ export interface AssemblerInput {
 export interface AssemblerResult {
   chapterText: string;
   executionId: string;
+  revisionId: string;
   model: string;
   usage: {
     promptTokens: number;
@@ -35,59 +37,43 @@ export interface AssemblerResult {
 }
 
 // ---------------------------------------------------------------------------
-// Originality guard
+// Assembly quality guard
 // ---------------------------------------------------------------------------
 
-const MIN_ORIGINALITY_RATIO = 0.6; // output must be ≤60% similar to any single fragment
+const MAX_FRAGMENT_OVERLAP = 0.85; // output ≤85% word overlap with any single fragment
 
 /**
  * Reject output that is too similar to any single fragment.
- * Catches LLM failures where the "assembler" just echoes the longest fragment
- * instead of synthesizing across all inputs.
+ * Uses word-level Jaccard (bounded O(n) per fragment via Set operations)
+ * instead of character-level LCS to avoid O(n*m) scaling on full chapters.
  */
-function assertOriginalEnough(
+function assertNotSingleFragmentEcho(
   chapterText: string,
   fragments: AssemblyFragmentInput[],
-  stage: string,
 ): void {
-  if (fragments.length <= 1) return; // single fragment → assembly is that fragment
+  if (fragments.length <= 1) return;
 
-  const normalizedOutput = chapterText.toLowerCase().replace(/\s+/g, ' ');
+  const outputWords = new Set(chapterText.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, ' ').split(/\s+/).filter(w => w.length > 1));
+  if (outputWords.size === 0) return;
+
   let maxOverlap = 0;
-
   for (const frag of fragments) {
-    const normalizedFrag = frag.content.toLowerCase().replace(/\s+/g, ' ');
-    const overlap = longestCommonSubsequenceRatio(normalizedOutput, normalizedFrag);
+    const fragWords = new Set(frag.content.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, ' ').split(/\s+/).filter(w => w.length > 1));
+    if (fragWords.size === 0) continue;
+
+    let intersection = 0;
+    for (const w of outputWords) {
+      if (fragWords.has(w)) intersection++;
+    }
+    const overlap = intersection / outputWords.size;
     if (overlap > maxOverlap) maxOverlap = overlap;
   }
 
-  if (maxOverlap > MIN_ORIGINALITY_RATIO) {
+  if (maxOverlap > MAX_FRAGMENT_OVERLAP) {
     throw new Error(
-      `[${stage}] Output too similar to a single fragment (${(maxOverlap * 100).toFixed(0)}% overlap, max ${(MIN_ORIGINALITY_RATIO * 100).toFixed(0)}%). The assembly prompt may be ignoring other fragments.`,
+      `Assembly output too similar to a single fragment (${(maxOverlap * 100).toFixed(0)}% word overlap, max ${(MAX_FRAGMENT_OVERLAP * 100).toFixed(0)}%). The assembly prompt may be ignoring other fragments.`,
     );
   }
-}
-
-/** Ratio of longest common subsequence length to the shorter string's length. */
-function longestCommonSubsequenceRatio(a: string, b: string): number {
-  const shorter = a.length < b.length ? a : b;
-  const longer = a.length < b.length ? b : a;
-  if (shorter.length === 0) return 0;
-
-  // Use the shorter string as reference for a meaningful ratio
-  let prev = new Array(shorter.length + 1).fill(0);
-  for (let i = 1; i <= longer.length; i++) {
-    const curr = new Array(shorter.length + 1).fill(0);
-    for (let j = 1; j <= shorter.length; j++) {
-      if (longer[i - 1] === shorter[j - 1]) {
-        curr[j] = prev[j - 1] + 1;
-      } else {
-        curr[j] = Math.max(prev[j], curr[j - 1]);
-      }
-    }
-    prev = curr;
-  }
-  return prev[shorter.length] / shorter.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +92,7 @@ export async function runAssemblyAssembler(
   const serializedFragments = serializeAssemblyFragments(input.fragments);
   const serializedPlan = serializeAssemblyPlan(input.plan);
 
-  const { result, executionId } = await executeVersionedPrompt({
+  const { result, executionId, revision } = await executeVersionedPrompt({
     stage: 'assembling',
     kind: 'assembly',
     projectId: input.projectId,
@@ -127,11 +113,15 @@ export async function runAssemblyAssembler(
     throw new Error('Assembly produced empty output — the assembly prompt may need revision.');
   }
 
-  assertOriginalEnough(chapterText, input.fragments, 'assembly');
+  // Copyright contamination guard (blocklist + shingle against protected corpus)
+  assertOriginalEnough(chapterText, { stage: 'assembly' });
+  // Assembly quality guard (output must not be a single-fragment echo)
+  assertNotSingleFragmentEcho(chapterText, input.fragments);
 
   return {
     chapterText,
     executionId,
+    revisionId: revision.id,
     model: input.model,
     usage: {
       promptTokens: result.usage.promptTokens,

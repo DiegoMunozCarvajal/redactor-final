@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { eq, asc, and } from "drizzle-orm";
 import { syncChapterPlaceholders } from "@/lib/placeholders";
 import { csrfCheck } from "@/lib/api/csrf";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 
 export async function GET(
   req: NextRequest,
@@ -160,6 +161,9 @@ export async function POST(
           isCorrector: isCorrector ?? false,
         })
         .returning();
+
+      // Create immutable revision so currentRevisionId is never null
+      await writeCurrentChapterPromptRevision(p.id, user.id, tx);
 
       const allPrompts = await tx
         .select({ content: prompts.content, userPrompt: prompts.userPrompt })

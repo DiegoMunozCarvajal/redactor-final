@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
+import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
@@ -151,7 +152,7 @@ export const generateTemplate = task({
             for (let i = 0; i < blocks.length; i++) {
               const block = blocks[i];
 
-              await tx.insert(prompts).values({
+              const [inserted] = await tx.insert(prompts).values({
                 chapterId: chapter.chapterId,
                 position: i,
                 isAssembly: false,
@@ -160,7 +161,10 @@ export const generateTemplate = task({
                 function: block.function,
                 notes: block.notes,
                 sourceContext: (block.sourceContext?.slice(0, 300) || null) as string | null,
-              });
+              }).returning({ id: prompts.id });
+
+              // Create immutable revision so currentRevisionId is never null
+              await writeCurrentChapterPromptRevision(inserted.id, 'system', tx);
 
               // Collect placeholders (first seen wins for function/notes)
               for (const ph of block.placeholders) {
