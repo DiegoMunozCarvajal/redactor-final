@@ -20,9 +20,16 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
-interface MetaPrompt {
+interface PromptDefinition {
   id: string;
   name: string;
+  description: string | null;
+  kind: string;
+  latestRevision: {
+    id: string;
+    versionLabel: string;
+    revisionNumber: number;
+  } | null;
 }
 
 interface ChapterFile {
@@ -32,22 +39,25 @@ interface ChapterFile {
 
 export default function CreateTemplatePage() {
   const router = useRouter();
-  const [metaPrompts, setMetaPrompts] = useState<MetaPrompt[]>([]);
+  const [promptDefinitions, setPromptDefinitions] = useState<PromptDefinition[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
-  const [selectedMetaPromptId, setSelectedMetaPromptId] = useState("");
+  const [selectedMetaPromptRevisionId, setSelectedMetaPromptRevisionId] = useState("");
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [chapters, setChapters] = useState<ChapterFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch("/api/meta-prompts")
+    fetch("/api/prompt-definitions?kind=meta-template")
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setMetaPrompts(data);
+        if (Array.isArray(data)) {
+          // Only include definitions that have a revision to select
+          setPromptDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
+        }
       })
-      .catch(() => toast.error("Failed to load meta-prompts"))
+      .catch(() => toast.error("Failed to load meta-template prompts"))
       .finally(() => setLoadingMeta(false));
   }, []);
 
@@ -88,7 +98,7 @@ export default function CreateTemplatePage() {
   }
 
   async function handleSubmit() {
-    if (!templateName.trim() || !selectedMetaPromptId || chapters.length === 0) {
+    if (!templateName.trim() || !selectedMetaPromptRevisionId || chapters.length === 0) {
       toast.error("Name, meta-prompt, and at least one chapter are required");
       return;
     }
@@ -101,7 +111,7 @@ export default function CreateTemplatePage() {
         body: JSON.stringify({
           name: templateName.trim(),
           description: templateDescription.trim() || null,
-          metaPromptId: selectedMetaPromptId,
+          metaPromptRevisionId: selectedMetaPromptRevisionId,
           chapters,
           model,
           effort: "max",
@@ -152,27 +162,29 @@ export default function CreateTemplatePage() {
           </div>
         </div>
 
-        {/* Meta-prompt selector */}
+        {/* Meta-prompt revision selector */}
         <div className="space-y-2">
-          <Label htmlFor="metaPrompt">Meta-Prompt</Label>
+          <Label htmlFor="metaPrompt">Meta-Prompt Revision</Label>
           {loadingMeta ? (
             <div className="h-10 bg-muted animate-pulse rounded-md" />
-          ) : metaPrompts.length === 0 ? (
+          ) : promptDefinitions.length === 0 ? (
             <div className="text-sm text-muted-foreground">
-              No meta-prompts available.{" "}
-              <Link href="/meta-prompts" className="text-primary hover:underline">Create one first</Link>.
+              No meta-template prompts available.{" "}
+              <Link href="/admin/prompt-definitions?kind=meta-template" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
             <Select
-              value={selectedMetaPromptId}
-              onValueChange={(v) => setSelectedMetaPromptId(v)}
+              value={selectedMetaPromptRevisionId}
+              onValueChange={(v) => setSelectedMetaPromptRevisionId(v)}
             >
               <SelectTrigger id="metaPrompt">
-                <SelectValue placeholder="Select a meta-prompt..." />
+                <SelectValue placeholder="Select a meta-template revision..." />
               </SelectTrigger>
               <SelectContent>
-                {metaPrompts.map((mp) => (
-                  <SelectItem key={mp.id} value={mp.id}>{mp.name}</SelectItem>
+                {promptDefinitions.map((def) => (
+                  <SelectItem key={def.id} value={def.latestRevision!.id}>
+                    {def.name} ({def.latestRevision!.versionLabel})
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -245,7 +257,7 @@ export default function CreateTemplatePage() {
 
         <Button
           onClick={handleSubmit}
-          disabled={submitting || !templateName.trim() || !selectedMetaPromptId || chapters.length === 0}
+          disabled={submitting || !templateName.trim() || !selectedMetaPromptRevisionId || chapters.length === 0}
           className="w-full"
         >
           {submitting ? (
