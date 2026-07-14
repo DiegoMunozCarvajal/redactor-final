@@ -78,8 +78,8 @@ export function buildAnthropicSystemPrompt(
       | { type: "text"; text: string }
       | { type: "text"; text: string; cache_control: { type: "ephemeral" } }
     > {
-  const normalizedCachedPrompt = cachedSystemPrompt?.trim() ?? "";
-  const normalizedSystemPrompt = systemPrompt.trim();
+  const normalizedCachedPrompt = cachedSystemPrompt ?? "";
+  const normalizedSystemPrompt = systemPrompt;
 
   if (cacheSystemPrompt && normalizedCachedPrompt) {
     const promptBlocks: Array<
@@ -668,13 +668,6 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
     $refStrategy: "none",
   });
 
-  const jsonSuffix = `\n\nReturn only a JSON object matching this schema. Do not wrap it in markdown fences or add explanatory text.\n\nSchema:\n${JSON.stringify(rawSchema, null, 2)}`;
-  const userMessages = messages.map((m, i) =>
-    i === messages.length - 1 && m.role === "user"
-      ? { ...m, content: m.content + jsonSuffix }
-      : m,
-  );
-
   let promptTokens = 0;
   let completionTokens = 0;
 
@@ -685,7 +678,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
     const params: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
       model,
       max_completion_tokens: maxTokens,
-      messages: userMessages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       response_format: { type: "json_object" },
     };
 
