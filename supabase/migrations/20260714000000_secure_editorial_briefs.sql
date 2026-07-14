@@ -5,6 +5,8 @@
 ALTER TABLE editorial_briefs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chapter_editorial_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE editorial_brief_sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE source_chunks ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS editorial_briefs_owner_select ON editorial_briefs;
 CREATE POLICY editorial_briefs_owner_select ON editorial_briefs
@@ -15,7 +17,7 @@ CREATE POLICY editorial_briefs_owner_select ON editorial_briefs
       SELECT 1
       FROM projects p
       WHERE p.id = editorial_briefs.project_id
-        AND p.user_id = auth.uid()
+        AND p.user_id = (select auth.uid())
     )
   );
 
@@ -31,7 +33,7 @@ CREATE POLICY chapter_editorial_contracts_owner_select
       FROM editorial_briefs eb
       JOIN projects p ON p.id = eb.project_id
       WHERE eb.id = chapter_editorial_contracts.editorial_brief_id
-        AND p.user_id = auth.uid()
+        AND p.user_id = (select auth.uid())
     )
   );
 
@@ -46,9 +48,57 @@ CREATE POLICY editorial_brief_sources_owner_select ON editorial_brief_sources
       FROM editorial_briefs eb
       JOIN projects p ON p.id = eb.project_id
       WHERE eb.id = editorial_brief_sources.editorial_brief_id
-        AND p.user_id = auth.uid()
+        AND p.user_id = (select auth.uid())
     )
   );
+
+DROP POLICY IF EXISTS sources_owner_select ON sources;
+CREATE POLICY sources_owner_select ON sources
+  FOR SELECT
+  TO authenticated
+  USING (
+    project_id IN (
+      SELECT p.id
+      FROM projects p
+      WHERE p.user_id = (select auth.uid())
+    )
+  );
+
+DROP POLICY IF EXISTS source_chunks_owner_select ON source_chunks;
+CREATE POLICY source_chunks_owner_select ON source_chunks
+  FOR SELECT
+  TO authenticated
+  USING (
+    project_id IN (
+      SELECT p.id
+      FROM projects p
+      WHERE p.user_id = (select auth.uid())
+    )
+  );
+
+REVOKE ALL PRIVILEGES ON TABLE
+  editorial_briefs,
+  chapter_editorial_contracts,
+  editorial_brief_sources,
+  sources,
+  source_chunks
+FROM anon;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE
+  editorial_briefs,
+  chapter_editorial_contracts,
+  editorial_brief_sources,
+  sources,
+  source_chunks
+FROM authenticated;
+
+GRANT SELECT ON TABLE
+  editorial_briefs,
+  chapter_editorial_contracts,
+  editorial_brief_sources,
+  sources,
+  source_chunks
+TO authenticated;
 
 -- The original table declaration created PostgreSQL's automatic `_fkey`
 -- constraint. A later migration added a second constraint under the Drizzle

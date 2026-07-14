@@ -40,3 +40,41 @@ BEGIN
     );
   END IF;
 END $$;
+
+-- Reconcile automatic names created by the original base migration. New
+-- installs already use canonical names; this block repairs databases where the
+-- base migration ran before those names were made explicit.
+DO $$
+DECLARE
+  constraint_mapping record;
+BEGIN
+  FOR constraint_mapping IN
+    SELECT *
+    FROM (VALUES
+      ('editorial_briefs'::regclass, 'editorial_briefs_version_check', 'chk_editorial_briefs_version'),
+      ('editorial_briefs'::regclass, 'editorial_briefs_content_hash_check', 'chk_editorial_briefs_content_hash'),
+      ('chapter_editorial_contracts'::regclass, 'chapter_editorial_contracts_content_hash_check', 'chk_contracts_content_hash'),
+      ('chapter_editorial_contracts'::regclass, 'chapter_editorial_contracts_editorial_brief_id_chapter_id_key', 'uq_chapter_editorial_contracts_brief_chapter'),
+      ('editorial_brief_sources'::regclass, 'editorial_brief_sources_editorial_brief_id_source_id_key', 'uq_editorial_brief_sources_brief_source')
+    ) AS mappings(table_oid, legacy_name, canonical_name)
+  LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = constraint_mapping.table_oid
+        AND conname = constraint_mapping.legacy_name
+    ) AND NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = constraint_mapping.table_oid
+        AND conname = constraint_mapping.canonical_name
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE %s RENAME CONSTRAINT %I TO %I',
+        constraint_mapping.table_oid,
+        constraint_mapping.legacy_name,
+        constraint_mapping.canonical_name
+      );
+    END IF;
+  END LOOP;
+END $$;

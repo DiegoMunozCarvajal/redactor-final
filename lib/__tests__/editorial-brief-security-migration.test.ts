@@ -34,7 +34,9 @@ describe("editorial brief security migration", () => {
   });
 
   it("chains every read policy to projects.user_id", () => {
-    expect(migration.match(/p\.user_id\s*=\s*auth\.uid\(\)/gi)).toHaveLength(3);
+    expect(
+      migration.match(/p\.user_id\s*=\s*\(select auth\.uid\(\)\)/gi),
+    ).toHaveLength(5);
     expect(migration).toMatch(
       /FROM editorial_briefs eb\s+JOIN projects p ON p\.id = eb\.project_id/gi,
     );
