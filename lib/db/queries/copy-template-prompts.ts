@@ -50,21 +50,31 @@ export async function copyTemplatePromptsToChapter(
     );
   }
 
-  // Copy placeholders (names only, no definitions)
+  // Copy placeholders (names only, no definitions).
+  // Deduplicate by lowercase name — template chapters may have both "foo" and
+  // "FOO" from the pre-lowercase-extraction era. First function/notes wins.
   const templatePlaceholders = await tx
     .select()
     .from(chapterPlaceholders)
     .where(eq(chapterPlaceholders.chapterId, templateChapterId));
 
   if (templatePlaceholders.length > 0) {
-    await tx.insert(chapterPlaceholders).values(
-      templatePlaceholders.map((ph) => ({
-        chapterId: projectChapterId,
-        name: ph.name,
-        function: ph.function,
-        notes: ph.notes,
-      })),
-    );
+    const seen = new Map<
+      string,
+      { chapterId: string; name: string; function: string | null; notes: string | null }
+    >();
+    for (const ph of templatePlaceholders) {
+      const key = ph.name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.set(key, {
+          chapterId: projectChapterId,
+          name: key,
+          function: ph.function,
+          notes: ph.notes,
+        });
+      }
+    }
+    await tx.insert(chapterPlaceholders).values(Array.from(seen.values()));
   }
 }
 

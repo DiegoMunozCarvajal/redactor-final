@@ -43,6 +43,7 @@ next-env.d.ts
 
 # local worktrees
 .worktrees/
+.claude/worktrees/
 
 # trigger.dev
 .trigger/

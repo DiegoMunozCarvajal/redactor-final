@@ -1,5 +1,4 @@
 allowBuilds:
-  '@depot/cli': set this to true or false
   "@google/genai": true
   esbuild: true
   protobufjs: true

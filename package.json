@@ -37,7 +37,7 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.1",
     "@tailwindcss/typography": "^0.5.16",
-    "@trigger.dev/sdk": "4.4.6",
+    "@trigger.dev/sdk": "4.5.3",
     "ai-json-safe-parse": "^0.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

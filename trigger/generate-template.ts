@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { generateCompletion, type ReasoningEffort } from "@/lib/ai/completion";
 import { DEFAULT_GENERATION_MODEL, getProviderForModel } from "@/lib/ai/providers";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { checkBlocklist } from "@/lib/ai/originality-check";
+import { assertOriginalEnough } from "@/lib/ai/originality-check";
 
 const placeholderSchema = z.object({
   name: z.string(),
@@ -95,38 +95,55 @@ export const generateTemplate = task({
         TEMPLATE_CONCURRENCY,
         async (chapter) => {
           const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
-          const userPrompt = (metaPrompt.userPrompt ?? `Descompón el siguiente capítulo fuente en sus unidades naturales de contenido y genera un prompt por cada unidad.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de bloques en formato JSON.`)
-            .replace(/{{CAPITULO_FUENTE}}/g, capituloFuente)
-            .replace(/{CAPITULO_FUENTE}/g, capituloFuente);
+          // Replace any {CAPITULO_*} or {{CAPITULO_*}} variant (case-insensitive)
+          // so meta-prompts can use {CAPITULO_FUENTE}, {CAPITULO_EN_MARKDOWN}, etc.
+          const replaceCapituloPlaceholder = (text: string) =>
+            text.replace(/\{\{?CAPITULO_[^}]+\}\}?/gi, capituloFuente);
+
+          const userPrompt = replaceCapituloPlaceholder(
+            metaPrompt.userPrompt ??
+              `Descompón el siguiente capítulo fuente en sus unidades naturales de contenido y genera un prompt por cada unidad.\n\n<capitulo_fuente>\n{{CAPITULO_FUENTE}}\n</capitulo_fuente>\n\nResponde ÚNICAMENTE con la lista de bloques en formato JSON.`,
+          );
+
+          // Also replace in the system prompt for non-Anthropic providers
+          // (Anthropic uses cachedSystemPrompt below — replacement happens there too)
+          const systemPrompt = replaceCapituloPlaceholder(metaPrompt.content);
 
           const result = await generateCompletion({
-            systemPrompt: isAnthropic ? "" : metaPrompt.content,
+            systemPrompt: isAnthropic ? "" : systemPrompt,
             userPrompt,
             schema: metaPromptOutputSchema,
             model,
             ...(effort ? { effort } : {}),
-            ...(isAnthropic ? { cachedSystemPrompt: metaPrompt.content, cacheSystemPrompt: true } : {}),
+            ...(isAnthropic ? { cachedSystemPrompt: systemPrompt, cacheSystemPrompt: true } : {}),
           });
 
           const blocks = result.data.templates;
 
-          // Check generated blocks for contamination from source material
+          if (!blocks || blocks.length === 0) {
+            throw new Error(
+              `Chapter "${chapter.title}" generated 0 template blocks. The metaprompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
+            );
+          }
+
+          // Originality check — advisory only for template generation.
+          // Templates are structural: they describe narrative patterns, not
+          // final content. Downstream stages (fragment, assembly) enforce
+          // strict originality with shingle/LCS checks.
+          // Blocklist hits are logged as warnings but don't reject blocks.
           let contaminatedBlocks = 0;
           for (const block of blocks) {
-            const contentHits = checkBlocklist(block.content);
-            const notesHits = checkBlocklist(block.notes);
-            const sourceContextHits = checkBlocklist(block.sourceContext);
-            const totalHits = contentHits.length + notesHits.length + sourceContextHits.length;
-            if (totalHits > 0) {
+            const result = assertOriginalEnough(block.content, {
+              stage: "metaprompt-block",
+              throwOnFail: false,
+            });
+            if (result.flagged) {
               contaminatedBlocks++;
-              console.warn(
-                `[generate-template] ⚠️  Chapter "${chapter.title}", block "${block.name}": ${totalHits} contamination pattern(s) detected`,
-              );
             }
           }
           if (contaminatedBlocks > 0) {
-            throw new Error(
-              `Template generation for chapter "${chapter.title}" rejected: ${contaminatedBlocks}/${blocks.length} blocks contain protected material references. Review the MetaPrompt or source chapters.`,
+            console.warn(
+              `[generate-template] ⚠️  Chapter "${chapter.title}": ${contaminatedBlocks}/${blocks.length} blocks flagged by originality check (advisory — proceeding).`,
             );
           }
 

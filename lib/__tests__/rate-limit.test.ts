@@ -148,6 +148,8 @@ describe("withProjectLock", () => {
       } else {
         mockUnsafe.mockResolvedValueOnce(undefined);
       }
+    } else {
+      mockUnsafe.mockResolvedValueOnce([{ killed: false }]);
     }
 
     const mockRelease = vi.fn();
@@ -182,6 +184,32 @@ describe("withProjectLock", () => {
     expect(mockRelease).toHaveBeenCalledOnce();
   });
 
+  it("recovers an idle stale lock and retries acquisition", async () => {
+    const mockUnsafe = vi
+      .fn()
+      .mockResolvedValueOnce([{ acquired: false }])
+      .mockResolvedValueOnce([{ killed: true }])
+      .mockResolvedValueOnce([{ acquired: true }])
+      .mockResolvedValueOnce(undefined);
+    const mockRelease = vi.fn();
+    vi.mocked(lockClient.reserve).mockResolvedValue({
+      unsafe: mockUnsafe,
+      release: mockRelease,
+    } as unknown as Awaited<ReturnType<typeof lockClient.reserve>>);
+    const fn = vi.fn().mockResolvedValue("recovered");
+
+    const result = await withProjectLock(
+      "550e8400-e29b-41d4-a716-446655440005",
+      fn,
+    );
+
+    expect(result).toEqual({ locked: true, result: "recovered" });
+    expect(fn).toHaveBeenCalledOnce();
+    expect(mockUnsafe).toHaveBeenCalledTimes(4);
+    expect(mockUnsafe.mock.calls[1][0]).toContain("pg_terminate_backend");
+    expect(mockRelease).toHaveBeenCalledOnce();
+  });
+
   it("releases lock even when fn throws", async () => {
     const { mockUnsafe, mockRelease } = setupLockClient(true);
     const fn = vi.fn().mockRejectedValue(new Error("boom"));
@@ -195,6 +223,7 @@ describe("withProjectLock", () => {
   });
 
   it("releases reserved connection even when unlock fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { mockRelease } = setupLockClient(true, true);
     const fn = vi.fn().mockResolvedValue("ok");
 
@@ -203,5 +232,7 @@ describe("withProjectLock", () => {
     expect(r.locked).toBe(true);
     if (r.locked) expect(r.result).toBe("ok");
     expect(mockRelease).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledOnce();
+    consoleError.mockRestore();
   });
 });
