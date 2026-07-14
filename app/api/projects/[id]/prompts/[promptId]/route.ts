@@ -85,9 +85,6 @@ export async function PUT(
   // Version insert, prompt update, and placeholder sync in one transaction
   // so partial failure doesn't leave phantom versions or stale placeholders.
   const updated = await db.transaction(async (tx) => {
-    // Capture current state as a full version snapshot before any edit
-    await writeCurrentChapterPromptRevision(promptId, user.id, tx);
-
     const [u] = await tx
       .update(prompts)
       .set({
@@ -101,6 +98,10 @@ export async function PUT(
       })
       .where(eq(prompts.id, promptId))
       .returning();
+
+    // Capture updated state as an immutable revision AFTER the mutation
+    // so generation reads the new content, not the pre-edit snapshot.
+    if (u) await writeCurrentChapterPromptRevision(promptId, user.id, tx);
 
     // Sync placeholders inside the same transaction
     if (u) {

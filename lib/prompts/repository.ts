@@ -137,6 +137,23 @@ export async function resolvePromptRevision(
         ),
       )
       .limit(1);
+
+    // 2b. Fallback to global default when no project binding exists
+    if (rows.length === 0) {
+      rows = await ctx
+        .select(selectFields)
+        .from(promptDefaults)
+        .innerJoin(
+          promptRevisions,
+          eq(promptDefaults.promptRevisionId, promptRevisions.id),
+        )
+        .innerJoin(
+          promptDefinitions,
+          eq(promptRevisions.promptDefinitionId, promptDefinitions.id),
+        )
+        .where(eq(promptDefaults.kind, input.kind))
+        .limit(1);
+    }
   } else {
     // 3. Global default
     rows = await ctx

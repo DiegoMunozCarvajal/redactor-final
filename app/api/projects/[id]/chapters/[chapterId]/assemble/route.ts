@@ -311,6 +311,7 @@ export async function POST(
       {
         generationId: gen.id,
         projectId,
+        fragmentIds,
         ...(model ? { model } : {}),
         ...(effort !== undefined ? { effort } : {}),
         ...(plannerRevisionId ? { plannerRevisionId } : {}),

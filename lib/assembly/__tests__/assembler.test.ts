@@ -182,13 +182,21 @@ describe('runAssemblyAssembler', () => {
     expect(result.durationMs).toBe(1200);
   });
 
-  it('does not trim or modify the output text', async () => {
+  it('trims leading/trailing whitespace from the output', async () => {
     mockExecute.mockResolvedValue(
       makeMockResult({ text: '  Texto con espacios externos.\n\nSegundo párrafo.  ' }),
     );
 
     const result = await runAssemblyAssembler(defaultInput);
-    expect(result.chapterText).toBe('  Texto con espacios externos.\n\nSegundo párrafo.  ');
+    expect(result.chapterText).toBe('Texto con espacios externos.\n\nSegundo párrafo.');
+  });
+
+  it('throws when assembly produces empty output', async () => {
+    mockExecute.mockResolvedValue(makeMockResult({ text: '' }));
+
+    await expect(
+      runAssemblyAssembler(defaultInput),
+    ).rejects.toThrow('Assembly produced empty output');
   });
 
   it('passes revisionId when provided', async () => {

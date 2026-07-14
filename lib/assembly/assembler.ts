@@ -62,8 +62,13 @@ export async function runAssemblyAssembler(
     effort: input.effort,
   });
 
+  const chapterText = (typeof result.data === 'string' ? result.data.trim() : '').trim();
+  if (!chapterText) {
+    throw new Error('Assembly produced empty output — the assembly prompt may need revision.');
+  }
+
   return {
-    chapterText: result.data as string,
+    chapterText,
     executionId,
     model: input.model,
     usage: {

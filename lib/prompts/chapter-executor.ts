@@ -102,9 +102,17 @@ export async function executeChapterPrompt(
   }
 
   // 4. Apply runtime markers ({{EDITORIAL_CONTEXT}}) — replaces BEFORE dynamic placeholders.
-  //    Check both messages for the marker in case the chapter prompt template includes it.
+  //    Fail-closed: if the generation-system template lacks the marker, the prompt revision
+  //    is incorrectly configured. Log a warning so operators can fix the revision.
   const editorialMarker = '{{EDITORIAL_CONTEXT}}';
   const resolvedEditorialContext = editorialContext ?? '';
+
+  const hasMarker = systemMessage.includes(editorialMarker) || userMessage.includes(editorialMarker);
+  if (!hasMarker && editorialContext) {
+    console.warn(
+      `[chapter-executor] Editorial context provided but neither system nor user message contains {{EDITORIAL_CONTEXT}} marker. The generation-system revision (${generationSystemRevision.id}) may be missing the marker.`,
+    );
+  }
 
   if (systemMessage.includes(editorialMarker)) {
     systemMessage = systemMessage.split(editorialMarker).join(resolvedEditorialContext);

@@ -10,6 +10,7 @@ import { generateCritique } from "@/trigger/generate-critique";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
+import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
 export async function POST(
   req: NextRequest,
@@ -94,7 +95,7 @@ export async function POST(
   }
 
   // Prompt revision validated at runtime by executeVersionedPrompt
-  const resolvedModel = model ?? "claude-sonnet-4-20250514";
+  const resolvedModel = model ?? DEFAULT_GENERATION_MODEL;
 
   // Capture editorial bundle snapshot before the advisory lock.
   const bundle = await loadEditorialBundle({ projectId });

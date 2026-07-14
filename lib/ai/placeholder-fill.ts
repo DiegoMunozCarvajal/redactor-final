@@ -309,9 +309,7 @@ async function generateAndValidate(
   const retryVf = serializeValidationFeedback({
     status: "retry",
     reason,
-    hint: isContamination
-      ? "Debes crear una definición completamente original. NO uses conceptos, metáforas ni ejemplos de obras protegidas. Usa ejemplos y analogías propias."
-      : "Corrige el problema y responde de nuevo.",
+    hint: undefined,
   });
   const retryMarkers = { ...baseMarkerValues, "{{VALIDATION_FEEDBACK}}": retryVf };
 

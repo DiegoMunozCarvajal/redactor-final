@@ -34,8 +34,16 @@ UPDATE prompt_versions SET snapshot = jsonb_build_object(
 
 ALTER TABLE prompt_versions
   ALTER COLUMN revision_number SET NOT NULL,
-  ALTER COLUMN snapshot SET NOT NULL,
-  ADD CONSTRAINT IF NOT EXISTS uq_prompt_versions_prompt_revision UNIQUE (prompt_id, revision_number);
+  ALTER COLUMN snapshot SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_prompt_versions_prompt_revision'
+  ) THEN
+    ALTER TABLE prompt_versions ADD CONSTRAINT uq_prompt_versions_prompt_revision UNIQUE (prompt_id, revision_number);
+  END IF;
+END $$;
 
 -- ============================================================================
 -- Phase 2: Create complete current revisions for every prompt
@@ -63,7 +71,6 @@ UPDATE prompts p SET current_revision_id = v.id
 FROM prompt_versions v
 WHERE v.prompt_id = p.id
   AND v.revision_number = (SELECT max(v2.revision_number) FROM prompt_versions v2 WHERE v2.prompt_id = p.id);
-ALTER TABLE prompts ALTER COLUMN current_revision_id SET NOT NULL;
 
 -- ============================================================================
 -- Phase 4: Link fragments to exact prompt revision and execution
@@ -71,7 +78,6 @@ ALTER TABLE prompts ALTER COLUMN current_revision_id SET NOT NULL;
 
 ALTER TABLE fragments ADD COLUMN IF NOT EXISTS prompt_revision_id uuid REFERENCES prompt_versions(id) ON DELETE RESTRICT;
 UPDATE fragments f SET prompt_revision_id = p.current_revision_id FROM prompts p WHERE p.id = f.project_prompt_id;
-ALTER TABLE fragments ALTER COLUMN prompt_revision_id SET NOT NULL;
 ALTER TABLE fragments ADD COLUMN IF NOT EXISTS execution_id uuid REFERENCES llm_prompt_executions(id) ON DELETE RESTRICT;
 
 -- ============================================================================
@@ -331,15 +337,18 @@ SELECT
     ''
   ),
   -- Compute required markers from concatenated templates
-  (
-    SELECT array_agg(DISTINCT m ORDER BY m)::jsonb
-    FROM (
-      SELECT unnest(pr3.required_markers) AS m
-      FROM prompt_revisions pr3
-      WHERE pr3.prompt_definition_id = pd.id
-      ORDER BY pr3.revision_number DESC LIMIT 1
-    ) sub
-    WHERE m IS NOT NULL
+  COALESCE(
+    (
+      SELECT to_jsonb(array_agg(DISTINCT m ORDER BY m))
+      FROM (
+        SELECT jsonb_array_elements_text(pr3.required_markers) AS m
+        FROM prompt_revisions pr3
+        WHERE pr3.prompt_definition_id = pd.id
+        ORDER BY pr3.revision_number DESC LIMIT 1
+      ) sub
+      WHERE m IS NOT NULL
+    ),
+    '[]'::jsonb
   ) || '["{{EDITORIAL_CONTEXT}}"]'::jsonb,
   (SELECT pr3.output_contract
    FROM prompt_revisions pr3
@@ -356,8 +365,9 @@ WHERE pd.kind = 'generation-system'
   AND NOT EXISTS (
     SELECT 1 FROM prompt_revisions pr
     WHERE pr.prompt_definition_id = pd.id
-      AND NOT (pr.configuration->>'legacyNonExecutable' = 'true')
-  );
+      AND (pr.configuration->>'legacyNonExecutable') IS DISTINCT FROM 'true'
+  )
+ON CONFLICT (id) DO NOTHING;
 
 -- Update defaults: point each generation-system default to the new transparent revision
 UPDATE prompt_defaults pd2
@@ -430,15 +440,18 @@ Descompón el capítulo en unidades naturales y genera un prompt de contenido po
     )
   END,
   -- Compute markers from concatenated templates
-  (
-    SELECT array_agg(DISTINCT m ORDER BY m)::jsonb
-    FROM (
-      SELECT unnest(pr3.required_markers) AS m
-      FROM prompt_revisions pr3
-      WHERE pr3.prompt_definition_id = pd.id
-      ORDER BY pr3.revision_number DESC LIMIT 1
-    ) sub
-    WHERE m IS NOT NULL
+  COALESCE(
+    (
+      SELECT to_jsonb(array_agg(DISTINCT m ORDER BY m))
+      FROM (
+        SELECT jsonb_array_elements_text(pr3.required_markers) AS m
+        FROM prompt_revisions pr3
+        WHERE pr3.prompt_definition_id = pd.id
+        ORDER BY pr3.revision_number DESC LIMIT 1
+      ) sub
+      WHERE m IS NOT NULL
+    ),
+    '[]'::jsonb
   ) || '["{{CAPITULO_FUENTE}}","{{OUTPUT_SCHEMA}}"]'::jsonb,
   (SELECT pr3.output_contract
    FROM prompt_revisions pr3
@@ -455,8 +468,9 @@ WHERE pd.kind = 'meta-template'
   AND NOT EXISTS (
     SELECT 1 FROM prompt_revisions pr
     WHERE pr.prompt_definition_id = pd.id
-      AND NOT (pr.configuration->>'legacyNonExecutable' = 'true')
-  );
+      AND (pr.configuration->>'legacyNonExecutable') IS DISTINCT FROM 'true'
+  )
+ON CONFLICT (id) DO NOTHING;
 
 -- Update defaults for meta-template
 UPDATE prompt_defaults pd2
