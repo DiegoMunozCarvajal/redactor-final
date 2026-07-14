@@ -34,6 +34,10 @@ export interface PlaceholderFillEvent {
   current?: number;
   /** Total placeholders to fill */
   total?: number;
+  /** Evidence query from editorial brief contract, if applicable */
+  evidenceQuery?: string;
+  /** Source IDs searched for evidence (from approved brief) */
+  evidenceSourceIds?: string[];
 }
 
 // Default model for generation if none specified
@@ -818,6 +822,8 @@ export async function* fillPlaceholdersSequential(
           provider: result.provider,
           current: i,
           total,
+          ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
+          ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
         };
       } else {
         yield {

@@ -223,6 +223,8 @@ export async function POST(
                         editorialBriefHash: briefBundle.hash,
                       }
                     : {}),
+                  ...(event.evidenceQuery ? { evidenceQuery: event.evidenceQuery } : {}),
+                  ...(event.evidenceSourceIds ? { evidenceSourceIds: event.evidenceSourceIds } : {}),
                 }),
               })
               .where(
