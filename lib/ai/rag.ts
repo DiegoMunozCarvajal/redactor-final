@@ -30,15 +30,31 @@ export async function retrieveContext(
     topK?: number;
     tokenBudget?: number;
     minSimilarity?: number;
+    sourceIds?: string[];
   },
 ): Promise<{ chunks: RetrievedChunk[]; contextText: string }> {
   const topK = options?.topK ?? 10;
   const tokenBudget = options?.tokenBudget ?? 4000;
   const minSimilarity = options?.minSimilarity ?? 0.3;
+  const sourceIds = options?.sourceIds;
+
+  // Early return for explicitly-empty source filter: no approved sources → no context.
+  if (sourceIds && sourceIds.length === 0) {
+    return { chunks: [], contextText: "" };
+  }
 
   // Generate embedding for query
   const embedding = await generateEmbedding(query);
   const embeddingStr = `[${embedding.join(",")}]`;
+
+  // Build conditions
+  const conditions = [
+    sql`sc.project_id = ${projectId}`,
+    sql`sc.embedding <=> ${embeddingStr}::vector < ${1 - minSimilarity}`,
+  ];
+  if (sourceIds && sourceIds.length > 0) {
+    conditions.push(sql`sc.source_id = ANY(${sourceIds}::uuid[])`);
+  }
 
   // Vector similarity search using cosine distance (<=>)
   const rows = (await db.execute(sql`
@@ -54,8 +70,7 @@ export async function retrieveContext(
       s.citation
     FROM source_chunks sc
     JOIN sources s ON s.id = sc.source_id
-    WHERE sc.project_id = ${projectId}
-      AND sc.embedding <=> ${embeddingStr}::vector < ${1 - minSimilarity}
+    WHERE ${sql.join(conditions, sql` AND `)}
     ORDER BY sc.embedding <=> ${embeddingStr}::vector
     LIMIT ${topK * 3}
   `)) as unknown as Array<{

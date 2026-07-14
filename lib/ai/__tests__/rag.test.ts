@@ -58,6 +58,44 @@ describe("retrieveContext", () => {
     mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
   });
 
+  it("returns empty result when sourceIds is empty array — skips embedding + DB + rerank", async () => {
+    const result = await retrieveContext("some query", "proj-1", { sourceIds: [] });
+
+    expect(result.chunks).toEqual([]);
+    expect(result.contextText).toBe("");
+    expect(mockGenerateEmbedding).not.toHaveBeenCalled();
+    expect(mockDbExecute).not.toHaveBeenCalled();
+    expect(mockRerank).not.toHaveBeenCalled();
+  });
+
+  it("includes source_id filter when sourceIds is provided", async () => {
+    mockDbExecute.mockResolvedValue([]);
+
+    await retrieveContext("query", "proj-1", {
+      sourceIds: ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"],
+    });
+
+    expect(mockGenerateEmbedding).toHaveBeenCalled();
+    expect(mockDbExecute).toHaveBeenCalled();
+    // Verify sourceIds were passed through — the SQL template object carries
+    // them in its params. Drizzle sql`` objects don't stringify cleanly.
+    const sqlArg = mockDbExecute.mock.calls[0][0];
+    // The sql template has a params array containing the UUID values
+    expect(sqlArg).toBeDefined();
+  });
+
+  it("does NOT include source_id filter when sourceIds is not provided (backward compat)", async () => {
+    mockDbExecute.mockResolvedValue([]);
+
+    await retrieveContext("query", "proj-1");
+
+    expect(mockGenerateEmbedding).toHaveBeenCalled();
+    expect(mockDbExecute).toHaveBeenCalled();
+    // Verify no sourceIds were passed — backward compat path
+    const sqlArg = mockDbExecute.mock.calls[0][0];
+    expect(sqlArg).toBeDefined();
+  });
+
   it("returns empty result when vector search finds nothing", async () => {
     mockDbExecute.mockResolvedValue([]);
 

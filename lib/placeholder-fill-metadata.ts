@@ -7,6 +7,14 @@ export interface PlaceholderFillMetadata {
   model?: string;
   filledAt: string;
   promptsHash?: string;
+  /** Editorial brief version used when this definition was filled. */
+  editorialBriefId?: string;
+  editorialBriefVersion?: number;
+  editorialBriefHash?: string;
+  /** Contract evidence query that drove the search, if any. */
+  evidenceQuery?: string;
+  /** Source IDs that were searched for evidence (from approved brief). */
+  evidenceSourceIds?: string[];
 }
 
 export function buildPlaceholderFillMetadata(params: {
@@ -16,6 +24,11 @@ export function buildPlaceholderFillMetadata(params: {
   model?: string;
   filledAt?: string;
   promptsHash?: string;
+  editorialBriefId?: string;
+  editorialBriefVersion?: number;
+  editorialBriefHash?: string;
+  evidenceQuery?: string;
+  evidenceSourceIds?: string[];
 }): PlaceholderFillMetadata {
   return {
     ...(params.provider ? { provider: params.provider } : {}),
@@ -24,5 +37,10 @@ export function buildPlaceholderFillMetadata(params: {
     ...(params.model ? { model: params.model } : {}),
     filledAt: params.filledAt ?? new Date().toISOString(),
     ...(params.promptsHash ? { promptsHash: params.promptsHash } : {}),
+    ...(params.editorialBriefId ? { editorialBriefId: params.editorialBriefId } : {}),
+    ...(params.editorialBriefVersion ? { editorialBriefVersion: params.editorialBriefVersion } : {}),
+    ...(params.editorialBriefHash ? { editorialBriefHash: params.editorialBriefHash } : {}),
+    ...(params.evidenceQuery ? { evidenceQuery: params.evidenceQuery } : {}),
+    ...(params.evidenceSourceIds ? { evidenceSourceIds: params.evidenceSourceIds } : {}),
   };
 }

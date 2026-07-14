@@ -16,6 +16,7 @@ import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { hashPromptContents } from "@/lib/placeholder-utils";
+import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 
 export async function POST(
   req: NextRequest,
@@ -57,6 +58,9 @@ export async function POST(
   // Default to true — protect manually-edited definitions from being overwritten.
   // Set to false only when user explicitly requests a full re-fill.
   const onlyMissingOrStale = body.onlyMissingOrStale !== false;
+
+  // Load current approved editorial brief for evidence-driven RAG and snapshot capture.
+  const briefBundle = await loadEditorialBundle({ projectId });
 
   // Rate limit: insert a generation row inside the lock so
   // checkProjectRateLimit counts fill operations alongside other generations.
@@ -195,6 +199,7 @@ export async function POST(
           chapterId,
           sourceContexts,
           req.signal,
+          briefBundle,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));
@@ -211,6 +216,13 @@ export async function POST(
                   ragChunks: event.ragChunks,
                   model,
                   promptsHash,
+                  ...(briefBundle
+                    ? {
+                        editorialBriefId: briefBundle.id,
+                        editorialBriefVersion: briefBundle.version,
+                        editorialBriefHash: briefBundle.hash,
+                      }
+                    : {}),
                 }),
               })
               .where(
