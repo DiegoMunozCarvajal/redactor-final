@@ -1401,6 +1401,30 @@ export default function ChapterPage() {
                       : (selectedAssemblyVersion.assemblyMetadata?.fragmentCount ?? "Unknown")}
                   </dd>
                 </div>
+                {(selectedAssemblyVersion.assemblyMetadata?.plannerExecutionId ||
+                  selectedAssemblyVersion.assemblyMetadata?.assemblyExecutionId) && (
+                  <div>
+                    <dt className="text-muted-foreground text-xs mt-1">Execution IDs</dt>
+                    <dd className="text-[10px] font-mono text-muted-foreground/70 space-y-0.5 mt-0.5">
+                      {selectedAssemblyVersion.assemblyMetadata?.plannerExecutionId && (
+                        <div className="flex items-center gap-1">
+                          <span className="shrink-0">Planner:</span>
+                          <code className="truncate">
+                            {selectedAssemblyVersion.assemblyMetadata.plannerExecutionId.slice(0, 12)}...
+                          </code>
+                        </div>
+                      )}
+                      {selectedAssemblyVersion.assemblyMetadata?.assemblyExecutionId && (
+                        <div className="flex items-center gap-1">
+                          <span className="shrink-0">Assembly:</span>
+                          <code className="truncate">
+                            {selectedAssemblyVersion.assemblyMetadata.assemblyExecutionId.slice(0, 12)}...
+                          </code>
+                        </div>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               <div className="prose prose-sm dark:prose-invert max-w-none text-sm">

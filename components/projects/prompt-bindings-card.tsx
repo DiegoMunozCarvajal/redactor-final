@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Card,
   CardHeader,
@@ -14,21 +14,18 @@ import { Settings2 } from "lucide-react";
 // Types
 // ---------------------------------------------------------------------------
 
-interface RevisionInfo {
-  id: string;
-  versionLabel: string;
-  revisionNumber: number;
-  name: string;
-}
-
 interface BindingEntry {
   kind: string;
   label: string;
-  effectiveRevision: RevisionInfo | null;
+  effectiveRevision: {
+    id: string;
+    versionLabel: string;
+    name: string;
+  } | null;
   isOverride: boolean;
 }
 
-export interface PromptBindingsCardProps {
+interface PromptBindingsCardProps {
   projectId: string;
   className?: string;
 }
@@ -40,10 +37,10 @@ export interface PromptBindingsCardProps {
 const KIND_LABELS: Record<string, string> = {
   "generation-system": "Generation System",
   "assembly-planner": "Assembly Planner",
-  "assembly": "Assembly",
-  "critique": "Critique",
-  "corrector": "Corrector",
-  "title": "Title",
+  assembly: "Assembly",
+  critique: "Critique",
+  corrector: "Corrector",
+  title: "Title",
   "placeholder-fill": "Placeholder Fill",
   "editorial-brief-extractor": "Editorial Brief Extractor",
 };
@@ -61,42 +58,91 @@ export function PromptBindingsCard({
   const [bindings, setBindings] = useState<BindingEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(async () => {
+    try {
+      // Fetch project overrides
+      const overridesRes = await fetch(
+        `/api/projects/${projectId}/prompt-bindings`,
+      );
+      const overrides: { kind: string; promptRevisionId: string; versionLabel: string; definitionName: string }[] =
+        overridesRes.ok ? await overridesRes.json() : [];
+      const overrideMap = new Map(overrides.map((o) => [o.kind, o]));
 
-    async function load() {
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/prompt-bindings`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) setBindings(data);
-          if (!cancelled) setLoading(false);
-          return;
+      // Fetch global defaults for all kinds
+      const defaultsMap = new Map<
+        string,
+        { id: string; versionLabel: string; name: string }
+      >();
+      await Promise.all(
+        PROJECT_KINDS.map(async (kind) => {
+          try {
+            const res = await fetch(
+              `/api/prompt-defaults/${encodeURIComponent(kind)}`,
+            );
+            if (res.ok) {
+              const data = await res.json();
+              defaultsMap.set(kind, {
+                id: data.id,
+                versionLabel: data.versionLabel,
+                name: data.name,
+              });
+            }
+          } catch {
+            // Default not configured for this kind — skip
+          }
+        }),
+      );
+
+      // Merge: project override > global default > null
+      const entries: BindingEntry[] = PROJECT_KINDS.map((kind) => {
+        const override = overrideMap.get(kind);
+        const def = defaultsMap.get(kind);
+        if (override) {
+          return {
+            kind,
+            label: KIND_LABELS[kind] ?? kind,
+            effectiveRevision: {
+              id: override.promptRevisionId,
+              versionLabel: override.versionLabel,
+              name: override.definitionName,
+            },
+            isOverride: true,
+          };
         }
-      } catch {
-        // API not available — fall through to fallback
-      }
+        if (def) {
+          return {
+            kind,
+            label: KIND_LABELS[kind] ?? kind,
+            effectiveRevision: def,
+            isOverride: false,
+          };
+        }
+        return {
+          kind,
+          label: KIND_LABELS[kind] ?? kind,
+          effectiveRevision: null,
+          isOverride: false,
+        };
+      });
 
-      // Show all kinds with unresolved revisions. The prompt-defaults API
-      // requires the prompt_defaults table (migration 20260714000002).
-      // When the table exists, each row resolves to its effective revision.
-      const fallback = PROJECT_KINDS.map((kind) => ({
-        kind,
-        label: KIND_LABELS[kind] ?? kind,
-        effectiveRevision: null,
-        isOverride: false,
-      }));
-      if (!cancelled) setBindings(fallback);
-      if (!cancelled) setLoading(false);
+      setBindings(entries);
+    } catch {
+      setBindings(
+        PROJECT_KINDS.map((kind) => ({
+          kind,
+          label: KIND_LABELS[kind] ?? kind,
+          effectiveRevision: null,
+          isOverride: false,
+        })),
+      );
+    } finally {
+      setLoading(false);
     }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
   }, [projectId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -109,7 +155,10 @@ export function PromptBindingsCard({
         </CardHeader>
         <CardContent className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-8 w-full animate-pulse bg-muted rounded-md" />
+            <div
+              key={i}
+              className="h-8 w-full animate-pulse bg-muted rounded-md"
+            />
           ))}
         </CardContent>
       </Card>
@@ -133,17 +182,23 @@ export function PromptBindingsCard({
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-medium truncate">{binding.label}</span>
               {binding.isOverride && (
-                <Badge variant="outline" className="shrink-0 text-[10px] h-4 px-1.5">
-                  Override
+                <Badge
+                  variant="outline"
+                  className="shrink-0 text-[10px] h-4 px-1.5"
+                >
+                  Project override
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0 ml-2">
+            <div className="shrink-0 ml-2">
               {binding.effectiveRevision ? (
                 <span className="text-xs text-muted-foreground">
                   {binding.effectiveRevision.name}{" "}
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                    v{binding.effectiveRevision.revisionNumber}
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] h-4 px-1.5"
+                  >
+                    {binding.effectiveRevision.versionLabel}
                   </Badge>
                 </span>
               ) : (
@@ -156,7 +211,7 @@ export function PromptBindingsCard({
         ))}
         {bindings.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No prompt bindings configured. Defaults will be used for all stages.
+            No prompt bindings configured.
           </p>
         )}
       </CardContent>

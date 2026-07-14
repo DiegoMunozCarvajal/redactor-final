@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddChapterDialog } from "@/components/projects/add-chapter-dialog";
 import { SortableChapterList } from "@/components/projects/sortable-chapter-list";
-import { Loader2, Check, X, BookOpen, Library, FileText } from "lucide-react";
+import { Loader2, Check, X, BookOpen, Library, FileText, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesManager } from "@/components/projects/sources-manager";
 import { EditorialBriefPanel } from "@/components/projects/editorial-brief-panel";
+import { PromptBindingsCard } from "@/components/projects/prompt-bindings-card";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -49,7 +50,7 @@ interface ProjectData {
   const [editTopic, setEditTopic] = useState("");
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
-  const [activeTab, setActiveTab] = useState<"chapters" | "sources" | "brief">("chapters");
+  const [activeTab, setActiveTab] = useState<"chapters" | "sources" | "brief" | "prompts">("chapters");
 
   const fetchProject = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -315,6 +316,18 @@ interface ProjectData {
           <FileText className="h-4 w-4 inline mr-2" />
           Brief editorial
         </button>
+        <button
+          onClick={() => setActiveTab("prompts")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            activeTab === "prompts"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Settings2 className="h-4 w-4 inline mr-2" />
+          Prompts
+        </button>
       </div>
 
       {activeTab === "chapters" && (
@@ -350,6 +363,10 @@ interface ProjectData {
 
       <div className={activeTab === "brief" ? "" : "hidden"}>
         <EditorialBriefPanel projectId={project.id} />
+      </div>
+
+      <div className={activeTab === "prompts" ? "" : "hidden"}>
+        <PromptBindingsCard projectId={project.id} />
       </div>
     </div>
   );

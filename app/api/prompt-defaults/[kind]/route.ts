@@ -29,11 +29,12 @@ export async function GET(
 
   const [def] = await db
     .select({
+      id: promptRevisions.id,
       kind: promptDefaults.kind,
       promptRevisionId: promptDefaults.promptRevisionId,
       versionLabel: promptRevisions.versionLabel,
       revisionNumber: promptRevisions.revisionNumber,
-      definitionName: promptDefinitions.name,
+      name: promptDefinitions.name,
     })
     .from(promptDefaults)
     .innerJoin(promptRevisions, eq(promptDefaults.promptRevisionId, promptRevisions.id))

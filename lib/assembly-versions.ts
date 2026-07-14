@@ -1,10 +1,16 @@
 export interface AssemblyMetadata {
-  algorithm?: "merge-sort" | "sequential" | "halves" | "critique";
+  algorithm?: "merge-sort" | "sequential" | "halves" | "critique" | "correction" | "planned-editorial-v1";
   promptId?: string;
   promptTitle?: string;
   promptSource?: string;
   model?: string;
   fragmentCount?: number;
+  pipeline?: string;
+  tokensUsed?: number;
+  costUsd?: number;
+  durationMs?: number;
+  plannerExecutionId?: string;
+  assemblyExecutionId?: string;
 }
 
 export interface AssemblyVersionState {
