@@ -8,15 +8,16 @@ import {
   chapterGenerations,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
 import { fillPlaceholdersSequential } from "@/lib/ai/placeholder-fill";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
-import { hashPromptContents } from "@/lib/placeholder-utils";
+import { hashPromptContents, needsPlaceholderFill } from "@/lib/placeholder-utils";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
+import { llmPromptExecutions } from "@/lib/db/schema/prompt-registry";
 
 export async function POST(
   req: NextRequest,
@@ -94,7 +95,7 @@ export async function POST(
     if (phRows.length === 0) {
       await db
         .update(chapterGenerations)
-        .set({ status: "failed", error: "no placeholders to fill" })
+        .set({ status: "failed", error: "no placeholders to fill", completedAt: new Date() })
         .where(eq(chapterGenerations.id, gen.id));
       return { rateLimited: false as const, gen, emptyPlaceholders: true as const };
     }
@@ -123,6 +124,28 @@ export async function POST(
   const fillGen = lockResult.result.gen;
   const placeholderRows = lockResult.result.phRows;
 
+  // Clean up stale "started" executions from prior crashed fills.
+  // Executions stuck in "started" for >30min indicate a process that died
+  // before updating the status to completed/failed.
+  const STALE_EXECUTION_THRESHOLD_MS = 30 * 60 * 1000;
+  await db
+    .update(llmPromptExecutions)
+    .set({
+      status: "failed",
+      error: "process terminated before completion",
+      completedAt: sql`NOW()`,
+    })
+    .where(
+      and(
+        eq(llmPromptExecutions.status, "started"),
+        eq(llmPromptExecutions.chapterId, chapterId),
+        lt(
+          llmPromptExecutions.createdAt,
+          new Date(Date.now() - STALE_EXECUTION_THRESHOLD_MS),
+        ),
+      ),
+    );
+
   // Load prompt contents (content + userPrompt) and source contexts for context
   const promptRows = await db
     .select({ content: prompts.content, userPrompt: prompts.userPrompt, sourceContext: prompts.sourceContext })
@@ -140,14 +163,12 @@ export async function POST(
   // when onlyMissingOrStale is true (default). Protects manually-edited
   // definitions from being overwritten by a bulk fill-all operation.
   const toFill = onlyMissingOrStale
-    ? placeholderRows.filter((p) => {
-        if (!p.definition) return true; // Missing — always fill
-        const meta = p.fillMetadata as { promptsHash?: string; editorialBriefHash?: string } | null;
-        if (!meta?.promptsHash && !meta?.editorialBriefHash) return true; // No hash — fill (stale detection impossible)
-        if (meta.promptsHash && meta.promptsHash !== promptsHash) return true; // Prompts changed
-        if (briefBundle && meta.editorialBriefHash !== briefBundle.hash) return true; // Brief changed or missing (pre-brief def → stale)
-        return false;
-      })
+    ? placeholderRows.filter((p) => needsPlaceholderFill(
+        p.definition,
+        p.fillMetadata as { promptsHash?: string; editorialBriefHash?: string } | null,
+        promptsHash,
+        briefBundle?.hash,
+      ))
     : placeholderRows;
 
   // Build placeholder defs for the sequential pipeline
@@ -163,7 +184,21 @@ export async function POST(
       .update(chapterGenerations)
       .set({ status: "completed", error: "all placeholders already filled", completedAt: new Date() })
       .where(eq(chapterGenerations.id, fillGen.id));
-    return NextResponse.json({ message: "all placeholders already filled", skipped: true });
+    const event = {
+      type: "done",
+      total: placeholderRows.length,
+      current: placeholderRows.length,
+      filled: placeholderRows.length,
+      failed: 0,
+      skipped: true,
+    };
+    return new Response(`event: done\ndata: ${JSON.stringify(event)}\n\n`, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   }
 
   // Stream results via SSE as each placeholder completes
@@ -176,7 +211,7 @@ export async function POST(
     try {
       await db
         .update(chapterGenerations)
-        .set({ status: "failed", error: "Request aborted (client disconnect or timeout)" })
+        .set({ status: "failed", error: "Request aborted (client disconnect or timeout)", completedAt: new Date() })
         .where(and(eq(chapterGenerations.id, fillGen.id), eq(chapterGenerations.status, "generating")));
     } catch {
       // Best-effort — ignore if DB is unreachable during teardown
@@ -188,12 +223,14 @@ export async function POST(
     async start(controller) {
       let hadError = false;
       let terminalEvent: "done" | "cancelled" | "error" | null = null;
+      let doneFailedCount = 0;
 
       try {
+        const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic ?? null;
         for await (const event of fillPlaceholdersSequential(
           placeholderDefs,
           promptContents,
-          project.topic ?? null,
+          effectiveTopic,
           projectId,
           model,
           effort,
@@ -202,6 +239,7 @@ export async function POST(
           sourceContexts,
           req.signal,
           briefBundle,
+          fillGen.id,
         )) {
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));
@@ -248,6 +286,7 @@ export async function POST(
             terminalEvent = "error";
           } else if (event.type === "done") {
             terminalEvent = "done";
+            doneFailedCount = (event as { failed?: number }).failed ?? 0;
           }
         }
 
@@ -257,24 +296,31 @@ export async function POST(
         if (terminalEvent === "cancelled") {
           await db
             .update(chapterGenerations)
-            .set({ status: "failed", error: "Fill cancelled by user" })
+            .set({ status: "failed", error: "Fill cancelled by user", completedAt: new Date() })
             .where(eq(chapterGenerations.id, fillGen.id));
         } else if (hadError || terminalEvent === "error") {
           await db
             .update(chapterGenerations)
-            .set({ status: "failed", error: "Fill encountered errors" })
+            .set({ status: "failed", error: "Fill encountered errors", completedAt: new Date() })
             .where(eq(chapterGenerations.id, fillGen.id));
         } else if (terminalEvent === "done") {
+          // "done" with failed placeholders is still a failure — the generator
+          // completed its loop but some placeholders could not be filled.
+          const status = doneFailedCount > 0 ? "failed" as const : "completed" as const;
           await db
             .update(chapterGenerations)
-            .set({ status: "completed", completedAt: new Date() })
+            .set({
+              status,
+              completedAt: new Date(),
+              ...(doneFailedCount > 0 ? { error: `${doneFailedCount} placeholder(s) failed to fill` } : {}),
+            })
             .where(eq(chapterGenerations.id, fillGen.id));
         }
       } catch (err) {
         // Mark fill generation as failed
         await db
           .update(chapterGenerations)
-          .set({ status: "failed", error: sanitizeError(err) })
+          .set({ status: "failed", error: sanitizeError(err), completedAt: new Date() })
           .where(eq(chapterGenerations.id, fillGen.id));
         const errorEvent = { type: "error", error: sanitizeError(err) };
         controller.enqueue(

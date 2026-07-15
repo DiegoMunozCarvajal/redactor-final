@@ -52,7 +52,13 @@ export async function POST(
   const model = body.model as string | undefined;
   const effort = body.effort as "off" | "max" | undefined;
 
-  const placeholders = await getChapterPlaceholders(prompt.chapterId, project.topic);
+  // Capture editorial bundle snapshot before placeholder resolution
+  // so centralTopic can feed into getChapterPlaceholders.
+  const bundle = await loadEditorialBundle({ projectId });
+  const snapshot = bundle ? snapshotFromBundle(bundle) : null;
+  const effectiveTopic = bundle?.content.centralTopic ?? project.topic;
+
+  const placeholders = await getChapterPlaceholders(prompt.chapterId, effectiveTopic);
   const missingPlaceholders = getMissingPlaceholderNames(
     [prompt.content, prompt.userPrompt].filter(Boolean) as string[],
     placeholders,
@@ -67,9 +73,6 @@ export async function POST(
     );
   }
 
-  // Capture editorial bundle snapshot before the advisory lock.
-  const bundle = await loadEditorialBundle({ projectId });
-  const snapshot = bundle ? snapshotFromBundle(bundle) : null;
   // Synchronous route — render editorial context now for the LLM call below.
   const editorialContext = bundle
     ? renderEditorialData(bundle, { chapterId: prompt.chapterId })
@@ -162,7 +165,7 @@ export async function POST(
     const result = await generatePromptContent({
       prompt,
       placeholders,
-      projectTopic: project.topic,
+      projectTopic: effectiveTopic,
       projectId,
       chapterId: prompt.chapterId,
       chapterGenerationId: gen.id,

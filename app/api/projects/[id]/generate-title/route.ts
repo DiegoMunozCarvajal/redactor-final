@@ -54,6 +54,18 @@ export async function POST(
   const briefBundle = await loadEditorialBundle({ projectId });
   const briefSnapshot = briefBundle ? snapshotFromBundle(briefBundle) : null;
 
+  // Require effective topic before creating a generation row.
+  const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic ?? null;
+  if (!effectiveTopic) {
+    return NextResponse.json(
+      {
+        error:
+          "No hay tema definido. Crea un brief editorial con tema central o establece un tema legacy.",
+      },
+      { status: 400 },
+    );
+  }
+
   // Serialize rate limit check + generation row insert under advisory lock.
   // Creating a chapterGenerations row (type "title") ensures checkProjectRateLimit
   // counts it — preventing unlimited title generations per project.
@@ -126,7 +138,7 @@ export async function POST(
     titleResult = await generateTitle({
       projectId,
       editorialContext: editorialContext ?? "",
-      projectTopic: project.topic ?? "",
+      projectTopic: effectiveTopic,
     });
   } catch (err) {
     const message = sanitizeError(err);

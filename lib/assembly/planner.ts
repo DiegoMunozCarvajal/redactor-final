@@ -3,6 +3,8 @@ import { assemblyPlanV1Schema, validateAssemblyPlan, type AssemblyPlanV1, type A
 import { serializeAssemblyFragments, serializeOutputSchema, type AssemblyFragmentInput } from './serialize';
 import type { ReasoningEffort } from '@/lib/ai/completion';
 
+const PLANNER_TIMEOUT_MS = 480_000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -17,6 +19,7 @@ export interface PlannerInput {
   effort?: ReasoningEffort;
   chapterId?: string;
   chapterGenerationId?: string;
+  dataLineage?: Record<string, { entityIds?: string[]; versionIds?: string[]; sourceHashes?: string[] }>;
 }
 
 export interface PlannerResult {
@@ -35,6 +38,64 @@ export interface PlannerResult {
   durationMs: number;
 }
 
+interface AliasedFragments {
+  fragments: AssemblyFragmentInput[];
+  aliasToCanonicalId: Map<string, string>;
+}
+
+function aliasFragments(fragments: AssemblyFragmentInput[]): AliasedFragments {
+  const aliasToCanonicalId = new Map<string, string>();
+  const aliased = fragments.map((fragment, index) => {
+    const alias = `F${index + 1}`;
+    aliasToCanonicalId.set(alias, fragment.id);
+    return { ...fragment, id: alias };
+  });
+
+  return { fragments: aliased, aliasToCanonicalId };
+}
+
+function canonicalizePlanFragmentIds(
+  plan: AssemblyPlanV1,
+  aliasToCanonicalId: Map<string, string>,
+): AssemblyPlanV1 {
+  const canonicalId = (alias: string): string => {
+    const id = aliasToCanonicalId.get(alias);
+    if (!id) throw new Error(`Unknown fragment alias "${alias}" referenced in plan`);
+    return id;
+  };
+
+  return {
+    ...plan,
+    opening: {
+      ...plan.opening,
+      sourceFragmentIds: plan.opening.sourceFragmentIds.map(canonicalId),
+    },
+    sections: plan.sections.map((section) => ({
+      ...section,
+      sourceTreatments: section.sourceTreatments.map((treatment) => ({
+        ...treatment,
+        fragmentId: canonicalId(treatment.fragmentId),
+      })),
+    })),
+    mustCover: plan.mustCover.map((item) => ({
+      ...item,
+      sourceFragmentIds: item.sourceFragmentIds.map(canonicalId),
+    })),
+    redundancies: plan.redundancies.map((item) => ({
+      ...item,
+      sourceFragmentIds: item.sourceFragmentIds.map(canonicalId),
+    })),
+    illustrations: plan.illustrations.map((item) => ({
+      ...item,
+      sourceFragmentIds: item.sourceFragmentIds.map(canonicalId),
+    })),
+    closing: {
+      ...plan.closing,
+      sourceFragmentIds: plan.closing.sourceFragmentIds.map(canonicalId),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -48,7 +109,8 @@ export interface PlannerResult {
 export async function runAssemblyPlanner(
   input: PlannerInput,
 ): Promise<PlannerResult> {
-  const serializedFragments = serializeAssemblyFragments(input.fragments);
+  const aliasedFragments = aliasFragments(input.fragments);
+  const serializedFragments = serializeAssemblyFragments(aliasedFragments.fragments);
   const outputSchema = serializeOutputSchema(assemblyPlanV1Schema);
 
   const { result, executionId, revision } = await executeVersionedPrompt({
@@ -58,6 +120,7 @@ export async function runAssemblyPlanner(
     revisionId: input.revisionId,
     chapterId: input.chapterId,
     chapterGenerationId: input.chapterGenerationId,
+    dataLineage: input.dataLineage,
     markerValues: {
       '{{EDITORIAL_CONTEXT}}': input.editorialContext,
       '{{SECCIONES_GENERADAS}}': serializedFragments,
@@ -65,11 +128,22 @@ export async function runAssemblyPlanner(
     },
     model: input.model,
     effort: input.effort,
+    timeoutMs: PLANNER_TIMEOUT_MS,
     schema: assemblyPlanV1Schema,
+    technicalPolicies: ["schema-validation", "semantic-plan-validation"],
   });
 
-  // Semantic validation — structural validation already done by Zod
-  const plan = validateAssemblyPlan(result.data, input.validationContext);
+  // Validate model-facing aliases first, then restore canonical DB IDs and
+  // validate again against the current generation state before persistence.
+  const aliasedPlan = validateAssemblyPlan(result.data, {
+    fragmentIds: aliasedFragments.fragments.map((fragment) => fragment.id),
+    mustCover: input.validationContext.mustCover,
+  });
+  const plan = canonicalizePlanFragmentIds(
+    aliasedPlan,
+    aliasedFragments.aliasToCanonicalId,
+  );
+  validateAssemblyPlan(plan, input.validationContext);
 
   return {
     plan,

@@ -204,10 +204,16 @@ function renderChapterContract(
 
 type SectionValue = EditorialBriefContent[keyof EditorialBriefContent];
 
+function renderCentralTopic(value: string | undefined): string {
+  if (!value || value === "-") return "";
+  return `  <central_topic>${escapeXml(value)}</central_topic>`;
+}
+
 const SECTION_RENDERERS: Record<
   keyof EditorialBriefContent,
   (value: SectionValue) => string
 > = {
+  centralTopic: renderCentralTopic as (value: SectionValue) => string,
   market: renderMarket as (value: SectionValue) => string,
   audience: renderAudience as (value: SectionValue) => string,
   thesis: renderThesis as (value: SectionValue) => string,
@@ -224,6 +230,7 @@ const SECTION_RENDERERS: Record<
 // ---------------------------------------------------------------------------
 
 const ALL_DATA_SECTIONS: Array<keyof EditorialBriefContent> = [
+  "centralTopic",
   "market",
   "audience",
   "thesis",

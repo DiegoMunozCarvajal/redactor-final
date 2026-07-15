@@ -164,14 +164,15 @@ export async function getChapterPlaceholders(chapterId: string, projectTopic?: s
   const map: Record<string, string> = {};
   for (const row of rows) {
     const key = row.name.toLowerCase();
-    if (row.definition) {
+    // Tema/topic variants: effectiveTopic (brief.centralTopic ?? project.topic)
+    // wins over any persisted definition. The brief is canonical.
+    const segments = key.split("_");
+    const isTopicVariant = segments.includes("tema") || segments.includes("topic");
+
+    if (isTopicVariant && projectTopic) {
+      map[key] = projectTopic; // canonical — overrides legacy definitions
+    } else if (row.definition) {
       map[key] = row.definition;
-    } else if (!(key in map)) {
-      // Segment-based matching: {tema}, {TEMA_LIBRO}, {TOPIC}, etc.
-      const segments = key.split("_");
-      if ((segments.includes("tema") || segments.includes("topic")) && projectTopic) {
-        map[key] = projectTopic;
-      }
     }
   }
   return map;

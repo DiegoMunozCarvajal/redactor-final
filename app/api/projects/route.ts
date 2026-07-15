@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { name, topic, title, bookTemplateId } = body;
+  const { name, title, bookTemplateId } = body;
 
   // Reject legacy fields — Plan 2 resolves via prompt registry
   if (body.assemblyPromptId !== undefined) {
@@ -71,10 +71,6 @@ export async function POST(req: NextRequest) {
   if (title !== undefined && (typeof title !== "string" || title.length < 1 || title.length > 300)) {
     return NextResponse.json({ error: "title must be 1-300 characters" }, { status: 400 });
   }
-  if (topic !== undefined && (typeof topic !== "string" || topic.length > 500)) {
-    return NextResponse.json({ error: "topic must be a string of 500 characters or less" }, { status: 400 });
-  }
-
   let project: typeof projects.$inferSelect;
   try {
     project = await db.transaction(async (tx) => {
@@ -96,7 +92,7 @@ export async function POST(req: NextRequest) {
 
       const [p] = await tx
         .insert(projects)
-        .values({ userId: user.id, name, title: title?.trim() || null, topic: topic?.trim() || null, bookTemplateId: bookTemplateId ?? null })
+        .values({ userId: user.id, name, title: title?.trim() || null, bookTemplateId: bookTemplateId ?? null })
         .returning();
 
       // If a template was selected, copy its chapters as project chapters
@@ -144,48 +140,6 @@ export async function POST(req: NextRequest) {
               .insert(chapterPlaceholders)
               .values(detected.map((name) => ({ chapterId: projectChapterId, name })))
               .onConflictDoNothing();
-          }
-        }
-
-        // Backfill {tema} placeholder from project topic for all new project chapters.
-        // Also handles tema variants (tema_libro, tema_del_libro, topic, etc.)
-        if (p.topic) {
-          const projectChapterIds = [...chapterIdMap.values()];
-          for (const projectChapterId of projectChapterIds) {
-            // Fetch any placeholders that are tema variants
-            const phRows = await tx
-              .select({ name: chapterPlaceholders.name })
-              .from(chapterPlaceholders)
-              .where(eq(chapterPlaceholders.chapterId, projectChapterId));
-
-            const temaVariantNames = phRows
-              .filter((ph) => {
-                const segments = ph.name.toLowerCase().split("_");
-                return segments.includes("tema") || segments.includes("topic");
-              })
-              .map((ph) => ph.name);
-
-            // Ensure all tema variants have definitions (single UPDATE with inArray)
-            if (temaVariantNames.length > 0) {
-              await tx
-                .update(chapterPlaceholders)
-                .set({ definition: p.topic })
-                .where(
-                  and(
-                    eq(chapterPlaceholders.chapterId, projectChapterId),
-                    inArray(chapterPlaceholders.name, temaVariantNames),
-                  ),
-                );
-            }
-
-            // Also ensure a canonical {tema} row exists for prompts that reference it
-            await tx
-              .insert(chapterPlaceholders)
-              .values({ chapterId: projectChapterId, name: "tema", definition: p.topic })
-              .onConflictDoUpdate({
-                target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
-                set: { definition: p.topic },
-              });
           }
         }
 

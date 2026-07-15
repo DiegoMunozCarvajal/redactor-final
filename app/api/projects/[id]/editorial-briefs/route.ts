@@ -31,6 +31,7 @@ import type {
  * Every string field satisfies the Zod min(1) constraint.
  */
 const EMPTY_BRIEF_CONTENT: EditorialBriefContent = {
+  centralTopic: "-",
   market: { region: "-", researchLanguage: "-", manuscriptLanguage: "-" },
   audience: {
     primaryReader: "-",
@@ -177,9 +178,15 @@ export async function POST(
         createEmptyContract,
       );
 
+      // Legacy briefs may not have centralTopic — fill from project.topic or "-"
+      const clonedContent = {
+        ...source.content,
+        centralTopic: source.content.centralTopic ?? project.topic ?? "-",
+      };
+
       brief = await createEditorialBriefDraft({
         projectId,
-        content: source.content,
+        content: clonedContent,
         contracts: reconciled,
         evidenceSourceIds: source.evidenceSourceIds,
       });

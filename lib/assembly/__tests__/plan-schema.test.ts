@@ -128,6 +128,27 @@ describe('validateAssemblyPlan', () => {
     expect(() => validateAssemblyPlan(plan, defaultCtx)).toThrow('Unknown fragment ID "unknown-frag"');
   });
 
+  it('accepts opening and closing as directional bridge anchors', () => {
+    const plan = makeValidPlan({
+      bridges: [
+        {
+          fromSectionId: 'opening',
+          toSectionId: 's1',
+          logicalConnection: 'La apertura conduce al argumento central',
+          factualBoundary: 'No añade hechos',
+        },
+        {
+          fromSectionId: 's1',
+          toSectionId: 'closing',
+          logicalConnection: 'El argumento desemboca en la conclusión',
+          factualBoundary: 'No añade hechos',
+        },
+      ],
+    });
+
+    expect(() => validateAssemblyPlan(plan, defaultCtx)).not.toThrow();
+  });
+
   it('rejects unknown section ID in bridge', () => {
     const plan = makeValidPlan({
       bridges: [{

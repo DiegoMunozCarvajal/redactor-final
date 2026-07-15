@@ -53,7 +53,13 @@ export async function retrieveContext(
     sql`sc.embedding <=> ${embeddingStr}::vector < ${1 - minSimilarity}`,
   ];
   if (sourceIds && sourceIds.length > 0) {
-    conditions.push(sql`sc.source_id = ANY(${sourceIds}::uuid[])`);
+    // IN clause — avoids ANY(ARRAY[...]::uuid[]) which produces
+    // "malformed array literal" when Drizzle nests parameterized
+    // sql.join chunks inside db.execute() on pgvector queries.
+    const idPlaceholders = sourceIds.map((id) => sql`${id}::uuid`);
+    conditions.push(
+      sql`sc.source_id IN (${sql.join(idPlaceholders, sql`, `)})`,
+    );
   }
 
   // Vector similarity search using cosine distance (<=>)

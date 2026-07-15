@@ -90,6 +90,19 @@ export async function POST(
   const bundle = await loadEditorialBundle({ projectId });
   const snapshot = bundle ? snapshotFromBundle(bundle) : null;
 
+  // Require effective topic: brief.centralTopic or legacy project.topic.
+  // A legacy brief without centralTopic is insufficient — check the value, not the object.
+  const effectiveTopic = bundle?.content.centralTopic ?? project.topic ?? null;
+  if (!effectiveTopic) {
+    return NextResponse.json(
+      {
+        error:
+          "No hay tema definido. Crea un brief editorial con tema central o establece un tema legacy para generar.",
+      },
+      { status: 400 },
+    );
+  }
+
   const VALID_EFFORT_VALUES = ["off", "xhigh", "max"] as const;
   if (effortRaw !== undefined && !(VALID_EFFORT_VALUES as readonly string[]).includes(effortRaw)) {
     return NextResponse.json(

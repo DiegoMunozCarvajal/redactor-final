@@ -51,6 +51,7 @@ interface ProjectData {
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [activeTab, setActiveTab] = useState<"chapters" | "sources" | "brief" | "prompts">("chapters");
+  const [sourcesVersion, setSourcesVersion] = useState(0);
 
   const fetchProject = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -106,6 +107,13 @@ interface ProjectData {
     }, 3000);
     return () => clearInterval(interval);
   }, [project, fetchProject]);
+
+  // Refresh sources when switching to brief tab
+  useEffect(() => {
+    if (activeTab === "brief") {
+      setSourcesVersion((v) => v + 1);
+    }
+  }, [activeTab]);
 
   async function saveTitle() {
     if (!project) return;
@@ -233,9 +241,9 @@ interface ProjectData {
         )}
       </div>
 
-      {/* Topic */}
+      {/* Topic — legacy fallback. Brief's centralTopic is canonical. */}
       <div className="mb-4">
-        <Label className="text-xs text-muted-foreground">Topic</Label>
+        <Label className="text-xs text-muted-foreground">Tema (legacy)</Label>
         {editingTopic ? (
           <div className="flex items-center gap-2 mt-1">
             <Input
@@ -272,7 +280,7 @@ interface ProjectData {
             title="Click to edit topic"
           >
             {project?.topic || (
-              <span className="text-muted-foreground italic">Click to set the book topic</span>
+              <span className="text-muted-foreground italic">Click to set a legacy fallback topic</span>
             )}
           </p>
         )}
@@ -302,7 +310,7 @@ interface ProjectData {
           )}
         >
           <Library className="h-4 w-4 inline mr-2" />
-          Fuentes RAG
+          Documentos y fuentes
         </button>
         <button
           onClick={() => setActiveTab("brief")}
@@ -362,7 +370,7 @@ interface ProjectData {
       )}
 
       <div className={activeTab === "brief" ? "" : "hidden"}>
-        <EditorialBriefPanel projectId={project.id} />
+        <EditorialBriefPanel projectId={project.id} sourcesVersion={sourcesVersion} />
       </div>
 
       <div className={activeTab === "prompts" ? "" : "hidden"}>

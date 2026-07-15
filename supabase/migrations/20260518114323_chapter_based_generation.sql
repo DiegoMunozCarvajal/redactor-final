@@ -1,5 +1,11 @@
 -- Create enums
-CREATE TYPE IF NOT EXISTS generation_status AS ENUM ('generating', 'completed', 'failed');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'generation_status') THEN
+    CREATE TYPE generation_status AS ENUM ('generating', 'completed', 'failed');
+  END IF;
+END
+$$;
 
 -- Create project_prompts table
 CREATE TABLE IF NOT EXISTS project_prompts (

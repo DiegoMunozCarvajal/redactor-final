@@ -9,6 +9,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface EditorialBriefForm {
+  centralTopic: string;
   market: {
     region: string;
     researchLanguage: string;
@@ -111,6 +112,7 @@ function toTextarea(value: string[]): string {
  */
 export function formToContent(form: EditorialBriefForm): EditorialBriefContent {
   return {
+    centralTopic: form.centralTopic.trim(),
     market: {
       region: form.market.region.trim(),
       researchLanguage: form.market.researchLanguage.trim(),
@@ -169,6 +171,7 @@ export function formToContent(form: EditorialBriefForm): EditorialBriefContent {
  */
 export function contentToForm(content: EditorialBriefContent): EditorialBriefForm {
   return {
+    centralTopic: content.centralTopic ?? "",
     market: {
       region: content.market.region,
       researchLanguage: content.market.researchLanguage,

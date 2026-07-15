@@ -13,7 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.{ts,tsx}"],
-    exclude: ["**/node_modules/**", "**/.claude/**"],
+    exclude: ["**/node_modules/**", "**/.claude/**", "**/.worktrees/**"],
     pool: "forks",
     setupFiles: ["./vitest.setup.ts"],
     poolOptions: {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { buildCorrectionRequestBody } from "@/lib/review/request-payloads";
 
 interface Generation {
   id: string;
@@ -34,15 +35,14 @@ interface Props {
   generations: Generation[];
   hasAssembly: boolean;
   onGenerationCreated: () => void;
-  projectCorrectorPromptId?: string;
-  projectCorrectorPromptContent?: string;
-  projectCorrectorPromptUserPrompt?: string | null;
+  correctorPromptRevisionId?: string;
   correctionTrigger: number;
   correctorModel: string;
   onCorrectingChange: (correcting: boolean) => void;
+  selectedCritiqueGenerationId?: string;
 }
 
-export function CorrectorSection({ projectId, chapterId, generations, hasAssembly, onGenerationCreated, projectCorrectorPromptId, projectCorrectorPromptContent, projectCorrectorPromptUserPrompt, correctionTrigger, correctorModel, onCorrectingChange }: Props) {
+export function CorrectorSection({ projectId, chapterId, generations, hasAssembly, onGenerationCreated, correctorPromptRevisionId, correctionTrigger, correctorModel, onCorrectingChange, selectedCritiqueGenerationId }: Props) {
   const prevTrigger = useRef(correctionTrigger);
 
   // Critique generations (needed to select which critique to apply)
@@ -54,7 +54,7 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
     if (correctionTrigger === 0 || correctionTrigger === prevTrigger.current) return;
     prevTrigger.current = correctionTrigger;
 
-    if (!projectCorrectorPromptId) {
+    if (!correctorPromptRevisionId) {
       toast.error("No corrector prompt configured");
       return;
     }
@@ -67,21 +67,21 @@ export function CorrectorSection({ projectId, chapterId, generations, hasAssembl
       return;
     }
 
-    const selectedCritiqueGenId = critiqueGenerations[0].id;
+    const selectedCritiqueGenId = selectedCritiqueGenerationId ?? critiqueGenerations[0]?.id;
+    if (!selectedCritiqueGenId) {
+      toast.error("No critique available for correction");
+      return;
+    }
+
     onCorrectingChange(true);
 
     (async () => {
       try {
-        const body: Record<string, unknown> = {
-          critiqueGenerationId: selectedCritiqueGenId,
-          model: correctorModel,
-        };
-        if (projectCorrectorPromptId && projectCorrectorPromptContent) {
-          body.correctorPrompt = {
-            content: projectCorrectorPromptContent,
-            userPrompt: projectCorrectorPromptUserPrompt ?? null,
-          };
-        }
+        const body = buildCorrectionRequestBody(
+          correctorPromptRevisionId,
+          selectedCritiqueGenId,
+          correctorModel,
+        );
         const res = await fetch(
           `/api/projects/${projectId}/chapters/${chapterId}/correct`,
           {

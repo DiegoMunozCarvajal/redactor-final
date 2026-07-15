@@ -68,20 +68,30 @@ describe("retrieveContext", () => {
     expect(mockRerank).not.toHaveBeenCalled();
   });
 
-  it("includes source_id filter when sourceIds is provided", async () => {
+  it("includes source_id filter with individually parameterized UUIDs", async () => {
     mockDbExecute.mockResolvedValue([]);
+    const testIds = ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"];
 
-    await retrieveContext("query", "proj-1", {
-      sourceIds: ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"],
-    });
+    await retrieveContext("query", "proj-1", { sourceIds: testIds });
 
     expect(mockGenerateEmbedding).toHaveBeenCalled();
     expect(mockDbExecute).toHaveBeenCalled();
-    // Verify sourceIds were passed through — the SQL template object carries
-    // them in its params. Drizzle sql`` objects don't stringify cleanly.
     const sqlArg = mockDbExecute.mock.calls[0][0];
-    // The sql template has a params array containing the UUID values
-    expect(sqlArg).toBeDefined();
+
+    // Verify the SQL object carries each UUID as an individually parameterized
+    // value, NOT as a raw JS array interpolated into PostgreSQL array syntax.
+    // We serialize the Drizzle SQL object to inspect its internal chunks.
+    const serialized = JSON.stringify(sqlArg);
+    for (const id of testIds) {
+      expect(serialized).toContain(id);
+    }
+
+    // The serialized SQL must NOT contain the raw JS array serialization
+    // (which would produce comma-separated UUIDs without proper parameterization).
+    // A working IN clause has separate parameters; a broken ANY(${arr}) dumps
+    // the JS array as a literal string inside the SQL.
+    const rawArrayPattern = testIds.join(",");
+    expect(serialized).not.toContain(rawArrayPattern);
   });
 
   it("does NOT include source_id filter when sourceIds is not provided (backward compat)", async () => {

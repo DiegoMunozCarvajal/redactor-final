@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as placeholderUtils from "@/lib/placeholder-utils";
 
 import {
   extractPlaceholders,
@@ -67,6 +68,33 @@ describe("placeholders", () => {
     ];
     // None are detected in the current prompt contents
     expect(getPlaceholderNamesToDelete(rows, [])).toEqual([]);
+  });
+
+  it("fills only missing or stale placeholder definitions", () => {
+    const needsPlaceholderFill = (
+      placeholderUtils as unknown as {
+        needsPlaceholderFill?: (
+          definition: string | null,
+          metadata: { promptsHash?: string; editorialBriefHash?: string } | null,
+          promptsHash: string,
+          editorialBriefHash: string | null,
+        ) => boolean;
+      }
+    ).needsPlaceholderFill;
+
+    expect(needsPlaceholderFill).toBeTypeOf("function");
+    if (!needsPlaceholderFill) return;
+
+    expect(needsPlaceholderFill(null, null, "prompts-v2", "brief-v2")).toBe(true);
+    expect(needsPlaceholderFill("manual", null, "prompts-v2", "brief-v2")).toBe(true);
+    expect(needsPlaceholderFill("old", { promptsHash: "prompts-v1" }, "prompts-v2", null)).toBe(true);
+    expect(needsPlaceholderFill("old", { editorialBriefHash: "brief-v1" }, "prompts-v2", "brief-v2")).toBe(true);
+    expect(needsPlaceholderFill(
+      "fresh",
+      { promptsHash: "prompts-v2", editorialBriefHash: "brief-v2" },
+      "prompts-v2",
+      "brief-v2",
+    )).toBe(false);
   });
 
   describe("hashPromptContents", () => {

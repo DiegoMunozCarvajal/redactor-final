@@ -194,18 +194,22 @@ export async function POST(
     }
   }
 
-  // Resolve the snapshot for this assembly:
+  // Resolve the snapshot and bundle for this assembly:
   // - All versioned fragments share the same hash → use that snapshot
   // - All legacy fragments (no snapshots) → capture current approved brief (or null)
-  const assemblySnapshot =
+  const briefBundle =
     validSnapshots.length > 0
-      ? validSnapshots[0]
-      : await loadEditorialBundle({ projectId }).then((b) =>
-          b ? snapshotFromBundle(b) : null,
-        );
+      ? await loadEditorialBundle({
+          projectId,
+          briefId: validSnapshots[0].editorialBriefId,
+          expectedHash: validSnapshots[0].editorialBriefHash,
+        })
+      : await loadEditorialBundle({ projectId });
+  const assemblySnapshot = briefBundle ? snapshotFromBundle(briefBundle) : null;
 
   // Pre-flight: validate placeholders for the chapter's embedded prompts
-  const placeholders = await getChapterPlaceholders(chapterId, project.topic);
+  const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic;
+  const placeholders = await getChapterPlaceholders(chapterId, effectiveTopic);
 
   // Collect all content prompt texts for placeholder validation
   const chapterPrompts = await db

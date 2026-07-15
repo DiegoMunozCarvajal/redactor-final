@@ -1,6 +1,7 @@
 export {
   editorialScopeSchema,
   editorialBriefContentSchema,
+  editorialBriefContentWriteSchema,
   chapterEditorialContractSchema,
   editorialBriefBundleInputSchema,
   editorialSnapshotSchema,

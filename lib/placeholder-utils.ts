@@ -51,3 +51,16 @@ export function hashPromptContents(contents: string[]): string {
   }
   return hash.toString(36);
 }
+
+export function needsPlaceholderFill(
+  definition: string | null | undefined,
+  metadata: { promptsHash?: string; editorialBriefHash?: string } | null | undefined,
+  promptsHash: string,
+  editorialBriefHash?: string | null,
+): boolean {
+  if (!definition) return true;
+  if (!metadata?.promptsHash && !metadata?.editorialBriefHash) return true;
+  if (metadata.promptsHash && metadata.promptsHash !== promptsHash) return true;
+  if (editorialBriefHash && metadata.editorialBriefHash !== editorialBriefHash) return true;
+  return false;
+}

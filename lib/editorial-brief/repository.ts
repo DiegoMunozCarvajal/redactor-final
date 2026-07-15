@@ -479,6 +479,17 @@ export async function approveEditorialBrief(
       currentChapterIds,
     );
 
+    // Validate centralTopic is present and meaningful.
+    // The write schema (editorialBriefContentWriteSchema) enforces min(1)
+    // but still accepts "-". Reject placeholder values at approval time.
+    const briefContent = brief.content as { centralTopic?: string } | null;
+    const centralTopic = briefContent?.centralTopic?.trim();
+    if (!centralTopic || centralTopic === "-") {
+      throw new Error(
+        'Invalid bundle: centralTopic is required and must not be "-"',
+      );
+    }
+
     // Archive any currently approved version
     await tx
       .update(editorialBriefs)

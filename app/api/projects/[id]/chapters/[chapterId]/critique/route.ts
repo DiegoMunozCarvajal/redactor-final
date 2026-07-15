@@ -121,7 +121,7 @@ export async function POST(
           critiquePromptRevisionId,
           model: resolvedModel,
           ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
-        } as Record<string, unknown>,
+        },
       })
       .returning();
 

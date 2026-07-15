@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,12 +15,13 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditorialBriefForm } from "./editorial-brief-form";
 import { ChapterContractEditor } from "./chapter-contract-editor";
-import { Loader2, FileText, CheckCircle, History, Plus } from "lucide-react";
+import { Loader2, FileText, CheckCircle, History, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { EditorialBundle } from "@/lib/editorial-brief/schema";
 
 interface EditorialBriefPanelProps {
   projectId: string;
+  sourcesVersion?: number;
 }
 
 interface BriefListResponse {
@@ -41,7 +42,7 @@ interface ProjectSource {
   fileName: string;
 }
 
-export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
+export function EditorialBriefPanel({ projectId, sourcesVersion = 0 }: EditorialBriefPanelProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -50,9 +51,14 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
   const [draftContent, setDraftContent] = useState<EditorialBundle | null>(null);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showNewVersion, setShowNewVersion] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingDraft, setDeletingDraft] = useState(false);
   const [sources, setSources] = useState<ProjectSource[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string>("");
+  const [uploadingSource, setUploadingSource] = useState(false);
+  const [uploadSourceKind, setUploadSourceKind] = useState<"reference" | "example">("reference");
+  const uploadFileRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -82,16 +88,17 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
           }),
         );
         setSources(mapped);
-        if (mapped.length > 0 && !selectedSourceId) {
-          setSelectedSourceId(mapped[0].id);
-        }
+        setSelectedSourceId((prev) => {
+          if (prev && mapped.some((s) => s.id === prev)) return prev;
+          return mapped[0]?.id ?? "";
+        });
       }
     } catch {
       // Non-critical; extraction button simply won't show
     } finally {
       setSourcesLoading(false);
     }
-  }, [projectId, selectedSourceId]);
+  }, [projectId]);
 
   useEffect(() => {
     fetchData();
@@ -99,7 +106,7 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
 
   useEffect(() => {
     fetchSources();
-  }, [fetchSources]);
+  }, [fetchSources, sourcesVersion]);
 
   const handleSave = async () => {
     if (!draftContent) return;
@@ -214,6 +221,78 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
     }
   };
 
+  const handleUploadSource = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const fileInput = uploadFileRef.current;
+    if (!fileInput?.files?.length) {
+      toast.error("Selecciona un archivo primero");
+      return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "md" && ext !== "txt") {
+      toast.error("Solo se permiten archivos .md y .txt");
+      return;
+    }
+
+    setUploadingSource(true);
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("sourceKind", uploadSourceKind);
+
+      const res = await fetch(`/api/projects/${projectId}/sources`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Error al subir (${res.status})`);
+      }
+
+      const created = await res.json();
+      toast.success(`"${created.fileName}" subido (${created.chunkCount} chunks)`);
+
+      // Reset form
+      if (uploadFileRef.current) uploadFileRef.current.value = "";
+      setUploadSourceKind("reference");
+
+      // Refresh source selector
+      await fetchSources();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al subir archivo");
+    } finally {
+      setUploadingSource(false);
+    }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!draftContent) return;
+    setDeletingDraft(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/editorial-briefs/${draftContent.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `Error al eliminar (${res.status})`);
+      }
+      toast.success("Borrador eliminado");
+      setShowDeleteConfirm(false);
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al eliminar borrador");
+    } finally {
+      setDeletingDraft(false);
+    }
+  };
+
   const updateContent = useCallback(
     (updater: (prev: EditorialBundle) => EditorialBundle) => {
       setDraftContent((prev) => (prev ? updater(prev) : null));
@@ -248,6 +327,118 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
   const draft = draftContent;
   const history = data?.history ?? [];
 
+  const sourcesSection = (
+    <>
+      {/* Upload source */}
+      <div className="border rounded-lg p-4 space-y-3">
+        <h4 className="text-sm font-medium flex items-center gap-2">
+          <Upload className="h-4 w-4" />
+          Subir documento
+        </h4>
+        <form onSubmit={handleUploadSource} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">Archivo</label>
+            <input
+              ref={uploadFileRef}
+              type="file"
+              accept=".md,.txt"
+              className="block w-full text-sm text-muted-foreground
+                file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                file:text-sm file:font-medium file:bg-primary file:text-primary-foreground
+                hover:file:bg-primary/90 file:cursor-pointer"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              .md o .txt
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Tipo</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="uploadSourceKind"
+                  value="reference"
+                  checked={uploadSourceKind === "reference"}
+                  onChange={() => setUploadSourceKind("reference")}
+                  className="text-primary"
+                />
+                <span className="text-sm">Bibliografía</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="uploadSourceKind"
+                  value="example"
+                  checked={uploadSourceKind === "example"}
+                  onChange={() => setUploadSourceKind("example")}
+                  className="text-primary"
+                />
+                <span className="text-sm">Ejemplos</span>
+              </label>
+            </div>
+          </div>
+          <Button type="submit" disabled={uploadingSource} size="sm">
+            {uploadingSource ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Subiendo...
+              </>
+            ) : (
+              "Subir"
+            )}
+          </Button>
+        </form>
+      </div>
+
+      {sources.length > 0 && (
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">Fuente de investigación</Label>
+            <Select
+              value={selectedSourceId}
+              onValueChange={setSelectedSourceId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar fuente..." />
+              </SelectTrigger>
+              <SelectContent>
+                {sources.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.fileName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            variant="default"
+            onClick={() => handleExtractDraft(selectedSourceId)}
+            disabled={saving || !selectedSourceId}
+          >
+            Extraer borrador
+          </Button>
+        </div>
+      )}
+      {sourcesLoading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Cargando fuentes...
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          onClick={() => handleCreateDraft()}
+          disabled={saving}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Crear borrador vacío
+        </Button>
+      </div>
+    </>
+  );
+
   // No brief at all
   if (!active && !draft) {
     return (
@@ -258,56 +449,12 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
             Brief Editorial
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <p className="text-sm text-muted-foreground">
             No hay brief editorial. Sube un documento de investigación como fuente
             y extráelo, o crea un borrador vacío.
           </p>
-          {sources.length > 0 && (
-            <div className="flex items-end gap-2">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs">Fuente de investigación</Label>
-                <Select
-                  value={selectedSourceId}
-                  onValueChange={setSelectedSourceId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar fuente..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sources.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.fileName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                variant="default"
-                onClick={() => handleExtractDraft(selectedSourceId)}
-                disabled={saving || !selectedSourceId}
-              >
-                Extraer borrador
-              </Button>
-            </div>
-          )}
-          {sourcesLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Cargando fuentes...
-            </div>
-          )}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => handleCreateDraft()}
-              disabled={saving}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Crear borrador vacío
-            </Button>
-          </div>
+          {sourcesSection}
         </CardContent>
       </Card>
     );
@@ -391,19 +538,46 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
 
             {/* Actions */}
             <div className="flex gap-2 pt-4 border-t">
-              <Button onClick={handleSave} disabled={saving || approving}>
+              <Button onClick={handleSave} disabled={saving || approving || deletingDraft}>
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Guardar borrador
               </Button>
               <Button
                 variant="default"
                 onClick={() => setShowApproveConfirm(true)}
-                disabled={saving || approving}
+                disabled={saving || approving || deletingDraft}
               >
                 {approving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Aprobar
               </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving || approving || deletingDraft}
+              >
+                {deletingDraft && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Eliminar borrador
+              </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Source uploader — available when brief exists */}
+      {(active || draft) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Fuentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Sube un documento de investigación y extráelo como borrador, o crea
+              un borrador vacío para reemplazar el actual.
+            </p>
+            {sourcesSection}
           </CardContent>
         </Card>
       )}
@@ -472,6 +646,23 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
         onConfirm={handleApprove}
         title="Aprobar brief editorial"
         description="Al aprobar, este brief se usará en todas las generaciones futuras. La versión actual aprobada (si existe) será archivada."
+        confirmLabel="Aprobar"
+        variant="default"
+        pending={approving}
+        disabled={approving}
+      />
+
+      {/* Delete draft confirmation */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={handleDeleteDraft}
+        title="Eliminar borrador"
+        description="El borrador se eliminará permanentemente. Las fuentes de investigación no se verán afectadas. Podrás crear un nuevo borrador o extraer uno desde una fuente."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        pending={deletingDraft}
+        disabled={deletingDraft}
       />
 
       {/* New version confirmation */}
@@ -483,6 +674,8 @@ export function EditorialBriefPanel({ projectId }: EditorialBriefPanelProps) {
         }}
         title="Nueva versión del brief"
         description="Se creará un nuevo borrador a partir de la versión aprobada actual. Podrás editarlo y aprobarlo como una nueva versión."
+        confirmLabel="Crear"
+        variant="default"
       />
     </div>
   );

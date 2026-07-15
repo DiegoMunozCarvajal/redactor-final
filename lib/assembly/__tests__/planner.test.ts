@@ -30,7 +30,7 @@ function makeValidPlan(): AssemblyPlanV1 {
     version: '1',
     chapterIntent: 'Introducir al lector en el tema',
     opening: {
-      sourceFragmentIds: ['f1'],
+      sourceFragmentIds: ['F1'],
       approach: 'Abrir con contexto general',
     },
     sections: [
@@ -38,8 +38,8 @@ function makeValidPlan(): AssemblyPlanV1 {
         id: 's1',
         purpose: 'Definir conceptos',
         sourceTreatments: [
-          { fragmentId: 'f1', action: 'keep' as const, reason: 'Material central' },
-          { fragmentId: 'f2', action: 'merge' as const, reason: 'Complementa f1' },
+          { fragmentId: 'F1', action: 'keep' as const, reason: 'Material central' },
+          { fragmentId: 'F2', action: 'merge' as const, reason: 'Complementa F1' },
         ],
         synthesis: null,
         transitionIn: null,
@@ -50,7 +50,7 @@ function makeValidPlan(): AssemblyPlanV1 {
         contractIndex: 0,
         item: 'Requerimiento A',
         status: 'covered' as const,
-        sourceFragmentIds: ['f1'],
+        sourceFragmentIds: ['F1'],
         handling: 'Cubierto por fragmento principal',
       },
     ],
@@ -58,7 +58,7 @@ function makeValidPlan(): AssemblyPlanV1 {
     illustrations: [],
     bridges: [],
     closing: {
-      sourceFragmentIds: ['f1'],
+      sourceFragmentIds: ['F1'],
       approach: 'Resumir conclusiones',
       transitionToNext: null,
     },
@@ -139,7 +139,7 @@ describe('runAssemblyPlanner', () => {
     expect(markerValues['{{EDITORIAL_CONTEXT}}']).toBe(defaultInput.editorialContext);
     expect(markerValues).toHaveProperty('{{SECCIONES_GENERADAS}}');
     expect(markerValues['{{SECCIONES_GENERADAS}}']).toContain('<fragments>');
-    expect(markerValues['{{SECCIONES_GENERADAS}}']).toContain('<fragment id="f1"');
+    expect(markerValues['{{SECCIONES_GENERADAS}}']).toContain('<fragment id="F1"');
     expect(markerValues).toHaveProperty('{{OUTPUT_SCHEMA}}');
     expect(() => JSON.parse(markerValues['{{OUTPUT_SCHEMA}}'])).not.toThrow();
   });
@@ -161,6 +161,15 @@ describe('runAssemblyPlanner', () => {
 
     const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
     expect(callArg.stage).toBe('planning');
+  });
+
+  it('allows eight minutes for the planning model call', async () => {
+    mockExecute.mockResolvedValue(makeMockResult());
+
+    await runAssemblyPlanner(defaultInput);
+
+    const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.timeoutMs).toBe(480_000);
   });
 
   it('returns validated plan, executionId, and model', async () => {
@@ -202,6 +211,58 @@ describe('runAssemblyPlanner', () => {
     await expect(runAssemblyPlanner(defaultInput)).rejects.toThrow(
       'Unknown fragment ID',
     );
+  });
+
+  it('uses short planner aliases and returns canonical fragment UUIDs', async () => {
+    const firstFragmentId = '9d996169-91dc-424d-9fc4-935d70e20cf8';
+    const secondFragmentId = 'ce0d0c51-db0f-4049-ac1b-786775e7c962';
+    const aliasPlan = makeValidPlan();
+    aliasPlan.opening.sourceFragmentIds = ['F1'];
+    aliasPlan.sections[0].sourceTreatments = [
+      { fragmentId: 'F1', action: 'keep', reason: 'Material central' },
+      { fragmentId: 'F2', action: 'merge', reason: 'Complementa F1' },
+    ];
+    aliasPlan.mustCover[0].sourceFragmentIds = ['F1'];
+    aliasPlan.redundancies = [{
+      sourceFragmentIds: ['F1', 'F2'],
+      resolution: 'Fusionar material repetido',
+    }];
+    aliasPlan.illustrations = [{
+      sourceFragmentIds: ['F2'],
+      purpose: 'Aclarar el argumento',
+      handling: 'keep',
+    }];
+    aliasPlan.closing.sourceFragmentIds = ['F2'];
+    mockExecute.mockResolvedValue(makeMockResult({ plan: aliasPlan }));
+
+    const result = await runAssemblyPlanner({
+      ...defaultInput,
+      fragments: [
+        { id: firstFragmentId, title: 'Fragmento 1', content: 'Contenido 1' },
+        { id: secondFragmentId, title: 'Fragmento 2', content: 'Contenido 2' },
+      ],
+      validationContext: {
+        fragmentIds: [firstFragmentId, secondFragmentId],
+        mustCover: ['Requerimiento A'],
+      },
+    });
+
+    const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+    const markerValues = callArg.markerValues as Record<string, string>;
+    expect(markerValues['{{SECCIONES_GENERADAS}}']).toContain('<fragment id="F1"');
+    expect(markerValues['{{SECCIONES_GENERADAS}}']).not.toContain(firstFragmentId);
+    expect(result.plan.opening.sourceFragmentIds).toEqual([firstFragmentId]);
+    expect(result.plan.sections[0].sourceTreatments.map((item) => item.fragmentId)).toEqual([
+      firstFragmentId,
+      secondFragmentId,
+    ]);
+    expect(result.plan.mustCover[0].sourceFragmentIds).toEqual([firstFragmentId]);
+    expect(result.plan.redundancies[0].sourceFragmentIds).toEqual([
+      firstFragmentId,
+      secondFragmentId,
+    ]);
+    expect(result.plan.illustrations[0].sourceFragmentIds).toEqual([secondFragmentId]);
+    expect(result.plan.closing.sourceFragmentIds).toEqual([secondFragmentId]);
   });
 
   it('passes revisionId when provided', async () => {

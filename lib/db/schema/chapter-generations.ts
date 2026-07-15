@@ -34,6 +34,8 @@ export const chapterGenerations = pgTable(
       fragmentIds?: string[];
       assemblyPromptId?: string;
       critiqueGenerationId?: string;
+      critiquePromptRevisionId?: string;
+      correctorPromptRevisionId?: string;
       editorialBriefId?: string;
       editorialBriefVersion?: number;
       editorialBriefHash?: string;

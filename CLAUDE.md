@@ -167,3 +167,11 @@ Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE
 - `lib/config/models.ts` — model config folded into `providers.ts`
 - `lib/sources/source-kind.ts` — not used
 - Spanish fork (`-es` routes/prompts) — only Spanish, no duplication
+
+<!-- TRIGGER.DEV SKILLS START -->
+
+## Trigger.dev agent skills
+
+This project has Trigger.dev agent skills installed in `.claude/skills/`. Before writing or changing Trigger.dev code (background tasks, scheduled tasks, realtime, or chat.agent AI agents), load the most relevant skill: `trigger-authoring-tasks`, `trigger-chat-agent-advanced`, `trigger-cost-savings`, `trigger-getting-started`, `trigger-realtime-and-frontend`.
+
+<!-- TRIGGER.DEV SKILLS END -->

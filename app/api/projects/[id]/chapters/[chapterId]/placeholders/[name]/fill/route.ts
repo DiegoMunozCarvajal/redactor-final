@@ -8,7 +8,7 @@ import {
   chapterGenerations,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, lt, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
@@ -18,6 +18,7 @@ import { resolvePlaceholdersDirect } from "@/lib/placeholders";
 import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { hashPromptContents } from "@/lib/placeholder-utils";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
+import { llmPromptExecutions } from "@/lib/db/schema/prompt-registry";
 
 export async function POST(
   req: NextRequest,
@@ -90,12 +91,10 @@ export async function POST(
   // Load editorial brief for evidence-driven RAG overrides.
   // If no approved brief exists, briefBundle is null (legacy behavior).
   const briefBundle = await loadEditorialBundle({ projectId });
+  const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic ?? null;
 
   // Check if this placeholder can be resolved directly (no LLM)
-  const { resolved } = resolvePlaceholdersDirect(
-    [name],
-    project.topic ?? null,
-  );
+  const { resolved } = resolvePlaceholdersDirect([name], effectiveTopic);
 
   if (resolved[name]) {
     await db
@@ -169,6 +168,27 @@ export async function POST(
 
   const fillGen = lockResult.result.gen;
 
+  // Clean up stale "started" executions from prior crashed fills.
+  // Shared logic with the bulk fill endpoint.
+  const STALE_EXECUTION_THRESHOLD_MS = 30 * 60 * 1000;
+  await db
+    .update(llmPromptExecutions)
+    .set({
+      status: "failed",
+      error: "process terminated before completion",
+      completedAt: sql`NOW()`,
+    })
+    .where(
+      and(
+        eq(llmPromptExecutions.status, "started"),
+        eq(llmPromptExecutions.chapterId, chapterId),
+        lt(
+          llmPromptExecutions.createdAt,
+          new Date(Date.now() - STALE_EXECUTION_THRESHOLD_MS),
+        ),
+      ),
+    );
+
   const phDef = {
     name,
     function: placeholderRow.function ?? null,
@@ -180,13 +200,14 @@ export async function POST(
   try {
     result = await fillOnePlaceholder({
       placeholder: phDef,
-      projectTopic: project.topic ?? null,
+      projectTopic: effectiveTopic,
       projectId,
       promptContents,
       existingDefinitions,
       model: model ?? undefined,
       effort,
       chapterId,
+      chapterGenerationId: fillGen.id,
       sourceContexts,
       signal: req.signal,
       editorialBundle: briefBundle,
@@ -195,7 +216,7 @@ export async function POST(
     const message = sanitizeError(err);
     await db
       .update(chapterGenerations)
-      .set({ status: "failed", error: message })
+      .set({ status: "failed", error: message, completedAt: new Date() })
       .where(eq(chapterGenerations.id, fillGen.id));
     return NextResponse.json({ error: message }, { status: 502 });
   }
@@ -206,7 +227,7 @@ export async function POST(
   if (!result.definition) {
     await db
       .update(chapterGenerations)
-      .set({ status: "failed", error: "definition generation returned empty — both attempts failed" })
+      .set({ status: "failed", error: "definition generation returned empty — both attempts failed", completedAt: new Date() })
       .where(eq(chapterGenerations.id, fillGen.id));
     return NextResponse.json(
       { error: "definition generation failed — try again" },

@@ -60,11 +60,13 @@ import {
   isNarrativePlaceholder,
   validateDefinition,
   fillOnePlaceholder,
+  fillPlaceholdersSequential,
   RequiredEvidenceMissingError,
 } from "@/lib/ai/placeholder-fill";
 import type { PlaceholderDef, FillOnePlaceholderParams } from "@/lib/ai/placeholder-fill";
 import { retrieveContext } from "@/lib/ai/rag";
 import { generateCompletion } from "@/lib/ai/completion";
+import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { createTestEditorialBundle, createTestChapterContract } from "@/lib/editorial-brief/__tests__/fixtures";
 
 // ---------------------------------------------------------------------------
@@ -242,8 +244,19 @@ describe("validateDefinition", () => {
     ...overrides,
   });
 
-  it("rejects definitions shorter than 30 characters", () => {
-    const result = validateDefinition("short", "concepto", ph());
+  it("rejects narrative definitions shorter than 30 characters", () => {
+    const result = validateDefinition("short", "anecdota", ph({ name: "anecdota", function: "Una anécdota ilustrativa del concepto" }));
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("too short");
+  });
+
+  it("accepts short non-narrative definitions (terms, maxims)", () => {
+    const result = validateDefinition("microimpulsos", "termino_central", ph({ name: "termino_central" }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects empty non-narrative definitions", () => {
+    const result = validateDefinition("ab", "termino_central", ph({ name: "termino_central" }));
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("too short");
   });
@@ -316,7 +329,7 @@ describe("fillOnePlaceholder evidence-driven sourceIds", () => {
     chapterId: CHAPTER_ID,
   };
 
-  it("passes sourceIds:[] to retrieveContext when evidenceSourceIds is empty array", async () => {
+  it("does not force RAG for an optional evidence need when classification is LLM", async () => {
     const bundle = createTestEditorialBundle({
       evidenceSourceIds: [],
       contracts: [
@@ -328,13 +341,10 @@ describe("fillOnePlaceholder evidence-driven sourceIds", () => {
       ],
     });
 
-    await fillOnePlaceholder({ ...baseParams, editorialBundle: bundle });
+    const result = await fillOnePlaceholder({ ...baseParams, editorialBundle: bundle });
 
-    expect(retrieveContext).toHaveBeenCalledWith(
-      expect.any(String),
-      "proj-1",
-      expect.objectContaining({ sourceIds: [] }),
-    );
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(result.provider).toBe("llm");
   });
 
   it("does NOT set sourceIds when no evidence need matches placeholder", async () => {
@@ -375,5 +385,35 @@ describe("fillOnePlaceholder evidence-driven sourceIds", () => {
         editorialBundle: bundle,
       }),
     ).rejects.toThrow(RequiredEvidenceMissingError);
+  });
+});
+
+describe("fillPlaceholdersSequential", () => {
+  it("retries one transient placeholder failure before marking it failed", async () => {
+    vi.mocked(executeVersionedPrompt)
+      .mockRejectedValueOnce(new Error("temporary provider failure"))
+      .mockResolvedValueOnce({
+        result: {
+          data: { definition: "Definición válida recuperada en el segundo intento." },
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30, costUsd: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+          durationMs: 100,
+        },
+        executionId: "exec-retry",
+        revision: { id: "rev-test", definitionId: "def-test", kind: "placeholder-fill", name: "Placeholder Fill v1", revisionNumber: 1, versionLabel: "v1.0", systemTemplate: "", userTemplate: "", requiredMarkers: [], outputContract: null, configuration: {} },
+      });
+
+    const events = [];
+    for await (const event of fillPlaceholdersSequential(
+      [{ name: "concepto" }],
+      ["Contenido"],
+      "Tema",
+      "project-1",
+    )) {
+      events.push(event);
+    }
+
+    expect(executeVersionedPrompt).toHaveBeenCalledTimes(2);
+    expect(events.map((event) => event.type)).toEqual(["placeholder", "done"]);
+    expect(events.at(-1)).toMatchObject({ filled: 1, failed: 0 });
   });
 });

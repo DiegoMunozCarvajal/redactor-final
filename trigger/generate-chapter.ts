@@ -8,6 +8,7 @@ import {
   prompts,
 } from "@/lib/db/schema";
 import { eq, asc, and, inArray } from "drizzle-orm";
+import { createHash } from "crypto";
 import { generatePromptContent } from "@/lib/generate";
 import { getChapterPlaceholders, extractPlaceholders } from "@/lib/placeholders";
 import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
@@ -16,7 +17,8 @@ import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runAssemblyPlanner } from "@/lib/assembly/planner";
 import { runAssemblyAssembler } from "@/lib/assembly/assembler";
-import { assemblyPlanV1Schema } from "@/lib/assembly/plan-schema";
+import { assemblyPlanV1Schema, validateAssemblyPlan } from "@/lib/assembly/plan-schema";
+import { resolvePromptRevision } from "@/lib/prompts/repository";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
 export const generateChapter = task({
@@ -167,6 +169,19 @@ export const generateChapter = task({
       }
     }
 
+    // Require effective topic: brief.centralTopic or legacy project.topic.
+    // A legacy brief without centralTopic is insufficient — check the value, not the object.
+    const effectiveTopic = editorialBundle?.content.centralTopic ?? project.topic ?? null;
+    if (!effectiveTopic) {
+      const msg =
+        "No hay tema definido. Crea un brief editorial con tema central o establece un tema legacy para generar.";
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: msg })
+        .where(eq(chapterGenerations.id, generationId));
+      throw new Error(msg);
+    }
+
     // Load project prompts for this chapter
     const promptList = await db
       .select()
@@ -225,11 +240,15 @@ export const generateChapter = task({
 
         if (existingFragments.length > 0) {
           // Retry recovery: compare sets of projectPromptId to detect partial
-          // sets and duplicates. Count alone can be fooled by duplicates if
-          // no unique constraint on (generationId, projectPromptId).
+          // sets, duplicates, and nulls. Count alone can be fooled by duplicates
+          // if no unique constraint on (generationId, projectPromptId).
           const expectedIds = new Set(contentPrompts.map((p) => p.id));
-          const actualIds = new Set(existingFragments.map((f) => f.projectPromptId).filter(Boolean));
-          const complete = expectedIds.size === actualIds.size &&
+          const actualProjectPromptIds = existingFragments.map((f) => f.projectPromptId);
+          const hasNull = actualProjectPromptIds.some((id) => id === null);
+          const actualIds = new Set(actualProjectPromptIds.filter(Boolean) as string[]);
+          const complete = !hasNull &&
+            existingFragments.length === expectedIds.size &&
+            actualIds.size === expectedIds.size &&
             [...expectedIds].every((id) => actualIds.has(id));
 
           if (!complete) {
@@ -247,8 +266,8 @@ export const generateChapter = task({
           }
         }
         if (fragmentContents.length === 0) {
-          // Load placeholders
-          const placeholders = await getChapterPlaceholders(gen.chapterId, project.topic);
+          // Load placeholders — effectiveTopic already computed at guard above
+          const placeholders = await getChapterPlaceholders(gen.chapterId, effectiveTopic);
 
           // Mandatory placeholder validation
           const contentPromptStrings = contentPrompts.flatMap((p) =>
@@ -278,7 +297,7 @@ export const generateChapter = task({
               const result = await generatePromptContent({
                 prompt,
                 placeholders,
-                projectTopic: project.topic,
+                projectTopic: effectiveTopic,
                 projectId,
                 chapterId: gen.chapterId,
                 chapterGenerationId: generationId,
@@ -355,20 +374,46 @@ export const generateChapter = task({
         ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
         : null;
 
-      // Validate persisted plan if present. Clear invalid plans so the
-      // `if (!plan)` block below re-plans instead of assembling garbage.
+      // Derive mustCover and current fragment IDs for plan validation.
+      // These must be available before the plan check so semantic validation
+      // can verify the persisted plan against the CURRENT generation state.
+      let mustCover: string[] = [];
+      if (editorialBundle) {
+        const contract = editorialBundle.contracts.find(
+          (c) => c.chapterId === gen.chapterId,
+        );
+        if (contract) {
+          mustCover = contract.mustCover;
+        }
+      }
+      const currentFragmentIds = fragmentContents.map((f) => f.id);
+
+      // Validate persisted plan if present. Use semantic validation
+      // (validateAssemblyPlan) not just structural (safeParse) — fragments
+      // may have been regenerated with new IDs, making the old plan stale.
       if (plan) {
         const parsed = assemblyPlanV1Schema.safeParse(plan);
         if (parsed.success) {
-          // Extract plannerExecutionId from existing planning metadata
-          const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
-          plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
+          try {
+            validateAssemblyPlan(parsed.data, { fragmentIds: currentFragmentIds, mustCover });
+            // Plan is valid against current state — reuse it
+            const existingMeta = (gen.planningMetadata as Record<string, unknown> | null) ?? {};
+            plannerExecutionId = (existingMeta.plannerExecutionId as string) ?? null;
+          } catch {
+            // Semantic validation failed (stale IDs, missing mustCover) — re-plan.
+            // Keep plannerPromptRevisionId — revision still valid, only plan output stale.
+            plan = null;
+            await db
+              .update(chapterGenerations)
+              .set({ assemblyPlan: null, planningMetadata: null })
+              .where(eq(chapterGenerations.id, generationId));
+          }
         } else {
-          // Persisted plan is invalid — clear and re-plan below
+          // Structural validation failed — re-plan. Keep revision.
           plan = null;
           await db
             .update(chapterGenerations)
-            .set({ assemblyPlan: null, planningMetadata: null, plannerPromptRevisionId: null })
+            .set({ assemblyPlan: null, planningMetadata: null })
             .where(eq(chapterGenerations.id, generationId));
         }
       }
@@ -380,16 +425,15 @@ export const generateChapter = task({
           .set({ status: "planning" })
           .where(eq(chapterGenerations.id, generationId));
 
-        // Derive mustCover from chapter contract
-        let mustCover: string[] = [];
-        if (editorialBundle) {
-          const contract = editorialBundle.contracts.find(
-            (c) => c.chapterId === gen.chapterId,
-          );
-          if (contract) {
-            mustCover = contract.mustCover;
-          }
-        }
+        // Resolve planner revision: persisted (retry) > payload > resolve default.
+        // Always persist before LLM call — retry reuses same revision even if
+        // defaults change between attempts.
+        const effectivePlannerRevisionId = gen.plannerPromptRevisionId ?? plannerRevisionId ??
+          (await resolvePromptRevision({ kind: "assembly-planner", projectId })).id;
+        await db
+          .update(chapterGenerations)
+          .set({ plannerPromptRevisionId: effectivePlannerRevisionId })
+          .where(eq(chapterGenerations.id, generationId));
 
         const plannerResult = await runAssemblyPlanner({
           projectId,
@@ -407,15 +451,23 @@ export const generateChapter = task({
           effort,
           chapterId: gen.chapterId,
           chapterGenerationId: generationId,
-          ...(plannerRevisionId ? { revisionId: plannerRevisionId } : {}),
+          revisionId: effectivePlannerRevisionId,
+          dataLineage: {
+            '{{EDITORIAL_CONTEXT}}': genSnapshot ? {
+              entityIds: [genSnapshot.editorialBriefId],
+              versionIds: [`${genSnapshot.editorialBriefVersion}`],
+              sourceHashes: [genSnapshot.editorialBriefHash],
+            } : {},
+            '{{SECCIONES_GENERADAS}}': {
+              entityIds: fragmentContents.map((f) => f.id),
+            },
+          },
         });
 
         plan = plannerResult.plan as unknown as Record<string, unknown>;
         plannerExecutionId = plannerResult.executionId;
 
-        // Store the assembly plan and planning metadata.
-        // Always persist the resolved revision ID (not the input) so retries
-        // use the same revision even if defaults change.
+        // Store the assembly plan and planning metadata
         await db
           .update(chapterGenerations)
           .set({
@@ -428,7 +480,6 @@ export const generateChapter = task({
               plannerExecutionId: plannerResult.executionId,
               pipeline: "planned-editorial-v1",
             },
-            plannerPromptRevisionId: plannerResult.revisionId,
           })
           .where(eq(chapterGenerations.id, generationId));
       }
@@ -443,6 +494,15 @@ export const generateChapter = task({
       // plan is guaranteed non-null here — either from planner or persisted
       const assemblyPlan = plan!;
 
+      // Resolve assembly revision: persisted (retry) > payload > resolve default.
+      // Same pattern as planner — persist before LLM so retries are deterministic.
+      const effectiveAssemblyRevisionId = gen.assemblyPromptRevisionId ?? assemblyRevisionId ??
+        (await resolvePromptRevision({ kind: "assembly", projectId })).id;
+      await db
+        .update(chapterGenerations)
+        .set({ assemblyPromptRevisionId: effectiveAssemblyRevisionId })
+        .where(eq(chapterGenerations.id, generationId));
+
       const assemblerResult = await runAssemblyAssembler({
         projectId,
         model: model ?? DEFAULT_GENERATION_MODEL,
@@ -456,12 +516,23 @@ export const generateChapter = task({
         effort,
         chapterId: gen.chapterId,
         chapterGenerationId: generationId,
-        ...(assemblyRevisionId ? { revisionId: assemblyRevisionId } : {}),
+        revisionId: effectiveAssemblyRevisionId,
+        dataLineage: {
+          '{{EDITORIAL_CONTEXT}}': genSnapshot ? {
+            entityIds: [genSnapshot.editorialBriefId],
+            versionIds: [`${genSnapshot.editorialBriefVersion}`],
+            sourceHashes: [genSnapshot.editorialBriefHash],
+          } : {},
+          '{{SECCIONES_GENERADAS}}': {
+            entityIds: fragmentContents.map((f) => f.id),
+          },
+          '{{ASSEMBLY_PLAN}}': {
+            sourceHashes: [createHash("sha256").update(JSON.stringify(assemblyPlan)).digest("hex")],
+          },
+        },
       });
 
       // Store assembled content.
-      // Always persist the resolved revision ID (not the input) so retries
-      // use the same revision even if defaults change.
       await db
         .update(chapterGenerations)
         .set({

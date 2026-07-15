@@ -44,13 +44,16 @@ import {
   RotateCcw,
   History,
   Copy,
-  Puzzle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { MODELS_BY_STAGE } from "@/lib/ai/providers";
-import { AssemblyPromptSection } from "@/components/prompts/assembly-prompt-section";
+import {
+  AssemblyPromptSection,
+  loadAssemblyPipelineData,
+  type AssemblyPipelineData,
+} from "@/components/prompts/assembly-prompt-section";
 import { CritiquePromptSection } from "@/components/prompts/critique-prompt-section";
 import { CorrectorSection } from "@/components/prompts/corrector-section";
 import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
@@ -69,7 +72,16 @@ import {
   getSelectedAssemblyVersion,
   type AssemblyMetadata,
 } from "@/lib/assembly-versions";
+import { assemblyPlanV1Schema } from "@/lib/assembly/plan-schema";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
+import {
+  loadReviewPromptRegistry,
+  setReviewPromptBinding,
+  clearReviewPromptBinding,
+  type ReviewPromptRegistryData,
+  type ReviewPromptKind,
+} from "@/components/prompts/review-prompt-registry";
+import { buildCritiqueRequestBody } from "@/lib/review/request-payloads";
 
 const STALE_MS = 30 * 60 * 1000;
 
@@ -82,7 +94,8 @@ const MODELS = [
 ];
 
 const DEFAULT_MODEL = "deepseek-v4-pro";
-const FRAGMENT_GENERATION_CONCURRENCY = 3;
+// Project rate limiting permits one active generation at a time.
+const FRAGMENT_GENERATION_CONCURRENCY = 1;
 
 // Models filtered for the assembly stage dropdown
 const ASSEMBLY_MODEL_IDS = new Set(
@@ -114,9 +127,14 @@ interface GenerationData {
     editorialBriefId?: string;
     editorialBriefVersion?: number;
     editorialBriefHash?: string;
+    critiquePromptRevisionId?: string;
   } | null;
   assembledContent: string | null;
   assemblyMetadata: AssemblyMetadata | null;
+  assemblyPlan?: Record<string, unknown> | null;
+  planningMetadata?: Record<string, unknown> | null;
+  plannerPromptRevisionId?: string | null;
+  assemblyPromptRevisionId?: string | null;
   error: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -166,6 +184,22 @@ function statusBadge(status: string) {
   }
 }
 
+interface ExecutionDialogData {
+  stage?: string;
+  status?: string;
+  model?: string;
+  provider?: string;
+  error?: string;
+  createdAt?: string;
+  completedAt?: string;
+  messages?: Array<{ role: string; content: string }>;
+  outputContract?: string | null;
+  technicalPolicies?: string[];
+  dataManifest?: Record<string, unknown>;
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  revision?: { definitionName?: string; versionLabel?: string };
+}
+
 export default function ChapterPage() {
   const params = useParams<{ id: string; chapterId: string }>();
   const router = useRouter();
@@ -183,6 +217,11 @@ export default function ChapterPage() {
   const [selectedFragments, setSelectedFragments] = useState<Record<string, string>>({});
   const [assembling, setAssembling] = useState(false);
   const [assemblyModel, setAssemblyModel] = useState(DEFAULT_MODEL);
+  const [plannerRevisionId, setPlannerRevisionId] = useState<string | undefined>();
+  const [assemblyRevisionId, setAssemblyRevisionId] = useState<string | undefined>();
+  const [assemblyPipeline, setAssemblyPipeline] = useState<AssemblyPipelineData | null>(null);
+  const [revisionLoadError, setRevisionLoadError] = useState<string | null>(null);
+  const [revisionsLoading, setRevisionsLoading] = useState(true);
   const [selectedAssemblyGenerationId, setSelectedAssemblyGenerationId] = useState<string | undefined>();
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [selectedFragmentVersion, setSelectedFragmentVersion] = useState<Record<string, string | undefined>>({});
@@ -192,6 +231,10 @@ export default function ChapterPage() {
   const [correctorModel, setCorrectorModel] = useState(DEFAULT_MODEL);
   const [correcting, setCorrecting] = useState(false);
   const [correctionTrigger, setCorrectionTrigger] = useState(0);
+  const [reviewRegistry, setReviewRegistry] = useState<ReviewPromptRegistryData | null>(null);
+  const [reviewRegistryLoading, setReviewRegistryLoading] = useState(true);
+  const [reviewRegistryError, setReviewRegistryError] = useState<string | null>(null);
+  const [savingReviewKind, setSavingReviewKind] = useState<ReviewPromptKind | null>(null);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
   const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
@@ -202,6 +245,28 @@ export default function ChapterPage() {
     title: "",
     content: "",
   });
+  const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
+  const [executionDialogData, setExecutionDialogData] = useState<ExecutionDialogData | null>(null);
+  const [executionDialogLoading, setExecutionDialogLoading] = useState(false);
+
+  async function openExecutionDialog(executionId: string) {
+    setExecutionDialogOpen(true);
+    setExecutionDialogLoading(true);
+    setExecutionDialogData(null);
+    try {
+      const res = await fetch(`/api/prompt-executions/${executionId}`);
+      if (res.ok) {
+        setExecutionDialogData(await res.json());
+      } else {
+        setExecutionDialogData({ error: `Failed to load (${res.status})` });
+      }
+    } catch {
+      setExecutionDialogData({ error: "Network error" });
+    } finally {
+      setExecutionDialogLoading(false);
+    }
+  }
+
   const [promptFormData, setPromptFormData] = useState<Record<string, {
     content: string;
   }>>({});
@@ -269,6 +334,38 @@ export default function ChapterPage() {
     } catch { /* supplementary */ }
   }, [params.id, params.chapterId]);
 
+  const refreshAssemblyPipeline = useCallback(async () => {
+    setRevisionsLoading(true);
+    setRevisionLoadError(null);
+    try {
+      setAssemblyPipeline(await loadAssemblyPipelineData(params.id));
+    } catch (err) {
+      setAssemblyPipeline(null);
+      setRevisionLoadError(
+        err instanceof Error ? err.message : "Could not load assembly prompt registry",
+      );
+    } finally {
+      setRevisionsLoading(false);
+    }
+  }, [params.id]);
+
+  const refreshReviewRegistry = useCallback(async () => {
+    setReviewRegistryLoading(true);
+    setReviewRegistryError(null);
+    try {
+      setReviewRegistry(await loadReviewPromptRegistry(params.id));
+    } catch (err) {
+      setReviewRegistry(null);
+      setReviewRegistryError(err instanceof Error ? err.message : "Failed to load review prompts");
+    } finally {
+      setReviewRegistryLoading(false);
+    }
+  }, [params.id]);
+
+  useEffect(() => {
+    void refreshReviewRegistry();
+  }, [refreshReviewRegistry]);
+
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
@@ -278,6 +375,10 @@ export default function ChapterPage() {
     ]);
     return () => controller.abort();
   }, [fetchChapter, fetchPrompts, fetchPlaceholders]);
+
+  useEffect(() => {
+    void refreshAssemblyPipeline();
+  }, [refreshAssemblyPipeline]);
 
   async function saveChapterTitle() {
     if (!data) return;
@@ -409,6 +510,8 @@ export default function ChapterPage() {
             fragmentIds,
             model: assemblyModel,
             effort: "max",
+            ...(plannerRevisionId ? { plannerRevisionId } : {}),
+            ...(assemblyRevisionId ? { assemblyRevisionId } : {}),
           }),
         },
       );
@@ -623,7 +726,25 @@ export default function ChapterPage() {
     setAssemblyModalOpen(true);
   }
 
+  async function changeReviewPrompt(kind: ReviewPromptKind, value: string) {
+    setSavingReviewKind(kind);
+    try {
+      if (value === "__global_default__") {
+        await clearReviewPromptBinding(params.id, kind);
+      } else {
+        await setReviewPromptBinding(params.id, kind, value);
+      }
+      await refreshReviewRegistry();
+      toast.success(`${kind === "critique" ? "Critique" : "Corrector"} prompt updated for project`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Prompt update failed");
+    } finally {
+      setSavingReviewKind(null);
+    }
+  }
+
   async function runCritique() {
+    const critiquePrompt = reviewRegistry?.critique.effective;
     if (!critiquePrompt) {
       toast.error("No critique prompt configured");
       return;
@@ -639,13 +760,7 @@ export default function ChapterPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: critiqueModel,
-            critiquePrompt: {
-              content: critiquePrompt.content,
-              userPrompt: critiquePrompt.userPrompt ?? null,
-            },
-          }),
+          body: JSON.stringify(buildCritiqueRequestBody(critiquePrompt.id, critiqueModel)),
         },
       );
       if (res.ok) {
@@ -664,12 +779,24 @@ export default function ChapterPage() {
   }
 
   const contentPrompts = prompts.filter((p) => !p.isAssembly && !p.isCritique && !p.isCorrector);
-  const assemblyPrompt = prompts.find((p) => p.isAssembly);
-  const critiquePrompt = prompts.find((p) => p.isCritique);
-  const correctorPrompt = prompts.find((p) => p.isCorrector);
   const totalContentDone = contentPrompts.filter(
     (p) => promptFragmentMap.has(p.id),
   ).length;
+  const plannerRevisions = assemblyPipeline?.plannerRevisions ?? [];
+  const assemblyRevisions = assemblyPipeline?.assemblyRevisions ?? [];
+  const displayedPlanner = plannerRevisionId
+    ? (() => {
+        const revision = plannerRevisions.find((item) => item.id === plannerRevisionId);
+        return revision ? { ...revision, source: "run-override" as const } : null;
+      })()
+    : (assemblyPipeline?.planner ?? null);
+  const displayedAssembler = assemblyRevisionId
+    ? (() => {
+        const revision = assemblyRevisions.find((item) => item.id === assemblyRevisionId);
+        return revision ? { ...revision, source: "run-override" as const } : null;
+      })()
+    : (assemblyPipeline?.assembler ?? null);
+  const hasSelectableFragments = fragmentVersions.size > 0;
 
   const totalTokens = generations.reduce((sum, g) => {
     return sum + g.fragments.reduce((s, f) => s + (f.tokensUsed ?? 0), 0);
@@ -720,17 +847,15 @@ export default function ChapterPage() {
   // Block critique button when latest content already critiqued with same prompt
   const latestContentGen = assemblyGenerations[0];
   const critiqueBlocked = (() => {
-    if (!latestContentGen?.completedAt || !critiquePrompt) return false;
+    if (!latestContentGen?.completedAt || !reviewRegistry?.critique.effective) return false;
     const latestContentDate = new Date(latestContentGen.completedAt).getTime();
-    const currentPromptId = critiquePrompt.id;
-    // Find a critique created after the latest content, using the same prompt
+    const currentRevisionId = reviewRegistry.critique.effective.id;
     return critiqueGenerations.some((g) => {
       if (!g.completedAt) return false;
       const critiqueDate = new Date(g.completedAt).getTime();
-      if (critiqueDate <= latestContentDate) return false;
-      const critPromptId = g.generationMetadata?.promptId;
-      // Match: same library prompt ID, or both inline/project (promptId === "inline")
-      return critPromptId === currentPromptId || (critPromptId === "inline" && currentPromptId);
+      if (critiqueDate < latestContentDate) return false;
+      const critRevisionId = g.generationMetadata?.critiquePromptRevisionId;
+      return critRevisionId === currentRevisionId;
     });
   })();
 
@@ -1366,6 +1491,238 @@ export default function ChapterPage() {
                 )}
               </dl>
 
+              {/* Assembly Plan Panel — semantic view for planned-editorial-v1 */}
+              {selectedAssemblyVersion.assemblyMetadata?.algorithm === "planned-editorial-v1" &&
+                selectedAssemblyVersion.assemblyPlan &&
+                (() => {
+                  const parsed = assemblyPlanV1Schema.safeParse(selectedAssemblyVersion.assemblyPlan);
+                  if (!parsed.success) return null;
+                  const plan = parsed.data;
+
+                  const covered = plan.mustCover.filter((m) => m.status === "covered").length;
+                  const bridgeable = plan.mustCover.filter((m) => m.status === "bridgeable").length;
+                  const unsupportedCount = plan.mustCover.filter((m) => m.status === "unsupported").length;
+                  const cuts = plan.sections.flatMap((s) =>
+                    s.sourceTreatments.filter((t) => t.action === "cut").map((t) => ({
+                      fragmentId: t.fragmentId,
+                      reason: t.reason,
+                    })),
+                  );
+                  const totalMustCover = plan.mustCover.length;
+                  const pipeline =
+                    (selectedAssemblyVersion.planningMetadata as Record<string, unknown> | null)?.pipeline as
+                      | string
+                      | undefined;
+
+                  return (
+                    <details className="rounded-md border bg-muted/30 px-3 py-2 text-xs mb-4">
+                      <summary className="font-medium cursor-pointer select-none">
+                        Assembly Plan
+                        <span className="ml-2 text-muted-foreground font-normal">
+                          ({plan.sections.length} sections{pipeline ? `, ${pipeline}` : ""})
+                        </span>
+                      </summary>
+
+                      <div className="mt-2 space-y-2">
+                        {/* Chapter intent */}
+                        <p className="text-muted-foreground italic leading-relaxed">
+                          {plan.chapterIntent}
+                        </p>
+
+                        {/* Coverage badges */}
+                        {totalMustCover > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="secondary" className="text-[10px] h-5 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                              ✓ {covered} covered
+                            </Badge>
+                            {bridgeable > 0 && (
+                              <Badge variant="secondary" className="text-[10px] h-5 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                ~ {bridgeable} bridgeable
+                              </Badge>
+                            )}
+                            {unsupportedCount > 0 && (
+                              <Badge variant="secondary" className="text-[10px] h-5 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                                ✗ {unsupportedCount} unsupported
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Sections — purposes and source treatments */}
+                        <details className="text-[11px]">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            Sections ({plan.sections.length})
+                          </summary>
+                          <div className="mt-1 space-y-1.5">
+                            {plan.sections.map((s) => (
+                              <div key={s.id} className="pl-2 border-l-2 border-muted-foreground/20">
+                                <div className="font-medium text-foreground">
+                                  <code className="text-[10px]">{s.id.slice(0, 8)}…</code>
+                                  {" — "}{s.purpose}
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap gap-1">
+                                  {s.sourceTreatments.map((t, j) => (
+                                    <span
+                                      key={j}
+                                      className={`text-[10px] px-1 py-0.5 rounded ${
+                                        t.action === "cut"
+                                          ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                                          : t.action === "keep"
+                                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                          : "bg-muted text-muted-foreground"
+                                      }`}
+                                    >
+                                      {t.action}: <code>{t.fragmentId.slice(0, 6)}…</code>
+                                    </span>
+                                  ))}
+                                </div>
+                                {s.synthesis && (
+                                  <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                                    Synthesis: {s.synthesis}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+
+                        {/* mustCover items — individual status and source fragments */}
+                        {plan.mustCover.length > 0 && (
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              Coverage ({plan.mustCover.length})
+                            </summary>
+                            <ul className="mt-1 space-y-1">
+                              {plan.mustCover.map((mc, i) => (
+                                <li key={i} className="pl-2 border-l-2 border-muted-foreground/20">
+                                  <span
+                                    className={`text-[10px] font-medium px-1 py-0.5 rounded ${
+                                      mc.status === "covered"
+                                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                        : mc.status === "bridgeable"
+                                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                                    }`}
+                                  >
+                                    {mc.status}
+                                  </span>{" "}
+                                  <span className="text-foreground">{mc.item}</span>
+                                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                    Sources:{" "}
+                                    {mc.sourceFragmentIds.map((fid) => (
+                                      <code key={fid} className="mr-1">{fid.slice(0, 6)}…</code>
+                                    ))}
+                                    {" · "}{mc.handling}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+
+                        {/* Cuts */}
+                        {cuts.length > 0 && (
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              Cuts ({cuts.length})
+                            </summary>
+                            <ul className="mt-1 space-y-1 pl-4 list-disc text-muted-foreground">
+                              {cuts.map((c, i) => (
+                                <li key={i}>
+                                  <code className="text-[10px]">{c.fragmentId.slice(0, 8)}…</code>
+                                  {" — "}{c.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+
+                        {/* Bridges */}
+                        {plan.bridges.length > 0 && (
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              Bridges ({plan.bridges.length})
+                            </summary>
+                            <ul className="mt-1 space-y-1.5">
+                              {plan.bridges.map((b, i) => (
+                                <li key={i} className="text-muted-foreground">
+                                  <span className="font-medium text-foreground">
+                                    {b.fromSectionId.slice(0, 8)}… → {b.toSectionId.slice(0, 8)}…
+                                  </span>
+                                  <br />
+                                  <span className="text-[10px]">
+                                    Connection: {b.logicalConnection}
+                                  </span>
+                                  {b.factualBoundary && (
+                                    <>
+                                      <br />
+                                      <span className="text-[10px]">
+                                        Boundary: {b.factualBoundary}
+                                      </span>
+                                    </>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+
+                        {/* Gaps */}
+                        {plan.unsupportedGaps.length > 0 && (
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-red-600 dark:text-red-400 hover:opacity-80">
+                              Unsupported Gaps ({plan.unsupportedGaps.length})
+                            </summary>
+                            <ul className="mt-1 space-y-0.5 pl-4 list-disc text-muted-foreground">
+                              {plan.unsupportedGaps.map((gap, i) => (
+                                <li key={i}>{gap}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+
+                        {/* Execution IDs — open in dialog instead of raw JSON */}
+                        <div className="text-[10px] text-muted-foreground/70 pt-1 border-t">
+                          {selectedAssemblyVersion.assemblyMetadata?.plannerExecutionId && (
+                            <button
+                              onClick={() => openExecutionDialog(selectedAssemblyVersion.assemblyMetadata!.plannerExecutionId!)}
+                              className="text-primary hover:underline cursor-pointer"
+                              title="View planner execution details"
+                            >
+                              Planner execution
+                            </button>
+                          )}
+                          {selectedAssemblyVersion.assemblyMetadata?.plannerExecutionId &&
+                            selectedAssemblyVersion.assemblyMetadata?.assemblyExecutionId &&
+                            " · "}
+                          {selectedAssemblyVersion.assemblyMetadata?.assemblyExecutionId && (
+                            <button
+                              onClick={() => openExecutionDialog(selectedAssemblyVersion.assemblyMetadata!.assemblyExecutionId!)}
+                              className="text-primary hover:underline cursor-pointer"
+                              title="View assembly execution details"
+                            >
+                              Assembly execution
+                            </button>
+                          )}
+                          {selectedAssemblyVersion.plannerPromptRevisionId && (
+                            <>
+                              <br />
+                              Planner revision:{" "}
+                              <code>{selectedAssemblyVersion.plannerPromptRevisionId.slice(0, 8)}…</code>
+                            </>
+                          )}
+                          {selectedAssemblyVersion.assemblyPromptRevisionId && (
+                            <>
+                              {" · "}Assembly revision:{" "}
+                              <code>{selectedAssemblyVersion.assemblyPromptRevisionId.slice(0, 8)}…</code>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })()}
+
               <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
                 <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
                   {selectedAssemblyVersion.assembledContent!}
@@ -1483,83 +1840,51 @@ export default function ChapterPage() {
         </div>
       )}
 
-      {!assemblyPrompt && contentPrompts.length > 0 && totalContentDone > 0 && (
-        <div className="mb-8">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">Assembly</h2>
-          <Card className="border-dashed">
-            <CardContent className="py-8 text-center">
-              <Puzzle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground mb-3">
-                {activeGen?.status === "awaiting_assembly"
-                  ? "Content generation complete. Ready to assemble."
-                  : "No embedded assembly prompt. Select one to assemble this chapter."}
-              </p>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={openAssemblyModal}
-                disabled={isAssemblingChapter}
-              >
-                {isAssemblingChapter ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Play className="h-3 w-3 mr-1" />
-                )}
-                {isAssemblingChapter ? "Assembling" : "Assemble Chapter"}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       <AssemblyPromptSection
-        prompt={assemblyPrompt}
+        planner={displayedPlanner}
+        assembler={displayedAssembler}
+        loading={revisionsLoading}
+        error={revisionLoadError}
+        onRetry={() => void refreshAssemblyPipeline()}
         onAssemble={openAssemblyModal}
         assembling={isAssemblingChapter}
-        onDelete={async () => {
-          if (!assemblyPrompt) return;
-          await fetch(`/api/projects/${params.id}/prompts/${assemblyPrompt.id}`, {
-            method: "DELETE",
-          });
-          fetchPrompts();
-          fetchPlaceholders();
-        }}
+        canAssemble={hasSelectableFragments}
       />
 
       <CritiquePromptSection
-        prompt={critiquePrompt}
+        prompt={reviewRegistry?.critique.effective ?? null}
+        revisions={reviewRegistry?.critique.revisions ?? []}
+        bindingRevisionId={reviewRegistry?.critique.bindingRevisionId ?? null}
+        defaultRevisionId={reviewRegistry?.critique.defaultRevisionId ?? null}
+        loading={reviewRegistryLoading}
+        error={reviewRegistryError}
+        saving={savingReviewKind === "critique"}
+        onRetry={() => void refreshReviewRegistry()}
+        onRevisionChange={(value) => void changeReviewPrompt("critique", value)}
         onCritique={runCritique}
         critiquing={critiquing}
-        blocked={critiqueBlocked}
+        blocked={critiqueBlocked || isAssemblingChapter}
         blockedReason="Latest version already critiqued with this prompt"
         model={critiqueModel}
         onModelChange={setCritiqueModel}
-        onDelete={async () => {
-          if (!critiquePrompt) return;
-          await fetch(`/api/projects/${params.id}/prompts/${critiquePrompt.id}`, {
-            method: "DELETE",
-          });
-          fetchPrompts();
-          fetchPlaceholders();
-        }}
       />
 
       <CorrectorPromptSection
-        prompt={correctorPrompt}
+        prompt={reviewRegistry?.corrector.effective ?? null}
+        revisions={reviewRegistry?.corrector.revisions ?? []}
+        bindingRevisionId={reviewRegistry?.corrector.bindingRevisionId ?? null}
+        defaultRevisionId={reviewRegistry?.corrector.defaultRevisionId ?? null}
+        loading={reviewRegistryLoading}
+        error={reviewRegistryError}
+        saving={savingReviewKind === "corrector"}
+        onRetry={() => void refreshReviewRegistry()}
+        onRevisionChange={(value) => void changeReviewPrompt("corrector", value)}
         onCorrect={() => setCorrectionTrigger((n) => n + 1)}
         correcting={correcting}
         blocked={correctionBlocked}
         blockedReason={correctionBlockedReason}
         model={correctorModel}
         onModelChange={setCorrectorModel}
-        onDelete={async () => {
-          if (!correctorPrompt) return;
-          await fetch(`/api/projects/${params.id}/prompts/${correctorPrompt.id}`, {
-            method: "DELETE",
-          });
-          fetchPrompts();
-          fetchPlaceholders();
-        }}
       />
 
       {/* Assembly Modal */}
@@ -1666,8 +1991,9 @@ export default function ChapterPage() {
           </div>
 
           {/* Assembly controls */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="flex items-center gap-2">
+          <div className="space-y-3 pt-4 border-t">
+            {/* Model + revision selectors */}
+            <div className="flex items-center gap-2 flex-wrap">
               <Select value={assemblyModel} onValueChange={setAssemblyModel}>
                 <SelectTrigger className="w-[140px] h-7 text-[10px]">
                   <SelectValue />
@@ -1680,22 +2006,91 @@ export default function ChapterPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <Button
-              size="sm"
-              onClick={runAssembly}
-              disabled={
-                isAssemblingChapter ||
-                Object.values(selectedFragments).filter(Boolean).length === 0
-              }
-            >
-              {isAssemblingChapter ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <Play className="h-3 w-3 mr-1" />
+
+              <Select
+                value={plannerRevisionId ?? "__default__"}
+                onValueChange={(v) => setPlannerRevisionId(v === "__default__" ? undefined : v)}
+                disabled={revisionsLoading || plannerRevisions.length === 0}
+              >
+                <SelectTrigger className="w-[210px] h-7 text-[10px]">
+                  <SelectValue placeholder="Planner unavailable" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__" className="text-[10px]">
+                    {assemblyPipeline?.planner
+                      ? `Effective: ${assemblyPipeline.planner.name} v${assemblyPipeline.planner.versionLabel}`
+                      : "No effective planner"}
+                  </SelectItem>
+                  {plannerRevisions.map((r) => (
+                    <SelectItem key={r.id} value={r.id} className="text-[10px]">
+                      {r.name} v{r.versionLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={assemblyRevisionId ?? "__default__"}
+                onValueChange={(v) => setAssemblyRevisionId(v === "__default__" ? undefined : v)}
+                disabled={revisionsLoading || assemblyRevisions.length === 0}
+              >
+                <SelectTrigger className="w-[210px] h-7 text-[10px]">
+                  <SelectValue placeholder="Assembler unavailable" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__" className="text-[10px]">
+                    {assemblyPipeline?.assembler
+                      ? `Effective: ${assemblyPipeline.assembler.name} v${assemblyPipeline.assembler.versionLabel}`
+                      : "No effective assembler"}
+                  </SelectItem>
+                  {assemblyRevisions.map((r) => (
+                    <SelectItem key={r.id} value={r.id} className="text-[10px]">
+                      {r.name} v{r.versionLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {revisionsLoading && (
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               )}
-              {isAssemblingChapter ? "Assembling" : "Assemble"}
-            </Button>
+            </div>
+
+            {revisionLoadError && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                <p className="text-xs text-destructive">{revisionLoadError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refreshAssemblyPipeline()}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                onClick={runAssembly}
+                disabled={
+                  isAssemblingChapter ||
+                  revisionsLoading ||
+                  Boolean(revisionLoadError) ||
+                  !displayedPlanner ||
+                  !displayedAssembler ||
+                  Object.values(selectedFragments).filter(Boolean).length === 0
+                }
+              >
+                {isAssemblingChapter ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <Play className="h-3 w-3 mr-1" />
+                )}
+                {isAssemblingChapter ? "Assembling" : "Assemble"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1706,9 +2101,7 @@ export default function ChapterPage() {
         chapterId={params.chapterId}
         generations={generations}
         hasAssembly={hasAssembly}
-        projectCorrectorPromptId={correctorPrompt?.id}
-        projectCorrectorPromptContent={correctorPrompt?.content}
-        projectCorrectorPromptUserPrompt={correctorPrompt?.userPrompt}
+        correctorPromptRevisionId={reviewRegistry?.corrector.effective?.id}
         correctionTrigger={correctionTrigger}
         correctorModel={correctorModel}
         onCorrectingChange={setCorrecting}
@@ -1716,6 +2109,7 @@ export default function ChapterPage() {
           fetchChapter();
           fetchPlaceholders();
         }}
+        selectedCritiqueGenerationId={selectedCritiqueGenerationId}
       />
 
       <ConfirmDialog
@@ -1724,6 +2118,151 @@ export default function ChapterPage() {
         description="Delete this prompt?"
         onConfirm={confirmDelete}
       />
+
+      {/* Execution Detail Dialog */}
+      <Dialog open={executionDialogOpen} onOpenChange={setExecutionDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Prompt Execution</DialogTitle>
+            <DialogDescription>
+              Effective prompt, messages, and metadata
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
+            {executionDialogLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : executionDialogData ? (
+                <div className="space-y-4 text-sm">
+                  {/* Meta row */}
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    {executionDialogData.stage && (
+                      <Badge variant="secondary" className="text-[10px] h-5">
+                        Stage: {executionDialogData.stage}
+                      </Badge>
+                    )}
+                    {executionDialogData.status && (
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] h-5 ${
+                          executionDialogData.status === "completed"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                            : executionDialogData.status === "failed"
+                            ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                            : ""
+                        }`}
+                      >
+                        {executionDialogData.status}
+                      </Badge>
+                    )}
+                    <span>Model: {executionDialogData.model ?? "?"}</span>
+                    <span>Provider: {executionDialogData.provider ?? "?"}</span>
+                    {executionDialogData.revision && (
+                      <span>
+                        Revision:{" "}
+                        {executionDialogData.revision.definitionName ?? "?"}{" "}
+                        {executionDialogData.revision.versionLabel ?? "?"}
+                      </span>
+                    )}
+                    {executionDialogData.createdAt && (
+                      <span className="font-mono">
+                        {new Date(executionDialogData.createdAt).toLocaleString()}
+                      </span>
+                    )}
+                    {executionDialogData.completedAt && (
+                      <span className="font-mono">
+                        → {new Date(executionDialogData.completedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Error — shown inline with details, not instead of them */}
+                  {executionDialogData.error && (
+                    <div className="rounded-md bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 p-3">
+                      <p className="text-xs font-medium text-red-800 dark:text-red-400 mb-1">Error</p>
+                      <pre className="text-[11px] text-red-700 dark:text-red-300 whitespace-pre-wrap font-mono">
+                        {executionDialogData.error}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Messages */}
+                  {executionDialogData.messages && executionDialogData.messages.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Messages ({executionDialogData.messages.length})
+                      </p>
+                      {executionDialogData.messages.map((msg, i) => (
+                        <div key={i} className="rounded-md border bg-muted/30 p-3">
+                          <p className="text-[10px] font-medium text-muted-foreground mb-1 uppercase">
+                            {msg.role}
+                          </p>
+                          <pre className="text-[11px] whitespace-pre-wrap font-mono text-foreground">
+                            {msg.content}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Contract */}
+                  {executionDialogData.outputContract && (
+                    <div className="rounded-md border bg-muted/30 p-3">
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1">Output Contract</p>
+                      <pre className="text-[11px] whitespace-pre-wrap font-mono text-muted-foreground">
+                        {executionDialogData.outputContract}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Technical Policies */}
+                  {executionDialogData.technicalPolicies && executionDialogData.technicalPolicies.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1">Technical Policies</p>
+                      <div className="flex flex-wrap gap-1">
+                        {executionDialogData.technicalPolicies.map((p, i) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] h-5">
+                            {p}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Data Manifest / Lineage */}
+                  {executionDialogData.dataManifest && (
+                    <details className="text-[11px]">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                        Data Lineage
+                      </summary>
+                      <pre className="mt-1 text-[10px] whitespace-pre-wrap font-mono text-muted-foreground max-h-48 overflow-y-auto">
+                        {JSON.stringify(executionDialogData.dataManifest, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+
+                  {/* Usage */}
+                  {executionDialogData.usage && (
+                    <div className="text-[10px] text-muted-foreground border-t pt-2 font-mono">
+                      {executionDialogData.usage.promptTokens != null && (
+                        <span>Prompt: {executionDialogData.usage.promptTokens} tokens</span>
+                      )}
+                      {executionDialogData.usage.completionTokens != null && (
+                        <span> · Completion: {executionDialogData.usage.completionTokens} tokens</span>
+                      )}
+                      {executionDialogData.usage.totalTokens != null && (
+                        <span> · Total: {executionDialogData.usage.totalTokens} tokens</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

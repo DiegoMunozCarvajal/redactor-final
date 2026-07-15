@@ -203,7 +203,8 @@ function validateEvidenceNeeds(
  *    [[RESEARCH_DOCUMENT]], and [[OUTPUT_SCHEMA]].
  * 4. Records research-document hash plus chapter and placeholder IDs as
  *    data lineage.
- * 5. Post-validates chapter ids and evidence placeholder references.
+ * 5. Post-validates chapter ids, evidence placeholder references, and
+ *    centralTopic presence.
  * 6. Returns the parsed bundle with an empty evidenceSourceIds array.
  *
  * The output is always a DRAFT — extraction never approves.
@@ -275,6 +276,15 @@ export async function extractEditorialBriefDraft(
     placeholdersByChapter.set(ch.chapterId, new Set(ch.availablePlaceholders));
   }
   validateEvidenceNeeds(bundle.contracts, placeholdersByChapter);
+
+  // Step 6b: Post-validation — centralTopic must be present and meaningful
+  const centralTopic = bundle.content.centralTopic?.trim();
+  if (!centralTopic || centralTopic === "-") {
+    throw new ExtractionPostValidationError(
+      "Extraction produced no centralTopic — the LLM did not infer a topic from the research document.",
+      "The extracted brief must include a non-empty centralTopic field.",
+    );
+  }
 
   // Step 7: Return the bundle with empty evidence source ids
   // Sources are bound later via the project API, not during extraction.

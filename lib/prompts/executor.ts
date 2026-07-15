@@ -33,6 +33,8 @@ export interface ExecuteVersionedPromptInput<T extends z.ZodTypeAny | undefined 
   effort?: ReasoningEffort;
   technicalPolicies?: string[];
   signal?: AbortSignal;
+  /** Per-call timeout in ms. Passed through to generateCompletion. */
+  timeoutMs?: number;
 }
 
 type CompletionResult<T> = {
@@ -131,6 +133,7 @@ export async function executeVersionedPrompt(
           maxTokens: input.maxTokens,
           effort: input.effort,
           signal: input.signal,
+          timeoutMs: input.timeoutMs,
         })
       : await generateCompletion({
           systemPrompt: composed.systemMessage,
@@ -140,6 +143,7 @@ export async function executeVersionedPrompt(
           maxTokens: input.maxTokens,
           effort: input.effort,
           signal: input.signal,
+          timeoutMs: input.timeoutMs,
         });
 
     // 7. Update execution to completed

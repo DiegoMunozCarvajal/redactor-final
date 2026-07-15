@@ -27,6 +27,7 @@ import type { ChapterPlaceholder } from "@/lib/db/schema";
 import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { inferPlaceholderProvider } from "@/lib/placeholder-research";
+import { needsPlaceholderFill } from "@/lib/placeholder-utils";
 
 const MODELS = MODEL_OPTIONS;
 
@@ -110,13 +111,19 @@ export function PlaceholderFillSection({
     const { signal } = controller;
 
     setFilling(true);
-    // Reset all to pending
+    // Keep fresh definitions filled; backend skips them during bulk fill.
     const init: Record<string, PlaceholderState> = {};
     for (const ph of placeholders) {
       const metadata = ph.fillMetadata as PlaceholderFillMetadata | null | undefined;
+      const needsFill = needsPlaceholderFill(
+        ph.definition,
+        metadata,
+        currentPromptsHash ?? metadata?.promptsHash ?? "",
+        activeBriefHash,
+      );
       init[ph.name] = {
         definition: ph.definition ?? "",
-        status: "pending",
+        status: needsFill ? "pending" : "filled",
         sources: metadata?.sources ?? [],
         ragChunks: metadata?.ragChunks,
         provider: metadata?.provider ?? inferPlaceholderProvider(ph.name, ph.function),
@@ -151,6 +158,8 @@ export function PlaceholderFillSection({
       let buffer = "";
 
       function processLines(lines: string[]) {
+        let doneFilled = 0;
+        let doneFailed = 0;
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const dataStr = line.slice(6);
@@ -179,7 +188,13 @@ export function PlaceholderFillSection({
               }
               toast.error(event.error ?? "Error filling placeholder");
             } else if (event.type === "done") {
-              toast.success(`${event.total ?? total} placeholders filled`);
+              doneFilled = event.filled ?? event.total ?? total;
+              doneFailed = event.failed ?? 0;
+              if (doneFailed === 0) {
+                toast.success(`${doneFilled} placeholders filled`);
+              } else {
+                toast.warning(`${doneFilled} filled, ${doneFailed} failed`);
+              }
               void onFillComplete?.();
             }
           } catch {
@@ -213,7 +228,16 @@ export function PlaceholderFillSection({
     } finally {
       setFilling(false);
     }
-  }, [projectId, chapterId, model, placeholders, total, onFillComplete]);
+  }, [
+    projectId,
+    chapterId,
+    model,
+    placeholders,
+    total,
+    onFillComplete,
+    currentPromptsHash,
+    activeBriefHash,
+  ]);
 
   const fillOne = useCallback(async (phName: string) => {
     setFillingOne((prev) => new Set(prev).add(phName));

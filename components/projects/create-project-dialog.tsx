@@ -15,7 +15,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -30,7 +29,6 @@ import { toast } from "sonner"
 const schema = z.object({
   name: z.string().min(1, "Required").max(100),
   title: z.string().max(300).optional(),
-  topic: z.string().max(500).optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -63,12 +61,9 @@ export function CreateProjectDialog({
 
   async function onSubmit(data: FormData) {
     try {
-      const body: { name: string; title?: string; topic?: string; bookTemplateId?: string } = { name: data.name }
+      const body: { name: string; title?: string; bookTemplateId?: string } = { name: data.name }
       if (data.title?.trim()) {
         body.title = data.title.trim()
-      }
-      if (data.topic?.trim()) {
-        body.topic = data.topic.trim()
       }
       if (bookTemplateId) {
         body.bookTemplateId = bookTemplateId
@@ -128,19 +123,6 @@ export function CreateProjectDialog({
               {...register("title")}
             />
             <p className="text-[10px] text-muted-foreground">The title of your book. Can be set later.</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="topic">Topic</Label>
-            <Textarea
-              id="topic"
-              placeholder="The book will be about..."
-              rows={3}
-              {...register("topic")}
-            />
-            {errors.topic && (
-              <p className="text-xs text-destructive">{errors.topic.message}</p>
-            )}
           </div>
 
           <div className="space-y-2">

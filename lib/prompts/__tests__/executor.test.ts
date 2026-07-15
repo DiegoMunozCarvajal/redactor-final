@@ -139,6 +139,33 @@ describe('executeVersionedPrompt', () => {
     expect(mockDb.update).toHaveBeenCalled();
   });
 
+  it('forwards a custom timeout to generateCompletion', async () => {
+    const insertChain = {
+      values: vi.fn(() => ({
+        returning: vi.fn(() => Promise.resolve([insertedExecution])),
+      })),
+    };
+    mockDb.insert.mockReturnValue(insertChain);
+    mockDb.update.mockReturnValue(makeChain());
+    mockGenerateCompletion.mockResolvedValue({
+      data: 'ok',
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30, costUsd: 0.001, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      durationMs: 500,
+    });
+
+    await executeVersionedPrompt({
+      stage: 'planning',
+      kind: 'assembly-planner',
+      markerValues,
+      model: 'deepseek-v4-pro',
+      timeoutMs: 480_000,
+    });
+
+    expect(mockGenerateCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ timeoutMs: 480_000 }),
+    );
+  });
+
   it('updates execution to failed on error', async () => {
     const insertChain = {
       values: vi.fn(() => ({

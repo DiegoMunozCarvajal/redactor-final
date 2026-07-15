@@ -148,6 +148,7 @@ const researchBasisSchema = z
 
 export const editorialBriefContentSchema = z
   .object({
+    centralTopic: z.string().max(500).optional(),
     market: marketSchema,
     audience: audienceSchema,
     thesis: thesisSchema,
@@ -157,6 +158,13 @@ export const editorialBriefContentSchema = z
     evidence: evidenceSchema,
     packaging: packagingSchema,
     researchBasis: researchBasisSchema,
+  })
+  .strict();
+
+/** Write schema — requires centralTopic for new/extracted briefs. */
+export const editorialBriefContentWriteSchema = editorialBriefContentSchema
+  .extend({
+    centralTopic: z.string().min(1).max(500),
   })
   .strict();
 
@@ -202,7 +210,7 @@ export type ChapterEditorialContract = z.infer<
  */
 export const editorialBriefBundleInputSchema = z
   .object({
-    content: editorialBriefContentSchema,
+    content: editorialBriefContentWriteSchema,
     contracts: z.array(chapterEditorialContractSchema).min(1).max(100),
     evidenceSourceIds: z.array(canonicalUuidSchema).max(100),
   })

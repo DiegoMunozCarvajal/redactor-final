@@ -90,7 +90,7 @@ export async function POST(
   // We do NOT capture the current approved brief — the correction must reference
   // the same brief version that was used for the critique it responds to.
   const critiqueSnapshot = snapshotFromGenerationMetadata(
-    (critiqueGen.generationMetadata as Record<string, unknown> | null) ?? {},
+    critiqueGen.generationMetadata ?? {},
   );
 
   // Determine what content to correct: use provided content or fetch latest assembly
@@ -154,7 +154,7 @@ export async function POST(
           model: resolvedModel,
           critiqueGenerationId,
           ...(critiqueSnapshot ? metadataFromSnapshot(critiqueSnapshot) : {}),
-        } as Record<string, unknown>,
+        },
       })
       .returning();
 

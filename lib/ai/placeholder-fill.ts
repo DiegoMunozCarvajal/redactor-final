@@ -48,6 +48,10 @@ export interface PlaceholderFillEvent {
   evidenceSourceIds?: string[];
   /** Execution IDs from versioned prompt calls */
   executionIds?: string[];
+  /** Count of successfully filled placeholders (emitted in "done" event) */
+  filled?: number;
+  /** Count of failed placeholders (emitted in "done" event) */
+  failed?: number;
 }
 
 // Default model for generation if none specified
@@ -195,7 +199,10 @@ export function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
     /ejemplo\s+concreto/,
     /ilustraci[óo]n/,
   ];
-  const text = `${ph.function ?? ""} ${ph.notes ?? ""}`.toLowerCase();
+  // Include placeholder name (with underscores → spaces) so bare-name
+  // narrative placeholders like {anecdota} or {historia} are classified
+  // correctly even when function/notes are empty.
+  const text = `${ph.name.replace(/_/g, " ")} ${ph.function ?? ""} ${ph.notes ?? ""}`.toLowerCase();
   return narrativePatterns.some((pattern) => pattern.test(text));
 }
 
@@ -204,8 +211,12 @@ export function validateDefinition(
   placeholderName: string,
   ph: PlaceholderDef,
 ): ValidationResult {
+  // Normalize whitespace before structural checks.
+  // Whitespace-only definitions are treated as empty.
+  const def = definition.trim();
+
   // 0. Blocklist — fastest check, strongest signal. Must pass before structural checks.
-  const blocklistHits = checkBlocklist(definition);
+  const blocklistHits = checkBlocklist(def);
   if (blocklistHits.length > 0) {
     return {
       ok: false,
@@ -213,9 +224,12 @@ export function validateDefinition(
     };
   }
 
-  // 1. Minimum length — catch truncated extractions
-  if (definition.length < MIN_DEFINITION_LENGTH) {
-    return { ok: false, reason: `Definition too short (${definition.length} chars, min ${MIN_DEFINITION_LENGTH})` };
+  // 1. Minimum length — catch truncated extractions.
+  //    Narrative placeholders (stories, anecdotes, examples) need substantial content.
+  //    Non-narrative placeholders (terms, maxims, entity names) are naturally short.
+  const minLen = isNarrativePlaceholder(ph) ? MIN_DEFINITION_LENGTH : 3;
+  if (def.length < minLen) {
+    return { ok: false, reason: `Definition too short (${def.length} chars, min ${minLen})` };
   }
 
   // 2. Name bleeding — definition should not contain the placeholder name verbatim.
@@ -225,7 +239,7 @@ export function validateDefinition(
     `\\b${escaped.replace(/_/g, String.raw`[_\s]+`)}\\b`,
     "iu",
   );
-  if (namePattern.test(definition)) {
+  if (namePattern.test(def)) {
     return { ok: false, reason: `Definition contains placeholder name "${placeholderName}" — name bleeding detected` };
   }
 
@@ -251,6 +265,8 @@ async function generateAndValidate(
   effort?: ReasoningEffort,
   temperature?: number,
   signal?: AbortSignal,
+  chapterId?: string,
+  chapterGenerationId?: string,
 ): Promise<{ definition: string; executionIds: string[] }> {
   const executionIds: string[] = [];
 
@@ -262,6 +278,8 @@ async function generateAndValidate(
     stage: "placeholder-fill",
     kind: "placeholder-fill",
     projectId,
+    chapterId,
+    chapterGenerationId,
     markerValues: markers,
     model,
     schema: fillOutputSchema,
@@ -317,6 +335,8 @@ async function generateAndValidate(
     stage: "placeholder-fill",
     kind: "placeholder-fill",
     projectId,
+    chapterId,
+    chapterGenerationId,
     markerValues: retryMarkers,
     model,
     schema: fillOutputSchema,
@@ -385,6 +405,8 @@ export interface FillOnePlaceholderParams {
   projectId: string;
   /** Current chapter ID (for cross-chapter reuse and editorial contract matching) */
   chapterId?: string;
+  /** Current chapter generation ID (for execution tracing) */
+  chapterGenerationId?: string;
   /** Prompt contents for context */
   promptContents: string[];
   /** Source contexts for each prompt (same index as promptContents). Null entries allowed. */
@@ -423,6 +445,7 @@ export async function fillOnePlaceholder(
     effort,
     temperature,
     chapterId: currentChapterId,
+    chapterGenerationId,
     sourceContexts,
     signal,
     editorialBundle,
@@ -457,17 +480,19 @@ export async function fillOnePlaceholder(
         isRequiredEvidence = evidenceNeed.required;
         evidenceSourceIds = editorialBundle.evidenceSourceIds;
 
-        // Force RAG for ALL evidence needs (required and optional).
-        // Evidence needs dictate the search strategy — the contract query
-        // is more targeted than auto-generated keyword matching.
-        provider = "rag";
+        // Required evidence must come from approved sources. Optional needs
+        // keep the natural provider classification instead of turning every
+        // conceptual or stylistic placeholder into RAG.
+        if (evidenceNeed.required) {
+          provider = "rag";
+        }
       }
     }
   }
 
   // Cross-chapter reuse: only for placeholders without evidence needs.
-  // Evidence needs (required or optional) must go through RAG with the
-  // contract's exact source list — never reuse another chapter's definition.
+  // Optional needs may remain LLM-classified, but still require a fresh
+  // chapter-specific definition instead of reusing another chapter's output.
   if (currentChapterId && !evidenceSourceIds) {
     if (provider !== "rag" && provider !== "direct") {
       const otherDefs = await db
@@ -623,6 +648,8 @@ export async function fillOnePlaceholder(
     effort,
     temperature,
     signal,
+    currentChapterId,
+    chapterGenerationId,
   );
 
   return {
@@ -648,9 +675,12 @@ export async function* fillPlaceholdersSequential(
   sourceContexts?: (string | null)[],
   signal?: AbortSignal,
   editorialBundle?: EditorialBundle | null,
+  chapterGenerationId?: string,
 ): AsyncGenerator<PlaceholderFillEvent> {
   const total = placeholders.length;
   const existingDefs: Record<string, string> = {};
+  let filledCount = 0;
+  let failedCount = 0;
 
   for (let i = 0; i < placeholders.length; i++) {
     if (signal?.aborted) {
@@ -661,7 +691,7 @@ export async function* fillPlaceholdersSequential(
     const ph = placeholders[i];
 
     try {
-      const result = await fillOnePlaceholder({
+      const fillParams = {
         placeholder: ph,
         projectTopic,
         projectId,
@@ -671,13 +701,30 @@ export async function* fillPlaceholdersSequential(
         effort,
         temperature,
         chapterId: currentChapterId,
+        chapterGenerationId,
         sourceContexts,
         signal,
         editorialBundle,
-      });
+      };
+
+      let result;
+      try {
+        result = await fillOnePlaceholder(fillParams);
+      } catch (err) {
+        const errorName = (err as Error).name;
+        if (
+          signal?.aborted
+          || err instanceof RequiredEvidenceMissingError
+          || errorName === "AbortError"
+        ) {
+          throw err;
+        }
+        result = await fillOnePlaceholder(fillParams);
+      }
 
       if (result.definition) {
         existingDefs[ph.name] = result.definition;
+        filledCount++;
         yield {
           type: "placeholder",
           name: result.name,
@@ -691,6 +738,7 @@ export async function* fillPlaceholdersSequential(
           ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
         };
       } else {
+        failedCount++;
         yield {
           type: "error",
           name: ph.name,
@@ -700,6 +748,7 @@ export async function* fillPlaceholdersSequential(
         };
       }
     } catch (err) {
+      failedCount++;
       yield {
         type: "error",
         name: ph.name,
@@ -710,5 +759,5 @@ export async function* fillPlaceholdersSequential(
     }
   }
 
-  yield { type: "done", total, current: total };
+  yield { type: "done", total, current: total, filled: filledCount, failed: failedCount };
 }

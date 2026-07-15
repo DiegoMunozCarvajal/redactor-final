@@ -20,6 +20,10 @@ export interface AssemblyVersionState {
   completedAt: string | null;
   createdAt: string;
   assemblyMetadata?: AssemblyMetadata | null;
+  assemblyPlan?: Record<string, unknown> | null;
+  planningMetadata?: Record<string, unknown> | null;
+  plannerPromptRevisionId?: string | null;
+  assemblyPromptRevisionId?: string | null;
 }
 
 export function getAssemblyVersions<T extends AssemblyVersionState>(

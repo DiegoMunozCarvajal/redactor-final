@@ -18,6 +18,7 @@ export interface AssemblerInput {
   effort?: ReasoningEffort;
   chapterId?: string;
   chapterGenerationId?: string;
+  dataLineage?: Record<string, { entityIds?: string[]; versionIds?: string[]; sourceHashes?: string[] }>;
 }
 
 export interface AssemblerResult {
@@ -99,6 +100,7 @@ export async function runAssemblyAssembler(
     revisionId: input.revisionId,
     chapterId: input.chapterId,
     chapterGenerationId: input.chapterGenerationId,
+    dataLineage: input.dataLineage,
     markerValues: {
       '{{EDITORIAL_CONTEXT}}': input.editorialContext,
       '{{ASSEMBLY_PLAN}}': serializedPlan,
@@ -106,7 +108,10 @@ export async function runAssemblyAssembler(
     },
     model: input.model,
     effort: input.effort,
+    technicalPolicies: ["originality-check", "echo-guard"],
   });
+
+  // Post-generation guards (recorded as technicalPolicies above)
 
   const chapterText = (typeof result.data === 'string' ? result.data.trim() : '').trim();
   if (!chapterText) {

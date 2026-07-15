@@ -139,11 +139,13 @@ export function validateAssemblyPlan(
   }
 
   // Validate bridge section IDs exist
+  const bridgeFromIds = new Set([...sectionIds, 'opening']);
+  const bridgeToIds = new Set([...sectionIds, 'closing']);
   for (const bridge of parsed.bridges) {
-    if (!sectionIds.has(bridge.fromSectionId)) {
+    if (!bridgeFromIds.has(bridge.fromSectionId)) {
       throw new Error(`Unknown section ID "${bridge.fromSectionId}" referenced in bridge`);
     }
-    if (!sectionIds.has(bridge.toSectionId)) {
+    if (!bridgeToIds.has(bridge.toSectionId)) {
       throw new Error(`Unknown section ID "${bridge.toSectionId}" referenced in bridge`);
     }
   }

@@ -22,6 +22,29 @@ interface EditorialBriefFormProps {
 export function EditorialBriefForm({ content, onChange }: EditorialBriefFormProps) {
   return (
     <div className="space-y-8">
+      {/* Central Topic — canonical source for {tema} */}
+      <section>
+        <h3 className="text-lg font-semibold mb-4">Tema central</h3>
+        <div className="space-y-2">
+          <Label htmlFor="centralTopic">Tema central del libro</Label>
+          <Textarea
+            id="centralTopic"
+            className="text-sm min-h-[80px]"
+            value={content.centralTopic ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...content,
+                centralTopic: e.target.value,
+              } as EditorialBriefContent)
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Determina cómo se resuelve {"{tema}"} en los prompts. Inferido por el
+            asistente; corrígelo si es necesario.
+          </p>
+        </div>
+      </section>
+
       {/* Market */}
       <section>
         <h3 className="text-lg font-semibold mb-4">Mercado</h3>

@@ -39,19 +39,19 @@ const CHAPTER_2_ID = TEST_CHAPTER_2_ID;
 const FOREIGN_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 function makeMockResult(
-  bundle?: EditorialBriefBundleInput,
+  bundle?: any,
   executionId?: string,
 ) {
   return {
     result: {
-      data: bundle ?? {
+      data: (bundle ?? {
         content: createTestBriefContent(),
         contracts: [
           createTestChapterContract(CHAPTER_1_ID),
           createTestChapterContract(CHAPTER_2_ID),
         ],
         evidenceSourceIds: [],
-      },
+      }) as EditorialBriefBundleInput,
       usage: {
         promptTokens: 100,
         completionTokens: 200,
@@ -172,7 +172,7 @@ describe("extractEditorialBriefDraft", () => {
       await extractEditorialBriefDraft(baseInput);
 
       const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
-      expect(callArg.schema).toBe(editorialBriefBundleInputSchema);
+      expect(callArg.schema).toEqual(editorialBriefBundleInputSchema);
     });
   });
 
@@ -315,9 +315,10 @@ describe("extractEditorialBriefDraft", () => {
       expect(result.draft).toHaveProperty("contracts");
       expect(result.draft).toHaveProperty("evidenceSourceIds");
 
-      // Content has all 9 top-level sections
+      // Content has all 10 top-level sections (centralTopic + 9 editorial)
       const contentKeys = Object.keys(result.draft.content);
-      expect(contentKeys).toHaveLength(9);
+      expect(contentKeys).toHaveLength(10);
+      expect(contentKeys).toContain("centralTopic");
       expect(contentKeys).toContain("market");
       expect(contentKeys).toContain("audience");
       expect(contentKeys).toContain("thesis");

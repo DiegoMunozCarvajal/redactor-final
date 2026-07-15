@@ -15,6 +15,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const FULL_CONTENT: EditorialBriefContent = {
+  centralTopic: "Dating app conversation strategies for men",
   market: {
     region: "United States",
     researchLanguage: "English",
@@ -110,6 +111,7 @@ describe("formToContent", () => {
 
   it("trims whitespace from each line and filters empty lines", () => {
     const result = formToContent({
+      centralTopic: "  Test topic  ",
       market: { region: "  US  ", researchLanguage: "  English  ", manuscriptLanguage: "  Spanish  " },
       audience: {
         primaryReader: "  Test reader  ",

@@ -27,6 +27,7 @@ export function createTestBriefContent(
   overrides?: DeepPartial<EditorialBriefContent>,
 ): EditorialBriefContent {
   return {
+    centralTopic: "Dating app conversation strategies for men",
     market: {
       region: "United States",
       researchLanguage: "English",
