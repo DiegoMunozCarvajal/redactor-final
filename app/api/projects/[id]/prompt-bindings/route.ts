@@ -96,31 +96,42 @@ export async function PUT(
     );
   }
 
-  // Verify revision exists, is executable, and kind matches
+  // Verify revision exists, is executable, kind matches, and definition is
+  // not archived — all inside a transaction that locks the definition row so
+  // a concurrent archive cannot slip between check and upsert.
   try {
-    await resolvePromptRevision({
-      kind: parsed.data.kind as PromptKind,
-      runRevisionId: parsed.data.promptRevisionId,
+    await db.transaction(async (tx) => {
+      const resolved = await resolvePromptRevision(
+        { kind: parsed.data.kind as PromptKind, runRevisionId: parsed.data.promptRevisionId },
+        tx,
+      );
+
+      // Lock the definition row to serialise with concurrent archive
+      await tx
+        .select({ id: promptDefinitions.id })
+        .from(promptDefinitions)
+        .where(eq(promptDefinitions.id, resolved.definitionId))
+        .for("update");
+
+      await tx
+        .insert(projectPromptBindings)
+        .values({
+          projectId,
+          kind: parsed.data.kind as PromptKind,
+          promptRevisionId: parsed.data.promptRevisionId,
+        })
+        .onConflictDoUpdate({
+          target: [projectPromptBindings.projectId, projectPromptBindings.kind],
+          set: {
+            promptRevisionId: parsed.data.promptRevisionId,
+            updatedAt: new Date(),
+          },
+        });
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-
-  await db
-    .insert(projectPromptBindings)
-    .values({
-      projectId,
-      kind: parsed.data.kind as PromptKind,
-      promptRevisionId: parsed.data.promptRevisionId,
-    })
-    .onConflictDoUpdate({
-      target: [projectPromptBindings.projectId, projectPromptBindings.kind],
-      set: {
-        promptRevisionId: parsed.data.promptRevisionId,
-        updatedAt: new Date(),
-      },
-    });
 
   return NextResponse.json({
     projectId,

@@ -12,17 +12,18 @@ import {
   PromptArchiveConflictError,
 } from "@/lib/prompts/admin-repository";
 
-const archiveSchema = z.object({ archived: z.boolean() });
-const metadataSchema = z.object({
-  name: z.string().trim().min(1).max(200).optional(),
-  description: z.string().trim().max(2000).nullable().optional(),
-});
+const archiveSchema = z.object({ archived: z.boolean() }).strict();
+const metadataSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict()
+  .refine((d) => d.name !== undefined || d.description !== undefined, {
+    message: "at least one of name or description is required",
+  });
 
-function isArchiveBody(
-  body: Record<string, unknown>,
-): body is z.infer<typeof archiveSchema> {
-  return "archived" in body;
-}
+const patchBodySchema = z.union([archiveSchema, metadataSchema]);
 
 export async function GET(
   _req: NextRequest,
@@ -57,18 +58,17 @@ export async function PATCH(
 
   const { id } = await params;
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => null);
+  const parsed = patchBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "invalid body", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
 
-  // Discriminate: archive/restore vs metadata update
-  if (isArchiveBody(body)) {
-    const parsed = archiveSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "invalid body", details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-
+  // Archive / restore
+  if ("archived" in parsed.data) {
     try {
       const result = await setPromptDefinitionArchived(id, parsed.data.archived);
       if (!result.found) {
@@ -93,21 +93,6 @@ export async function PATCH(
   }
 
   // Metadata update
-  const parsed = metadataSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "invalid body", details: parsed.error.flatten() },
-      { status: 400 },
-    );
-  }
-
-  if (parsed.data.name === undefined && parsed.data.description === undefined) {
-    return NextResponse.json(
-      { error: "at least one of name or description is required" },
-      { status: 400 },
-    );
-  }
-
   const [updated] = await db
     .update(promptDefinitions)
     .set({

@@ -139,7 +139,9 @@ export default function GenerationPage() {
           <PromptDefinitionList
             kind={activeKind}
             definitions={definitions}
-            onCreate={() => setCreateOpen(true)}
+            onCreate={
+              archive === "active" ? () => setCreateOpen(true) : undefined
+            }
           />
         </TabsContent>
       </Tabs>

@@ -15,7 +15,7 @@ export type { DefinitionSummary as PromptDefinitionSummary };
 export interface PromptDefinitionListProps {
   kind: PromptKind;
   definitions: DefinitionSummary[];
-  onCreate(): void;
+  onCreate?(): void;
 }
 
 export function PromptDefinitionList({
@@ -29,9 +29,11 @@ export function PromptDefinitionList({
         <p className="text-sm text-muted-foreground">
           {definitions.length} definición{definitions.length !== 1 ? "es" : ""}
         </p>
-        <Button variant="outline" size="sm" onClick={onCreate}>
-          <Plus className="h-4 w-4 mr-1" />Nueva
-        </Button>
+        {onCreate && (
+          <Button variant="outline" size="sm" onClick={onCreate}>
+            <Plus className="h-4 w-4 mr-1" />Nueva
+          </Button>
+        )}
       </div>
 
       {definitions.length === 0 ? (
