@@ -55,21 +55,21 @@ export function applyPlaceholders(
     ([a], [b]) => b.length - a.length,
   );
   for (const [name, value] of entries) {
-    const sanitized = sanitizeValue(value);
+    const serialized = serializePromptText(sanitizeValue(value));
     // Case-insensitive regex: {tema} matches {TEMA}, {Tema}, etc.
     const regex = new RegExp(`\\{${escapeRegex(name)}\\}`, "gi");
     // Escape $ to prevent special pattern interpretation in replace ($&, $1, etc.)
     content = content.replace(
       regex,
-      `<<${name.toUpperCase()}>>${sanitized.replace(/\$/g, "$$$$")}<</${name.toUpperCase()}>>`,
+      `<<${name.toUpperCase()}>>${serialized.replace(/\$/g, "$$$$")}<</${name.toUpperCase()}>>`,
     );
   }
   // Fallback: if {tema} wasn't in the placeholder map but project has a topic, use it
   if (projectTopic && !placeholders["tema"]) {
-    const sanitized = sanitizeValue(projectTopic);
+    const serialized = serializePromptText(sanitizeValue(projectTopic));
     content = content.replace(
       /\{tema\}/gi,
-      `<<TEMA>>${sanitized.replace(/\$/g, "$$$$")}<</TEMA>>`,
+      `<<TEMA>>${serialized.replace(/\$/g, "$$$$")}<</TEMA>>`,
     );
   }
   return content;
