@@ -30,7 +30,7 @@ function escapeXmlText(text: string): string {
 }
 
 export interface PlaceholderFillEvent {
-  type: "placeholder" | "done" | "error" | "cancelled";
+  type: "placeholder" | "done" | "error" | "cancelled" | "blocked";
   name?: string;
   definition?: string;
   sources?: SearchResult[];
@@ -52,6 +52,12 @@ export interface PlaceholderFillEvent {
   filled?: number;
   /** Count of failed placeholders (emitted in "done" event) */
   failed?: number;
+  /** Count of blocked placeholders — insufficient evidence (emitted in "done" event) */
+  blocked?: number;
+  /** Fill status: "completed" (has definition) or "insufficient_evidence" (blocked) */
+  status?: "completed" | "insufficient_evidence";
+  /** Reason why evidence was insufficient (only for "blocked" events) */
+  insufficientReason?: string;
 }
 
 // Default model for generation if none specified
@@ -171,10 +177,20 @@ export function buildSearchQuery(ph: PlaceholderDef, projectTopic: string | null
   return `${nameReadable} ${topic}`.trim();
 }
 
-/** Schema for structured output from the placeholder-fill prompt revision */
-const fillOutputSchema = z.object({
-  definition: z.string(),
-});
+/** Schema for structured output from the placeholder-fill prompt revision.
+ *  LLM can explicitly declare insufficient evidence instead of fabricating. */
+const fillOutputSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    definition: z.string(),
+  }),
+  z.object({
+    status: z.literal("insufficient_evidence"),
+    reason: z.string(),
+  }),
+]);
+
+type FillOutput = z.infer<typeof fillOutputSchema>;
 
 // ── Post-generation validation ──
 
@@ -257,6 +273,10 @@ export class RequiredEvidenceMissingError extends Error {
   }
 }
 
+type GenerateResult =
+  | { status: "completed"; definition: string; executionIds: string[] }
+  | { status: "insufficient_evidence"; reason: string; executionIds: string[] };
+
 async function generateAndValidate(
   model: string,
   projectId: string,
@@ -267,7 +287,7 @@ async function generateAndValidate(
   signal?: AbortSignal,
   chapterId?: string,
   chapterGenerationId?: string,
-): Promise<{ definition: string; executionIds: string[] }> {
+): Promise<GenerateResult> {
   const executionIds: string[] = [];
 
   // First attempt — initial validation feedback
@@ -290,10 +310,24 @@ async function generateAndValidate(
 
   executionIds.push(firstResult.executionId);
 
-  const definition = firstResult.result.data.definition;
+  const data = firstResult.result.data as FillOutput;
+
+  // LLM explicitly declares insufficient evidence — propagate immediately, no retry
+  if (data.status === "insufficient_evidence") {
+    console.warn(
+      `[placeholder-fill] LLM declared insufficient_evidence for {${ph.name}}: ${data.reason}`,
+    );
+    return { status: "insufficient_evidence", reason: data.reason, executionIds };
+  }
+
+  const definition = data.definition;
 
   if (!definition) {
-    throw new Error(`No definition generated for {${ph.name}}`);
+    return {
+      status: "insufficient_evidence",
+      reason: `No definition generated for {${ph.name}}`,
+      executionIds,
+    };
   }
 
   // Single validation path: structure + blocklist (unified in validateDefinition)
@@ -301,7 +335,7 @@ async function generateAndValidate(
   if (validation.ok) {
     try {
       assertOriginalEnough(definition, { stage: "placeholder-def", throwOnFail: true });
-      return { definition, executionIds };
+      return { status: "completed", definition, executionIds };
     } catch (err) {
       if (err instanceof OriginalityError) {
         console.warn(
@@ -319,7 +353,6 @@ async function generateAndValidate(
   const reason = validation.ok
     ? "Contenido protegido detectado en verificación de corpus"
     : (validation.reason ?? "validación");
-  const isContamination = validation.ok || reason.includes("Contenido protegido");
   console.warn(
     `[placeholder-fill] Validation failed for {${ph.name}}: ${reason}. Retrying.`,
   );
@@ -346,11 +379,25 @@ async function generateAndValidate(
 
   executionIds.push(retryResult.executionId);
 
-  const retryDefinition = retryResult.result.data.definition;
+  const retryData = retryResult.result.data as FillOutput;
+
+  // LLM declares insufficient evidence on retry
+  if (retryData.status === "insufficient_evidence") {
+    console.warn(
+      `[placeholder-fill] Retry LLM declared insufficient_evidence for {${ph.name}}: ${retryData.reason}`,
+    );
+    return { status: "insufficient_evidence", reason: retryData.reason, executionIds };
+  }
+
+  const retryDefinition = retryData.definition;
 
   if (!retryDefinition) {
     console.warn(`[placeholder-fill] No definition on retry for {${ph.name}}. Blocking.`);
-    return { definition: "", executionIds };
+    return {
+      status: "insufficient_evidence",
+      reason: `No definition generated on retry for {${ph.name}}`,
+      executionIds,
+    };
   }
 
   const retryValidation = validateDefinition(retryDefinition, ph.name, ph);
@@ -358,7 +405,11 @@ async function generateAndValidate(
     console.warn(
       `[placeholder-fill] Retry also failed for {${ph.name}}: ${retryValidation.reason}. Blocking definition.`,
     );
-    return { definition: "", executionIds };
+    return {
+      status: "insufficient_evidence",
+      reason: retryValidation.reason ?? "Validation failed after retry",
+      executionIds,
+    };
   }
 
   try {
@@ -368,12 +419,16 @@ async function generateAndValidate(
       console.warn(
         `[placeholder-fill] Retry corpus check also failed for {${ph.name}}: ${err.message}. Blocking definition.`,
       );
-      return { definition: "", executionIds };
+      return {
+        status: "insufficient_evidence",
+        reason: `Corpus check failed after retry: ${err.message}`,
+        executionIds,
+      };
     }
     throw err;
   }
 
-  return { definition: retryDefinition, executionIds };
+  return { status: "completed", definition: retryDefinition, executionIds };
 }
 
 export interface PlaceholderDef {
@@ -385,6 +440,10 @@ export interface PlaceholderDef {
 export interface FillOneResult {
   name: string;
   definition: string;
+  /** Fill status: "completed" (definition is valid) or "insufficient_evidence" (blocked) */
+  status: "completed" | "insufficient_evidence";
+  /** Reason for insufficient evidence — only set when status is "insufficient_evidence" */
+  insufficientReason?: string;
   sources: SearchResult[];
   ragChunks?: number;
   provider: string;
@@ -453,7 +512,7 @@ export async function fillOnePlaceholder(
   // Phase 0: Direct resolution
   const direct = resolveDirectly(ph.name, projectTopic);
   if (direct) {
-    return { name: ph.name, definition: direct, sources: [], provider: "direct" };
+    return { name: ph.name, definition: direct, status: "completed" as const, sources: [], provider: "direct" };
   }
 
   // Classify once for Phase 1.
@@ -513,6 +572,7 @@ export async function fillOnePlaceholder(
         return {
           name: ph.name,
           definition: otherDefs[0].definition,
+          status: "completed" as const,
           sources: [],
           provider: "reused",
         };
@@ -630,7 +690,10 @@ export async function fillOnePlaceholder(
     skipResearch,
   });
 
-  const outputSchema = '{"definition": "texto del placeholder"}';
+  const outputSchema = [
+    'If sufficient information: {"status":"completed","definition":"definition text"}',
+    'If not enough evidence: {"status":"insufficient_evidence","reason":"what evidence is missing"}',
+  ].join("\n");
 
   const baseMarkerValues: Record<string, string> = {
     "{{EDITORIAL_CONTEXT}}": editorialContextSection,
@@ -640,7 +703,7 @@ export async function fillOnePlaceholder(
   };
 
   // Phase 3: Generate with versioned prompt (with single retry on validation failure)
-  const { definition, executionIds } = await generateAndValidate(
+  const genResult = await generateAndValidate(
     model,
     projectId,
     ph,
@@ -652,13 +715,29 @@ export async function fillOnePlaceholder(
     chapterGenerationId,
   );
 
+  if (genResult.status === "insufficient_evidence") {
+    return {
+      name: ph.name,
+      definition: "",
+      status: "insufficient_evidence" as const,
+      insufficientReason: genResult.reason,
+      sources,
+      ragChunks: ragChunks || undefined,
+      provider,
+      executionIds: genResult.executionIds,
+      ...(evidenceQuery ? { evidenceQuery } : {}),
+      ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+    };
+  }
+
   return {
     name: ph.name,
-    definition,
+    definition: genResult.definition,
+    status: "completed" as const,
     sources,
     ragChunks: ragChunks || undefined,
     provider,
-    executionIds,
+    executionIds: genResult.executionIds,
     ...(evidenceQuery ? { evidenceQuery } : {}),
     ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
   };
@@ -681,6 +760,7 @@ export async function* fillPlaceholdersSequential(
   const existingDefs: Record<string, string> = {};
   let filledCount = 0;
   let failedCount = 0;
+  let blockedCount = 0;
 
   for (let i = 0; i < placeholders.length; i++) {
     if (signal?.aborted) {
@@ -722,7 +802,24 @@ export async function* fillPlaceholdersSequential(
         result = await fillOnePlaceholder(fillParams);
       }
 
-      if (result.definition) {
+      // Insufficient evidence → blocked, not error. LLM explicitly declared
+      // it cannot produce a valid definition with available data.
+      if (result.status === "insufficient_evidence") {
+        blockedCount++;
+        yield {
+          type: "blocked",
+          name: result.name,
+          status: "insufficient_evidence",
+          insufficientReason: result.insufficientReason,
+          sources: result.sources,
+          ragChunks: result.ragChunks,
+          provider: result.provider,
+          current: i,
+          total,
+          ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
+          ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
+        };
+      } else if (result.definition) {
         existingDefs[ph.name] = result.definition;
         filledCount++;
         yield {
@@ -759,5 +856,5 @@ export async function* fillPlaceholdersSequential(
     }
   }
 
-  yield { type: "done", total, current: total, filled: filledCount, failed: failedCount };
+  yield { type: "done", total, current: total, filled: filledCount, failed: failedCount, blocked: blockedCount };
 }

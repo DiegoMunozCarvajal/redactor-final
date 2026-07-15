@@ -224,6 +224,7 @@ export async function POST(
       let hadError = false;
       let terminalEvent: "done" | "cancelled" | "error" | null = null;
       let doneFailedCount = 0;
+      let doneBlockedCount = 0;
 
       try {
         const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic ?? null;
@@ -244,7 +245,8 @@ export async function POST(
           const data = JSON.stringify(event);
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${data}\n\n`));
 
-          // Persist definition to DB on each placeholder event
+          // Persist definition to DB on each placeholder event.
+          // Blocked placeholders only get fillMetadata (no definition set).
           if (event.type === "placeholder" && event.name && event.definition) {
             await db
               .update(chapterPlaceholders)
@@ -256,6 +258,37 @@ export async function POST(
                   ragChunks: event.ragChunks,
                   model,
                   promptsHash,
+                  ...(briefBundle
+                    ? {
+                        editorialBriefId: briefBundle.id,
+                        editorialBriefVersion: briefBundle.version,
+                        editorialBriefHash: briefBundle.hash,
+                      }
+                    : {}),
+                  ...(event.evidenceQuery ? { evidenceQuery: event.evidenceQuery } : {}),
+                  ...(event.evidenceSourceIds ? { evidenceSourceIds: event.evidenceSourceIds } : {}),
+                }),
+              })
+              .where(
+                and(
+                  eq(chapterPlaceholders.chapterId, chapterId),
+                  eq(chapterPlaceholders.name, event.name),
+                ),
+              );
+          } else if (event.type === "blocked" && event.name) {
+            // Persist blocked status in fillMetadata so UI can show reason.
+            // Don't set definition — placeholder remains unfilled.
+            await db
+              .update(chapterPlaceholders)
+              .set({
+                fillMetadata: buildPlaceholderFillMetadata({
+                  provider: event.provider,
+                  sources: event.sources,
+                  ragChunks: event.ragChunks,
+                  model,
+                  promptsHash,
+                  status: "insufficient_evidence",
+                  insufficientReason: event.insufficientReason,
                   ...(briefBundle
                     ? {
                         editorialBriefId: briefBundle.id,
@@ -287,6 +320,7 @@ export async function POST(
           } else if (event.type === "done") {
             terminalEvent = "done";
             doneFailedCount = (event as { failed?: number }).failed ?? 0;
+            doneBlockedCount = (event as { blocked?: number }).blocked ?? 0;
           }
         }
 
@@ -304,15 +338,19 @@ export async function POST(
             .set({ status: "failed", error: "Fill encountered errors", completedAt: new Date() })
             .where(eq(chapterGenerations.id, fillGen.id));
         } else if (terminalEvent === "done") {
-          // "done" with failed placeholders is still a failure — the generator
-          // completed its loop but some placeholders could not be filled.
-          const status = doneFailedCount > 0 ? "failed" as const : "completed" as const;
+          // "done" with failed or blocked placeholders is still a failure — the
+          // generator completed its loop but some placeholders could not be filled.
+          const totalIncomplete = doneFailedCount + doneBlockedCount;
+          const status = totalIncomplete > 0 ? "failed" as const : "completed" as const;
+          const parts: string[] = [];
+          if (doneFailedCount > 0) parts.push(`${doneFailedCount} failed`);
+          if (doneBlockedCount > 0) parts.push(`${doneBlockedCount} blocked (insufficient evidence)`);
           await db
             .update(chapterGenerations)
             .set({
               status,
               completedAt: new Date(),
-              ...(doneFailedCount > 0 ? { error: `${doneFailedCount} placeholder(s) failed to fill` } : {}),
+              ...(totalIncomplete > 0 ? { error: `${parts.join(", ")} placeholder(s) could not be filled` } : {}),
             })
             .where(eq(chapterGenerations.id, fillGen.id));
         }

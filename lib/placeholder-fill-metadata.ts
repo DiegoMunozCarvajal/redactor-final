@@ -7,6 +7,10 @@ export interface PlaceholderFillMetadata {
   model?: string;
   filledAt: string;
   promptsHash?: string;
+  /** Fill status: "completed" (definition is valid) or "insufficient_evidence" (blocked). */
+  status?: "completed" | "insufficient_evidence";
+  /** Reason why evidence was insufficient for this placeholder. */
+  insufficientReason?: string;
   /** Editorial brief version used when this definition was filled. */
   editorialBriefId?: string;
   editorialBriefVersion?: number;
@@ -24,6 +28,8 @@ export function buildPlaceholderFillMetadata(params: {
   model?: string;
   filledAt?: string;
   promptsHash?: string;
+  status?: "completed" | "insufficient_evidence";
+  insufficientReason?: string;
   editorialBriefId?: string;
   editorialBriefVersion?: number;
   editorialBriefHash?: string;
@@ -37,6 +43,8 @@ export function buildPlaceholderFillMetadata(params: {
     ...(params.model ? { model: params.model } : {}),
     filledAt: params.filledAt ?? new Date().toISOString(),
     ...(params.promptsHash ? { promptsHash: params.promptsHash } : {}),
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.insufficientReason ? { insufficientReason: params.insufficientReason } : {}),
     ...(params.editorialBriefId ? { editorialBriefId: params.editorialBriefId } : {}),
     ...(params.editorialBriefVersion ? { editorialBriefVersion: params.editorialBriefVersion } : {}),
     ...(params.editorialBriefHash ? { editorialBriefHash: params.editorialBriefHash } : {}),

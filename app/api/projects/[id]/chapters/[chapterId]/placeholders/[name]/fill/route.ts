@@ -221,9 +221,61 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // Guard: don't persist empty definitions. generateAndValidate returns ""
-  // when both attempts fail (structural or originality). Mark as failed so
-  // the UI shows the error and user can retry.
+  // Insufficient evidence: LLM explicitly declared it cannot produce a valid
+  // definition. Persist blocked metadata but NOT definition — placeholder
+  // remains unfilled until user provides more evidence or changes notes.
+  if (result.status === "insufficient_evidence") {
+    await db
+      .update(chapterPlaceholders)
+      .set({
+        fillMetadata: buildPlaceholderFillMetadata({
+          provider: result.provider,
+          sources: result.sources,
+          ragChunks: result.ragChunks,
+          model,
+          promptsHash,
+          status: "insufficient_evidence",
+          insufficientReason: result.insufficientReason,
+          ...(briefBundle
+            ? {
+                editorialBriefId: briefBundle.id,
+                editorialBriefVersion: briefBundle.version,
+                editorialBriefHash: briefBundle.hash,
+              }
+            : {}),
+          ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
+          ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
+        }),
+      })
+      .where(
+        and(
+          eq(chapterPlaceholders.chapterId, chapterId),
+          eq(chapterPlaceholders.name, name),
+        ),
+      );
+
+    await db
+      .update(chapterGenerations)
+      .set({
+        status: "failed",
+        error: `insufficient evidence: ${result.insufficientReason ?? "no data available"}`,
+        completedAt: new Date(),
+      })
+      .where(eq(chapterGenerations.id, fillGen.id));
+
+    return NextResponse.json({
+      name,
+      definition: "",
+      status: "insufficient_evidence" as const,
+      insufficientReason: result.insufficientReason,
+      sources: result.sources,
+      ragChunks: result.ragChunks,
+      provider: result.provider,
+    });
+  }
+
+  // Guard: completed status but empty definition shouldn't happen with new
+  // discriminated union, but guard defensively.
   if (!result.definition) {
     await db
       .update(chapterGenerations)
@@ -272,6 +324,7 @@ export async function POST(
   return NextResponse.json({
     name,
     definition: result.definition,
+    status: "completed" as const,
     sources: result.sources,
     ragChunks: result.ragChunks,
     provider: result.provider,

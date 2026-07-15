@@ -48,7 +48,7 @@ interface Props {
   activeBriefHash?: string | null;
 }
 
-type FillStatus = "pending" | "generating" | "filled" | "error";
+type FillStatus = "pending" | "generating" | "filled" | "error" | "blocked";
 
 interface PlaceholderState {
   definition: string | null;
@@ -56,6 +56,7 @@ interface PlaceholderState {
   sources: SearchResult[];
   ragChunks?: number;
   provider?: string;
+  insufficientReason?: string;
 }
 
 export function PlaceholderFillSection({
@@ -87,9 +88,11 @@ export function PlaceholderFillSection({
   const getState = useCallback((name: string): PlaceholderState => {
     const placeholder = placeholders.find((p) => p.name === name);
     const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
+    // Detect blocked state from metadata (insufficient_evidence without definition)
+    const isBlocked = metadata?.status === "insufficient_evidence" && !placeholder?.definition;
     return states[name] ?? {
       definition: placeholder?.definition ?? "",
-      status: placeholder?.definition ? "filled" : "pending",
+      status: isBlocked ? "blocked" : (placeholder?.definition ? "filled" : "pending"),
       sources: metadata?.sources ?? [],
       ragChunks: metadata?.ragChunks,
       provider: metadata?.provider ?? (
@@ -97,6 +100,7 @@ export function PlaceholderFillSection({
           ? inferPlaceholderProvider(placeholder.name, placeholder.function)
           : undefined
       ),
+      insufficientReason: metadata?.insufficientReason,
     };
   }, [placeholders, states]);
 
@@ -174,6 +178,18 @@ export function PlaceholderFillSection({
                   sources: event.sources ?? [],
                   ragChunks: event.ragChunks,
                   provider: event.provider,
+                },
+              }));
+            } else if (event.type === "blocked" && event.name) {
+              setStates((prev) => ({
+                ...prev,
+                [event.name]: {
+                  definition: "",
+                  status: "blocked",
+                  sources: event.sources ?? [],
+                  ragChunks: event.ragChunks,
+                  provider: event.provider,
+                  insufficientReason: event.insufficientReason,
                 },
               }));
             } else if (event.type === "error") {
@@ -261,16 +277,31 @@ export function PlaceholderFillSection({
 
       if (res.ok) {
         const data = await res.json();
-        setStates((prev) => ({
-          ...prev,
-          [phName]: {
-            definition: data.definition ?? "",
-            status: "filled",
-            sources: data.sources ?? [],
-            ragChunks: data.ragChunks,
-            provider: data.provider,
-          },
-        }));
+        if (data.status === "insufficient_evidence") {
+          setStates((prev) => ({
+            ...prev,
+            [phName]: {
+              definition: "",
+              status: "blocked",
+              sources: data.sources ?? [],
+              ragChunks: data.ragChunks,
+              provider: data.provider,
+              insufficientReason: data.insufficientReason,
+            },
+          }));
+          toast.warning(data.insufficientReason ?? `Insufficient evidence for {${phName}}`);
+        } else {
+          setStates((prev) => ({
+            ...prev,
+            [phName]: {
+              definition: data.definition ?? "",
+              status: "filled",
+              sources: data.sources ?? [],
+              ragChunks: data.ragChunks,
+              provider: data.provider,
+            },
+          }));
+        }
         void onFillComplete?.();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -335,6 +366,8 @@ export function PlaceholderFillSection({
         return <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500 flex-shrink-0" />;
       case "error":
         return <AlertCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />;
+      case "blocked":
+        return <AlertCircle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />;
       case "pending":
         return <Circle className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />;
     }
@@ -392,7 +425,7 @@ export function PlaceholderFillSection({
             const hasSources = state.sources.length > 0;
             const isExpanded = expandedSources[ph.name] ?? false;
             const isStale = Boolean(
-              state.status === "filled"
+              (state.status === "filled" || state.status === "blocked")
                 && (() => {
                   const placeholder = placeholders.find((p) => p.name === ph.name);
                   const metadata = placeholder?.fillMetadata as PlaceholderFillMetadata | null | undefined;
@@ -410,7 +443,9 @@ export function PlaceholderFillSection({
                     ? "bg-amber-500/5"
                     : state.status === "error"
                       ? "bg-destructive/5"
-                      : ""
+                      : state.status === "blocked"
+                        ? "bg-orange-500/5"
+                        : ""
                 }`}
               >
                 {/* Top row: name + status */}
@@ -519,6 +554,10 @@ export function PlaceholderFillSection({
                       </Button>
                     </div>
                   </div>
+                ) : state.status === "blocked" ? (
+                  <p className="text-[11px] leading-relaxed text-orange-600 dark:text-orange-400 ml-5.5 pl-0.5">
+                    {state.insufficientReason ?? "Insufficient evidence — add more details or change placeholder notes."}
+                  </p>
                 ) : state.definition ? (
                   <p className="text-[11px] leading-relaxed text-muted-foreground ml-5.5 pl-0.5">
                     {state.definition}
@@ -539,6 +578,11 @@ export function PlaceholderFillSection({
                 {state.status === "error" && (
                   <p className="text-[11px] text-destructive mt-1 ml-5.5">
                     Failed to generate. Click the sparkle icon to retry.
+                  </p>
+                )}
+                {state.status === "blocked" && (
+                  <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1 ml-5.5">
+                    Blocked — insufficient evidence. Add source material or update notes, then retry.
                   </p>
                 )}
 
