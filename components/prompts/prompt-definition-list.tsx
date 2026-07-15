@@ -1,49 +1,26 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ResourceCard } from "@/components/patterns/resource-card";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { Plus, FileText } from "lucide-react";
 import type { PromptKind } from "@/lib/db/schema/prompt-registry";
-import { promptKindValues } from "@/lib/db/schema/prompt-registry";
+import { KIND_LABELS } from "@/lib/prompts/kinds";
+import type { DefinitionSummary } from "@/lib/prompts/admin-types";
 
-export const KIND_LABELS: Record<PromptKind, string> = {
-  "generation-system": "Sistema",
-  "meta-template": "Meta-prompt",
-  "assembly-planner": "Planificador",
-  assembly: "Ensamblaje",
-  critique: "Crítica",
-  corrector: "Corrector",
-  title: "Título",
-  "placeholder-fill": "Placeholders",
-  "editorial-brief-extractor": "Extractor editorial",
-};
-
-export interface PromptDefinitionSummary {
-  id: string;
-  name: string;
-  description: string | null;
-  kind: PromptKind;
-  archivedAt: string | null;
-  latestRevision: {
-    id: string;
-    versionLabel: string;
-    revisionNumber: number;
-  } | null;
-  defaultRevisionId: string | null;
-}
+export { KIND_LABELS };
+export type { DefinitionSummary as PromptDefinitionSummary };
 
 export interface PromptDefinitionListProps {
   kind: PromptKind;
-  definitions: PromptDefinitionSummary[];
-  currentDefaultRevisionId?: string | null;
+  definitions: DefinitionSummary[];
   onCreate(): void;
 }
 
 export function PromptDefinitionList({
   kind,
   definitions,
-  currentDefaultRevisionId,
   onCreate,
 }: PromptDefinitionListProps) {
   return (
@@ -76,23 +53,27 @@ export function PromptDefinitionList({
                 : "Sin revisiones")
             }
           >
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               {def.latestRevision && (
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                   v{def.latestRevision.versionLabel}
                 </span>
               )}
-              {currentDefaultRevisionId &&
-                def.latestRevision &&
-                currentDefaultRevisionId === def.latestRevision.id && (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300">
-                    default
-                  </span>
-                )}
+              {def.defaultVersionLabel && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-auto">
+                  Default: v{def.defaultVersionLabel}
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-auto">
+                {def.bindingCount} proyecto{def.bindingCount !== 1 ? "s" : ""}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-auto">
+                {def.executionCount} ejecucione{def.executionCount !== 1 ? "s" : ""}
+              </Badge>
               {def.archivedAt && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-                  archivada
-                </span>
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-auto">
+                  Archivada
+                </Badge>
               )}
             </div>
           </ResourceCard>
