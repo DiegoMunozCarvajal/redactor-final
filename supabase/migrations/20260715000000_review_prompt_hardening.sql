@@ -8,9 +8,9 @@ DECLARE
   new_id uuid := md5('seed:critique:v2:rev2')::uuid;
   next_rev integer;
 BEGIN
+  PERFORM 1 FROM prompt_revisions WHERE prompt_definition_id = def_id FOR UPDATE;
   SELECT COALESCE(MAX(revision_number), 0) + 1 INTO next_rev
-  FROM prompt_revisions WHERE prompt_definition_id = def_id
-  FOR UPDATE;
+  FROM prompt_revisions WHERE prompt_definition_id = def_id;
 
   INSERT INTO prompt_revisions (
     id, prompt_definition_id, revision_number, version_label,
@@ -73,9 +73,9 @@ DECLARE
   new_id uuid := md5('seed:corrector:v2:rev2')::uuid;
   next_rev integer;
 BEGIN
+  PERFORM 1 FROM prompt_revisions WHERE prompt_definition_id = def_id FOR UPDATE;
   SELECT COALESCE(MAX(revision_number), 0) + 1 INTO next_rev
-  FROM prompt_revisions WHERE prompt_definition_id = def_id
-  FOR UPDATE;
+  FROM prompt_revisions WHERE prompt_definition_id = def_id;
 
   INSERT INTO prompt_revisions (
     id, prompt_definition_id, revision_number, version_label,
@@ -136,9 +136,9 @@ BEGIN
     RAISE EXCEPTION 'Assembly v1.3 (seed:assembly:v1.3:rev1) not found — cannot create v1.4';
   END IF;
 
+  PERFORM 1 FROM prompt_revisions WHERE prompt_definition_id = (SELECT prompt_definition_id FROM prompt_revisions WHERE id = v13_id) FOR UPDATE;
   SELECT COALESCE(MAX(revision_number), 0) + 1 INTO next_rev
-  FROM prompt_revisions WHERE prompt_definition_id = (SELECT prompt_definition_id FROM prompt_revisions WHERE id = v13_id)
-  FOR UPDATE;
+  FROM prompt_revisions WHERE prompt_definition_id = (SELECT prompt_definition_id FROM prompt_revisions WHERE id = v13_id);
 
   INSERT INTO prompt_revisions (
     id, prompt_definition_id, revision_number, version_label,
@@ -163,7 +163,7 @@ FROM prompt_revisions
   ON CONFLICT (id) DO NOTHING;
 
   GET DIAGNOSTICS v14_count = ROW_COUNT;
-  IF v14_count = 0 AND NOT EXISTS (SELECT 1 FROM prompt_revisions WHERE id = v14_id) THEN
+  IF v14_count = 0 AND NOT EXISTS (SELECT 1 FROM prompt_revisions WHERE id = new_id) THEN
     RAISE EXCEPTION 'Assembly v1.4 insert produced 0 rows and revision does not exist';
   END IF;
 END $$;
