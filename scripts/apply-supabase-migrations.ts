@@ -17,11 +17,8 @@ let databaseUrl: string | undefined;
 if (isLocal) {
   databaseUrl = LOCAL_DB_URL;
 } else {
-  // Remote: prefer .env.local (Next.js convention), fall back to .env
-  if (!process.env.DATABASE_URL) {
-    if (existsSync(".env.local")) loadEnvFile(".env.local");
-    if (!process.env.DATABASE_URL && existsSync(".env")) loadEnvFile(".env");
-  }
+  // Remote: load .env.local (Next.js convention, created by vercel env pull)
+  if (!process.env.DATABASE_URL && existsSync(".env.local")) loadEnvFile(".env.local");
   databaseUrl = process.env.DATABASE_URL;
 }
 

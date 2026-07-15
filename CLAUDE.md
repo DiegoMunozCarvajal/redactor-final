@@ -187,41 +187,33 @@ Docker via Colima. Workarounds applied:
 
 ## Environment Variables
 
-### Resolution Order (Next.js)
+### Cómo funciona
 
-```
-.env.local > .env.development/.env.production > .env
-```
+Hay UN solo set de variables. Los mismos nombres, distintos valores según entorno. No se crean variables separadas para local/remoto.
 
-`.env.local` siempre gana. No se commitea. `.env` es fallback con defaults seguros (sin secrets reales).
+**Archivo único activo:** `.env.local` (gitignored). Contiene los valores del entorno actual.
 
-### File Purposes
+| Entorno             | `.env.local` contiene                                                  | Cómo se obtiene   |
+| ------------------- | ---------------------------------------------------------------------- | ----------------- |
+| **Local**           | `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `supabase status` |
+| **Remoto (Vercel)** | `DATABASE_URL=postgresql://...pooler.supabase.com:6543/postgres`       | `vercel env pull` |
 
-| Archivo        | Git           | Contenido                                                |
-| -------------- | ------------- | -------------------------------------------------------- |
-| `.env.example` | ✅ commiteado | Template con placeholders, secciones local/remoto        |
-| `.env`         | ❌ gitignored | Defaults no-sensibles (localhost, keys vacías)           |
-| `.env.local`   | ❌ gitignored | **Activo** — secrets reales. Creado desde `.env.example` |
+Para cambiar de entorno: editar `.env.local` con los valores del otro entorno. `.env.example` tiene ambas secciones como referencia.
 
-### Local vs Remote
+**En Vercel (producción):** las variables se inyectan desde el dashboard. El `.env.local` local no se usa en deployment.
 
-Para desarrollo local, `.env.local` debe apuntar a `127.0.0.1`:
+### Archivos
 
-```
-DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54321"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="<valor de supabase status>"
-SUPABASE_SERVICE_ROLE_KEY="<valor de supabase status>"
-```
+| Archivo        | Git           | Propósito                                                    |
+| -------------- | ------------- | ------------------------------------------------------------ |
+| `.env.example` | ✅ commiteado | Template con secciones local/remoto y placeholders           |
+| `.env.local`   | ❌ gitignored | **Único archivo activo** — secrets reales del entorno actual |
 
-Para producción (Vercel), `.env.local` apunta a Supabase remoto:
+No existe `.env`. Solo `.env.example` (template) y `.env.local` (activo).
 
-```
-DATABASE_URL="postgresql://postgres.<ref>:<pwd>@aws-1-us-west-1.pooler.supabase.com:6543/postgres"
-NEXT_PUBLIC_SUPABASE_URL="https://<ref>.supabase.co"
-```
+### Migration Scripts
 
-**Migration scripts** cargan `.env.local` → `.env` (mismo orden que Next.js). `db:migrate:local` ignora ambos — hardcodea `127.0.0.1:54322`.
+`db:migrate` carga `.env.local`. `db:migrate:local` ignora archivos — hardcodea `127.0.0.1:54322`.
 
 Required vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `EXA_API_KEY`, `TAVILY_API_KEY`, `COHERE_API_KEY`, `TRIGGER_SECRET_KEY`.
 
