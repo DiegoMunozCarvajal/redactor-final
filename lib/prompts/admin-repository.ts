@@ -63,7 +63,7 @@ export async function listPromptDefinitionSummaries(
     })
     .from(promptDefinitions)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(promptDefinitions.name);
+    .orderBy(desc(promptDefinitions.createdAt));
 
   const defIds = defs.map((d) => d.id);
 

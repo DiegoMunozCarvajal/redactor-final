@@ -62,7 +62,7 @@ export function PromptDefinitionList({
                 </span>
               )}
               {def.defaultVersionLabel && (
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-auto">
+                <Badge className="text-[10px] px-1.5 py-0 h-auto bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800">
                   Default: v{def.defaultVersionLabel}
                 </Badge>
               )}
