@@ -122,7 +122,6 @@ export async function executeChapterPrompt(
 
   // 5. Apply dynamic placeholders ({tema}, {placeholderName}) — AFTER runtime markers.
   userMessage = applyPlaceholders(userMessage, placeholders, projectTopic);
-  systemMessage = applyPlaceholders(systemMessage, placeholders, projectTopic);
 
   // 6. Build provider metadata
   const provider = getProviderForModel(model);
