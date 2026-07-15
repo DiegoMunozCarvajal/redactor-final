@@ -126,4 +126,9 @@ describe("runtime prompt transparency", () => {
     expect(routeSource).toContain("generationSystemPromptId is deprecated");
     expect(routeSource).toContain("assemblyPromptId is deprecated");
   });
+
+  it("has no unlogged cached system prompt path", () => {
+    const completionSource = readFileSync(`${root}/lib/ai/completion.ts`, "utf8");
+    expect(completionSource).not.toContain("cachedSystemPrompt");
+  });
 });

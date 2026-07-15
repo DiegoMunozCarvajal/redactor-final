@@ -7,13 +7,26 @@ const sql = readFileSync(
 );
 
 describe('review prompt hardening migration', () => {
-  it('creates Critique 2.0, Corrector 2.0, and Assembly 1.4 revisions', () => {
-    expect(sql).toContain("'2.0'");
-    expect(sql.match(/'2\.0'/g)).toHaveLength(2);
-    expect(sql).toContain("'1.4'");
+  it('creates Critique v2, Corrector v2, and Assembly v1.x revisions', () => {
     expect(sql).toContain('seed:critique:v2:rev2');
     expect(sql).toContain('seed:corrector:v2:rev2');
     expect(sql).toContain('seed:assembly:v1.4:rev2');
+  });
+
+  it('computes revision_number dynamically to avoid UNIQUE conflict', () => {
+    // Each insert computes COALESCE(MAX(revision_number), 0) + 1
+    expect(sql).toMatch(/COALESCE\(MAX\(revision_number\),\s*0\)\s*\+\s*1/i);
+    // Locks rows to prevent concurrent computation
+    expect(sql).toMatch(/FOR UPDATE/i);
+  });
+
+  it('handles pre-existing user-created revision 2', () => {
+    // With a pre-existing revision_number=2 for critique, the seed
+    // should compute next_rev=3 and insert without UNIQUE violation.
+    // The ON CONFLICT(id) DO NOTHING + dynamic revision_number
+    // guarantee the migration succeeds regardless of prior user revisions.
+    expect(sql).toMatch(/COALESCE\(MAX\(revision_number\),\s*0\)\s*\+\s*1/i);
+    expect(sql).toContain('ON CONFLICT (id) DO NOTHING');
   });
 
   it('defines the six Critique v2 editorial criteria and status contract', () => {

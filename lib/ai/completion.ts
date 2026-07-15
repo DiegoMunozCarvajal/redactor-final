@@ -8,7 +8,6 @@ import { aiJsonSafeParse } from "ai-json-safe-parse";
 import OpenAI from "openai";
 import { getModelPricing, getProviderForModel, requireModelDefinition } from "./providers";
 import { sanitizeForAnthropic, makeOpenAIStrictSchema } from "./schema-sanitizers";
-import { sanitizeError } from "@/lib/sanitize-error";
 type TrackedStage = string;
 
 /** Per-call LLM timeout. Must stay below every Trigger.dev task maxDuration
@@ -16,7 +15,7 @@ type TrackedStage = string;
  *  is hard-killed, allowing the catch handler to mark the row "failed" cleanly.
  *  Opus 4.8 + xhigh thinking can exceed 10 m — if you need longer per-call
  *  timeouts, raise the task maxDuration first, then bump this. */
-const STAGE_TIMEOUT_MS = 240_000; // 4 minutes — safe below min task maxDuration (300 s)
+const DEFAULT_STAGE_TIMEOUT_MS = 240_000; // 4 minutes — safe below min task maxDuration (300 s)
 
 type ProviderResult<T> = {
   data: T;
@@ -41,7 +40,6 @@ export class ProviderCallError extends Error {
 export type ReasoningEffort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface CompletionOptions<T extends z.ZodType> {
-  cachedSystemPrompt?: string;
   systemPrompt: string;
   userPrompt: string;
   schema?: T;
@@ -59,51 +57,22 @@ export interface CompletionOptions<T extends z.ZodType> {
   };
   /** External abort signal (e.g., client disconnect). Combined with stage timeout. */
   signal?: AbortSignal;
-}
-
-export function joinSystemPrompts(...blocks: Array<string | undefined>): string {
-  return blocks
-    .map((block) => block?.trim() ?? "")
-    .filter(Boolean)
-    .join("\n\n");
+  /** Per-call timeout in ms. Overrides DEFAULT_STAGE_TIMEOUT_MS (240s default). */
+  timeoutMs?: number;
 }
 
 export function buildAnthropicSystemPrompt(
-  cachedSystemPrompt: string | undefined,
   systemPrompt: string,
   cacheSystemPrompt?: boolean,
-):
-  | string
-  | Array<
-      | { type: "text"; text: string }
-      | { type: "text"; text: string; cache_control: { type: "ephemeral" } }
-    > {
-  const normalizedCachedPrompt = cachedSystemPrompt ?? "";
-  const normalizedSystemPrompt = systemPrompt;
-
-  if (cacheSystemPrompt && normalizedCachedPrompt) {
-    const promptBlocks: Array<
-      | { type: "text"; text: string }
-      | { type: "text"; text: string; cache_control: { type: "ephemeral" } }
-    > = [
-      {
-        type: "text",
-        text: normalizedCachedPrompt,
-        cache_control: { type: "ephemeral" },
-      },
-    ];
-
-    if (normalizedSystemPrompt) {
-      promptBlocks.push({
-        type: "text",
-        text: normalizedSystemPrompt,
-      });
-    }
-
-    return promptBlocks;
-  }
-
-  return joinSystemPrompts(normalizedCachedPrompt, normalizedSystemPrompt);
+): string | Array<{ type: "text"; text: string; cache_control: { type: "ephemeral" } }> {
+  if (!cacheSystemPrompt || !systemPrompt) return systemPrompt;
+  return [
+    {
+      type: "text",
+      text: systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
 }
 
 export interface CompletionResult<T> {
@@ -302,7 +271,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
           schema: jsonSchema as Record<string, unknown>,
         },
       },
-    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
@@ -339,7 +308,7 @@ async function completeWithOpenAI<T extends z.ZodType>(
       ...(reasoningActive
         ? { reasoning_effort: effortConfig.reasoningEffort } as Record<string, unknown>
         : {}),
-    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS) });
 
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
@@ -375,7 +344,6 @@ async function completeWithOpenAI<T extends z.ZodType>(
 }
 
 async function completeWithAnthropic<T extends z.ZodType>(
-  cachedSystemPrompt: string | undefined,
   systemPrompt: string,
   userPrompt: string,
   model: string,
@@ -387,11 +355,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
   signal?: AbortSignal,
 ): Promise<ProviderResult<z.infer<T>>> {
   const client = getAnthropicClient();
-  const systemParam = buildAnthropicSystemPrompt(
-    cachedSystemPrompt,
-    systemPrompt,
-    cacheSystemPrompt,
-  );
+  const systemParam = buildAnthropicSystemPrompt(systemPrompt, cacheSystemPrompt);
 
   if (schema) {
     // Use tool_use for structured output. Anthropic rejects many JSON Schema
@@ -425,7 +389,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
         },
       ],
       tool_choice: { type: "tool" as const, name: "respond" },
-    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS) });
     const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -470,7 +434,7 @@ async function completeWithAnthropic<T extends z.ZodType>(
         : !ANTHROPIC_MODELS_WITHOUT_TEMPERATURE.has(model) && temperature !== undefined
           ? { temperature }
           : {}),
-    }, { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) });
+    }, { signal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS) });
     const response = await stream.finalMessage();
 
     const promptTokens = response.usage?.input_tokens ?? 0;
@@ -531,7 +495,7 @@ async function completeWithGoogle<T extends z.ZodType>(
         systemInstruction: systemPrompt,
         temperature,
         maxOutputTokens: maxTokens,
-        abortSignal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS),
+        abortSignal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS),
         responseMimeType: "application/json",
         responseSchema: jsonSchema as Record<string, unknown>,
         ...(effortConfig.thinkingBudget
@@ -590,7 +554,7 @@ async function completeWithGoogle<T extends z.ZodType>(
         systemInstruction: systemPrompt,
         temperature,
         maxOutputTokens: maxTokens,
-        abortSignal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS),
+        abortSignal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS),
         ...(effortConfig.thinkingBudget
           ? { thinkingConfig: { thinkingBudget: effortConfig.thinkingBudget } }
           : {}),
@@ -695,7 +659,7 @@ async function completeWithDeepSeekStructured<T extends z.ZodType>(
 
     const response = (await deepseekClient.chat.completions.create(
       params,
-      { signal: signal ?? AbortSignal.timeout(STAGE_TIMEOUT_MS) },
+      { signal: signal ?? AbortSignal.timeout(DEFAULT_STAGE_TIMEOUT_MS) },
     )) as OpenAI.ChatCompletion;
 
     promptTokens = response.usage?.prompt_tokens ?? 0;
@@ -780,7 +744,6 @@ export async function generateCompletion<T extends z.ZodType>(
   options: CompletionOptions<T>,
 ): Promise<CompletionResult<z.infer<T>>> {
   const {
-    cachedSystemPrompt,
     systemPrompt,
     userPrompt,
     schema,
@@ -789,21 +752,21 @@ export async function generateCompletion<T extends z.ZodType>(
     maxTokens,
     effort,
     signal: externalSignal,
+    timeoutMs,
   } = options;
   requireModelDefinition(model);
 
   const startTime = performance.now();
   const provider = getProviderForModel(model);
   const effortConfig = mapEffort(effort, provider);
+  const effectiveTimeout = timeoutMs ?? DEFAULT_STAGE_TIMEOUT_MS;
 
-  // Combine external signal (e.g. client disconnect) with stage timeout
   const signal = externalSignal
-    ? AbortSignal.any([externalSignal, AbortSignal.timeout(STAGE_TIMEOUT_MS)])
-    : undefined;
+    ? AbortSignal.any([externalSignal, AbortSignal.timeout(effectiveTimeout)])
+    : AbortSignal.timeout(effectiveTimeout);
 
-  const fullSystemPrompt = joinSystemPrompts(cachedSystemPrompt, systemPrompt);
   const messages: Array<{ role: "system" | "user"; content: string }> = [
-    { role: "system", content: fullSystemPrompt },
+    { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
 
@@ -813,7 +776,6 @@ export async function generateCompletion<T extends z.ZodType>(
     switch (provider) {
       case "anthropic":
         result = await completeWithAnthropic(
-          cachedSystemPrompt,
           systemPrompt,
           userPrompt,
           model,
@@ -868,10 +830,6 @@ export async function generateCompletion<T extends z.ZodType>(
       durationMs,
     };
   } catch (error) {
-    console.error(
-      "[generateCompletion] Unexpected error:",
-      error instanceof Error ? sanitizeError(error) : "Unknown error",
-    );
     throw error;
   }
 }

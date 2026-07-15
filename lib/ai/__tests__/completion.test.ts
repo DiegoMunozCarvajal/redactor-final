@@ -4,7 +4,6 @@ import {
   mapEffort,
   normalizePlainTextContent,
   buildAnthropicSystemPrompt,
-  joinSystemPrompts,
   getErrorMessage,
 } from "@/lib/ai/completion";
 
@@ -198,69 +197,32 @@ describe("normalizePlainTextContent", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildAnthropicSystemPrompt", () => {
-  it("returns joined string without caching", () => {
-    const result = buildAnthropicSystemPrompt("cached", "system");
-    expect(typeof result).toBe("string");
-    expect(result).toBe("cached\n\nsystem");
+  it("returns the logged system message unchanged when caching is off", () => {
+    expect(buildAnthropicSystemPrompt("system")).toBe("system");
   });
 
-  it("returns joined string when cachedSystemPrompt is undefined", () => {
-    const result = buildAnthropicSystemPrompt(undefined, "system");
-    expect(result).toBe("system");
-  });
-
-  it("returns structured blocks when cacheSystemPrompt is true", () => {
-    const result = buildAnthropicSystemPrompt("cached content", "system content", true);
-    expect(Array.isArray(result)).toBe(true);
-    if (Array.isArray(result)) {
-      expect(result[0]).toEqual({
+  it("marks the same logged system message cacheable", () => {
+    expect(buildAnthropicSystemPrompt("system", true)).toEqual([
+      {
         type: "text",
-        text: "cached content",
+        text: "system",
         cache_control: { type: "ephemeral" },
-      });
-      expect(result[1]).toEqual({
+      },
+    ]);
+  });
+
+  it("preserves whitespace so the logged message is exactly what the model receives", () => {
+    expect(buildAnthropicSystemPrompt("  system  ")).toBe("  system  ");
+  });
+
+  it("preserves whitespace in cached system prompt", () => {
+    expect(buildAnthropicSystemPrompt("  system  ", true)).toEqual([
+      {
         type: "text",
-        text: "system content",
-      });
-    }
-  });
-
-  it("only includes cache block when cachedSystemPrompt is provided", () => {
-    const result = buildAnthropicSystemPrompt(undefined, "system", true);
-    expect(typeof result).toBe("string");
-    expect(result).toBe("system");
-  });
-
-  it("trims whitespace from prompts", () => {
-    const result = buildAnthropicSystemPrompt("  cached  ", "  system  ");
-    expect(typeof result).toBe("string");
-    expect(result).toBe("cached\n\nsystem");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// joinSystemPrompts
-// ---------------------------------------------------------------------------
-
-describe("joinSystemPrompts", () => {
-  it("joins blocks with double newlines", () => {
-    expect(joinSystemPrompts("a", "b", "c")).toBe("a\n\nb\n\nc");
-  });
-
-  it("filters out undefined blocks", () => {
-    expect(joinSystemPrompts("a", undefined, "c")).toBe("a\n\nc");
-  });
-
-  it("filters out empty/whitespace blocks", () => {
-    expect(joinSystemPrompts("a", "  ", "c")).toBe("a\n\nc");
-  });
-
-  it("trims whitespace from blocks", () => {
-    expect(joinSystemPrompts(" a ", " b ")).toBe("a\n\nb");
-  });
-
-  it("returns empty string when no blocks", () => {
-    expect(joinSystemPrompts()).toBe("");
+        text: "  system  ",
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
   });
 });
 
