@@ -1,6 +1,8 @@
 import { defineConfig } from "@trigger.dev/sdk";
 import { loadEnvFile } from "./lib/env";
 
+// .env.local takes priority (Next.js convention), .env is fallback
+loadEnvFile(".env.local");
 loadEnvFile(".env");
 
 const projectRef = process.env.TRIGGER_PROJECT_REF;
