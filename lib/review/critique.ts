@@ -1,4 +1,5 @@
 import { executeVersionedPrompt } from '@/lib/prompts/executor';
+import { serializePromptText } from '@/lib/prompts/placeholder-transform';
 import type { ReasoningEffort } from '@/lib/ai/completion';
 
 // ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ export async function runCritique(
     chapterGenerationId: input.chapterGenerationId,
     markerValues: {
       '{{EDITORIAL_CONTEXT}}': input.editorialContext,
-      '{{CONTENIDO_CAPITULO}}': input.chapterContent,
+      '{{CONTENIDO_CAPITULO}}': serializePromptText(input.chapterContent),
     },
     model: input.model,
     effort: input.effort,

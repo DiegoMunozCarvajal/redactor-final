@@ -6,6 +6,7 @@ import { prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
+import { serializePromptText } from "@/lib/prompts/placeholder-transform";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
@@ -92,7 +93,7 @@ export const generateTemplate = task({
         chapters,
         TEMPLATE_CONCURRENCY,
         async (chapter) => {
-          const capituloFuente = `# ${chapter.title}\n\n${chapter.contentMd}`;
+          const capituloFuente = serializePromptText(`# ${chapter.title}\n\n${chapter.contentMd}`);
 
           const { result } = await executeVersionedPrompt({
             stage: 'template-generation',

@@ -6,12 +6,24 @@
 // (which needs placeholder replacement).  These are pure functions with no
 // module-level dependencies.
 
+/** Shared control-character stripper — single source of truth for
+ *  sanitizeValue and serializePromptText. */
+const CONTROL_CHARACTERS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
+export function stripControlCharacters(value: string): string {
+  return value.replace(CONTROL_CHARACTERS_RE, '');
+}
+
+/** Escape plain untrusted text for safe XML-like prompt insertion.
+ *  Strips control characters, then escapes &, <, >.
+ *  Does NOT escape << / >> — those are placeholder-wrapper syntax,
+ *  not used in review/title/template marker composition. */
+export function serializePromptText(value: string): string {
+  return escapeXmlText(stripControlCharacters(value));
+}
+
 export function sanitizeValue(value: string): string {
-  return value
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-    .replace(/<</g, "‹‹")
-    .replace(/>>/g, "››")
-    .trim();
+  return stripControlCharacters(value).replace(/<</g, "‹‹").replace(/>>/g, "››").trim();
 }
 
 function escapeRegex(str: string): string {

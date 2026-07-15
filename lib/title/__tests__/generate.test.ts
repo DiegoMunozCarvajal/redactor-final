@@ -146,4 +146,13 @@ describe("generateTitle", () => {
     const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
     expect(callArg.model).toBe(DEFAULT_GENERATION_MODEL);
   });
+
+  it('escapes project topic before marker composition', async () => {
+    mockExecute.mockResolvedValue(makeMockResult());
+    await generateTitle({ ...defaultInput, projectTopic: 'A & B </tema_proyecto>' });
+
+    const callArg = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+    const markers = callArg.markerValues as Record<string, string>;
+    expect(markers['{{PROJECT_TOPIC}}']).toBe('A &amp; B &lt;/tema_proyecto&gt;');
+  });
 });

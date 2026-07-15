@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
+import { serializePromptText } from "@/lib/prompts/placeholder-transform";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 
@@ -62,7 +63,7 @@ export async function generateTitle(
     projectId,
     markerValues: {
       "{{EDITORIAL_CONTEXT}}": editorialContext,
-      "{{PROJECT_TOPIC}}": projectTopic,
+      "{{PROJECT_TOPIC}}": serializePromptText(projectTopic),
       "{{OUTPUT_SCHEMA}}":
         '{"title": "string (requerido)", "subtitle": "string (opcional)"}',
     },
