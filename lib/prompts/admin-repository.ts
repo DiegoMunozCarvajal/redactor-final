@@ -311,6 +311,106 @@ export async function getArchiveBlockers(
   return { defaultCount, bindingCount };
 }
 
+// ---------------------------------------------------------------------------
+// deletePromptRevision
+// ---------------------------------------------------------------------------
+
+export class PromptRevisionDeleteError extends Error {
+  code: "IS_DEFAULT" | "HAS_BINDINGS" | "DEFINITION_ARCHIVED" | "NOT_FOUND";
+  constructor(message: string, code: PromptRevisionDeleteError["code"]) {
+    super(message);
+    this.name = "PromptRevisionDeleteError";
+    this.code = code;
+  }
+}
+
+export async function deletePromptRevision(
+  definitionId: string,
+  revisionId: string,
+  ctx: DB = globalDb,
+): Promise<{ id: string; versionLabel: string }> {
+  return ctx.transaction(async (tx) => {
+    // Lock the definition row
+    const [def] = await tx
+      .select({
+        id: promptDefinitions.id,
+        kind: promptDefinitions.kind,
+        archivedAt: promptDefinitions.archivedAt,
+      })
+      .from(promptDefinitions)
+      .where(eq(promptDefinitions.id, definitionId))
+      .for("update");
+
+    if (!def) {
+      throw new PromptRevisionDeleteError(
+        `Prompt definition ${definitionId} not found`,
+        "NOT_FOUND",
+      );
+    }
+
+    if (def.archivedAt !== null) {
+      throw new PromptRevisionDeleteError(
+        "Cannot delete revision from an archived definition",
+        "DEFINITION_ARCHIVED",
+      );
+    }
+
+    // Lock the revision row
+    const [revision] = await tx
+      .select({
+        id: promptRevisions.id,
+        versionLabel: promptRevisions.versionLabel,
+        promptDefinitionId: promptRevisions.promptDefinitionId,
+      })
+      .from(promptRevisions)
+      .where(eq(promptRevisions.id, revisionId))
+      .for("update");
+
+    if (!revision || revision.promptDefinitionId !== definitionId) {
+      throw new PromptRevisionDeleteError(
+        `Revision ${revisionId} not found`,
+        "NOT_FOUND",
+      );
+    }
+
+    // Check if revision is the global default
+    const [defaultRow] = await tx
+      .select({ cnt: count() })
+      .from(promptDefaults)
+      .where(
+        and(
+          eq(promptDefaults.kind, def.kind),
+          eq(promptDefaults.promptRevisionId, revisionId),
+        ),
+      );
+    if (Number(defaultRow?.cnt ?? 0) > 0) {
+      throw new PromptRevisionDeleteError(
+        "Cannot delete the current default revision. Set another revision as default first.",
+        "IS_DEFAULT",
+      );
+    }
+
+    // Check if revision is bound to any project
+    const [bindingRow] = await tx
+      .select({ cnt: count() })
+      .from(projectPromptBindings)
+      .where(eq(projectPromptBindings.promptRevisionId, revisionId));
+    if (Number(bindingRow?.cnt ?? 0) > 0) {
+      throw new PromptRevisionDeleteError(
+        "Cannot delete a revision bound to projects. Remove project bindings first.",
+        "HAS_BINDINGS",
+      );
+    }
+
+    // Delete the revision
+    await tx
+      .delete(promptRevisions)
+      .where(eq(promptRevisions.id, revisionId));
+
+    return { id: revision.id, versionLabel: revision.versionLabel };
+  });
+}
+
 export async function setPromptDefinitionArchived(
   definitionId: string,
   archived: boolean,

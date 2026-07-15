@@ -102,7 +102,7 @@ export const llmPromptExecutions = pgTable(
     }),
     stage: text("stage").notNull(),
     promptRevisionId: uuid("prompt_revision_id").references(() => promptRevisions.id, {
-      onDelete: "restrict",
+      onDelete: "set null",
     }),
     chapterPromptRevisionId: uuid("chapter_prompt_revision_id").references(() => promptVersions.id, {
       onDelete: "restrict",

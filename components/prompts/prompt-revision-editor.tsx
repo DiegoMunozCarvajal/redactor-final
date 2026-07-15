@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, GitCompare, AlertTriangle, History } from "lucide-react";
+import { Loader2, Plus, GitCompare, AlertTriangle, History, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { assertPromptMarkers, requiredMarkersByKind } from "@/lib/prompts/contracts";
 import { RevisionDiff } from "@/components/prompts/revision-diff";
@@ -62,6 +62,9 @@ export function PromptRevisionEditor({
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
   const [confirmDefaultRevId, setConfirmDefaultRevId] = useState<string | null>(null);
+  const [detailRevId, setDetailRevId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
 
   const requiredMarkers = requiredMarkersByKind[kind] ?? [];
   const baseRevision = baseRevisionId
@@ -158,6 +161,23 @@ export function PromptRevisionEditor({
     onChanged();
   }
 
+  async function deleteRevision(revisionId: string) {
+    setDeleting(true);
+    const res = await fetch(
+      `/api/prompt-definitions/${definitionId}/revisions/${revisionId}`,
+      { method: "DELETE" },
+    );
+    if (res.ok) {
+      setDetailRevId(null);
+      onChanged();
+      toast.success("Revisión eliminada");
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? "Error al eliminar revisión");
+    }
+    setDeleting(false);
+  }
+
   const leftRev = compareLeft ? revisions.find((r) => r.id === compareLeft) : null;
   const rightRev = compareRight ? revisions.find((r) => r.id === compareRight) : null;
 
@@ -169,7 +189,21 @@ export function PromptRevisionEditor({
           Revisiones
         </h3>
         {!archived && (
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={compareMode ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => {
+                setCompareMode(!compareMode);
+                setCompareLeft(null);
+                setCompareRight(null);
+                setShowCompare(false);
+              }}
+            >
+              <GitCompare className="h-4 w-4 mr-1" />
+              {compareMode ? "Cancelar comparación" : "Comparar"}
+            </Button>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button size="sm" onClick={() => openFromRevision(null)}>
                 <Plus className="h-4 w-4 mr-1" />Crear revisión
@@ -278,6 +312,7 @@ export function PromptRevisionEditor({
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         )}
       </div>
 
@@ -298,14 +333,18 @@ export function PromptRevisionEditor({
                   isSelected ? "ring-2 ring-brand-500" : "hover:bg-muted/50"
                 }`}
                 onClick={() => {
-                  if (!compareLeft) setCompareLeft(rev.id);
-                  else if (!compareRight && rev.id !== compareLeft) {
-                    setCompareRight(rev.id);
-                    setShowCompare(true);
+                  if (compareMode) {
+                    if (!compareLeft) setCompareLeft(rev.id);
+                    else if (!compareRight && rev.id !== compareLeft) {
+                      setCompareRight(rev.id);
+                      setShowCompare(true);
+                    } else {
+                      setCompareLeft(rev.id);
+                      setCompareRight(null);
+                      setShowCompare(false);
+                    }
                   } else {
-                    setCompareLeft(rev.id);
-                    setCompareRight(null);
-                    setShowCompare(false);
+                    setDetailRevId(rev.id);
                   }
                 }}
               >
@@ -433,6 +472,143 @@ export function PromptRevisionEditor({
               Cerrar
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail dialog */}
+      <Dialog
+        open={detailRevId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailRevId(null);
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {(() => {
+            const rev = revisions.find((r) => r.id === detailRevId);
+            if (!rev) return null;
+            const isLegacy = rev.configuration?.legacyNonExecutable === true;
+            const isCurrentDefault = rev.id === currentDefaultRevisionId;
+            return (
+              <div className="space-y-4">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Eye className="h-5 w-5" />
+                    v{rev.versionLabel}
+                    <span className="text-sm text-muted-foreground font-normal">
+                      (#{rev.revisionNumber})
+                    </span>
+                    {isCurrentDefault && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-auto">
+                        Default
+                      </Badge>
+                    )}
+                    {isLegacy && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                        Histórica — no ejecutable
+                      </span>
+                    )}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Creada el {rev.createdAt.slice(0, 10)}
+                    {rev.executionCount > 0 && ` · ${rev.executionCount} ejecuciones`}
+                    {rev.bindingCount > 0 && ` · ${rev.bindingCount} proyectos`}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">System Template</Label>
+                  <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
+                    {rev.systemTemplate}
+                  </pre>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">User Template</Label>
+                  <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
+                    {rev.userTemplate}
+                  </pre>
+                </div>
+
+                {rev.requiredMarkers.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Markers requeridos</Label>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {rev.requiredMarkers.map((m) => (
+                        <code key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                          {m}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {rev.outputContract && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Output Contract</Label>
+                    <p className="text-sm font-mono mt-1">{rev.outputContract}</p>
+                  </div>
+                )}
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">Configuración</Label>
+                  <pre className="text-xs bg-muted p-2 rounded mt-1 font-mono max-h-40 overflow-y-auto">
+                    {JSON.stringify(rev.configuration, null, 2)}
+                  </pre>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div className="flex gap-2">
+                    {!archived && !isLegacy && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          openFromRevision(rev);
+                          setDetailRevId(null);
+                          setCreateOpen(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Crear desde v{rev.versionLabel}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setDetailRevId(null);
+                        setCompareMode(true);
+                        setCompareLeft(rev.id);
+                        setCompareRight(null);
+                        setShowCompare(false);
+                      }}
+                    >
+                      <GitCompare className="h-4 w-4 mr-1" />
+                      Comparar
+                    </Button>
+                  </div>
+                  {!archived && !isCurrentDefault && rev.bindingCount === 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleting}
+                      onClick={() => {
+                        if (deleting) return;
+                        deleteRevision(rev.id);
+                      }}
+                    >
+                      {deleting ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 mr-1" />
+                      )}
+                      Eliminar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
