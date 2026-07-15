@@ -451,12 +451,6 @@ export function PromptRevisionEditor({
                     </div>
                   )}
 
-                  {rev.outputContract && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Output Contract</Label>
-                      <p className="text-sm font-mono mt-1">{rev.outputContract}</p>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t">
