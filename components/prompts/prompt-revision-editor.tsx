@@ -390,14 +390,14 @@ export function PromptRevisionEditor({
           if (!open) setDetailRevId(null);
         }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           {(() => {
             const rev = revisions.find((r) => r.id === detailRevId);
             if (!rev) return null;
             const isLegacy = rev.configuration?.legacyNonExecutable === true;
             const isCurrentDefault = rev.id === currentDefaultRevisionId;
             return (
-              <div className="space-y-4">
+              <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <Eye className="h-5 w-5" />
@@ -423,39 +423,41 @@ export function PromptRevisionEditor({
                   </DialogDescription>
                 </DialogHeader>
 
-                <div>
-                  <Label className="text-xs text-muted-foreground">System Template</Label>
-                  <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
-                    {rev.systemTemplate}
-                  </pre>
-                </div>
-
-                <div>
-                  <Label className="text-xs text-muted-foreground">User Template</Label>
-                  <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
-                    {rev.userTemplate}
-                  </pre>
-                </div>
-
-                {rev.requiredMarkers.length > 0 && (
+                <div className="overflow-y-auto flex-1 space-y-4 pr-1">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Markers requeridos</Label>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {rev.requiredMarkers.map((m) => (
-                        <code key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                          {m}
-                        </code>
-                      ))}
+                    <Label className="text-xs text-muted-foreground">System Template</Label>
+                    <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
+                      {rev.systemTemplate}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-muted-foreground">User Template</Label>
+                    <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-60 overflow-y-auto mt-1 font-mono">
+                      {rev.userTemplate}
+                    </pre>
+                  </div>
+
+                  {rev.requiredMarkers.length > 0 && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Markers requeridos</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {rev.requiredMarkers.map((m) => (
+                          <code key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                            {m}
+                          </code>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {rev.outputContract && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Output Contract</Label>
-                    <p className="text-sm font-mono mt-1">{rev.outputContract}</p>
-                  </div>
-                )}
+                  {rev.outputContract && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Output Contract</Label>
+                      <p className="text-sm font-mono mt-1">{rev.outputContract}</p>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="flex gap-2">
@@ -493,7 +495,7 @@ export function PromptRevisionEditor({
                     </Button>
                   )}
                 </div>
-              </div>
+              </>
             );
           })()}
         </DialogContent>
