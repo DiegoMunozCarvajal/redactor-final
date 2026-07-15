@@ -96,6 +96,27 @@ describe("runtime prompt transparency", () => {
     }
   });
 
+  it("has no production reads of legacy prompt storage", () => {
+    const violations = rg(
+      "from\\\\(promptLibrary|metaPrompts|generationSystemPrompts\\\\)|" +
+        "projects\\\\.(assemblyPromptId|generationSystemPromptId)|" +
+        "FROM prompt_library|FROM meta_prompts|FROM generation_system_prompts",
+      ["app", "components", "lib", "trigger", "scripts"],
+    )
+      .split("\n")
+      .filter(Boolean)
+      .filter((line) => !line.includes("__tests__"))
+      .filter(
+        (line) =>
+          !line.includes("prompt-transparency.test.ts") &&
+          !line.includes("migrations/"),
+      );
+    expect(
+      violations,
+      "Legacy prompt storage reads in production:\n" + violations.join("\n"),
+    ).toEqual([]);
+  });
+
   it("legacy prompt APIs return deprecation guidance", () => {
     // Verify legacy generationSystemPromptId writes are rejected
     const routeSource = readFileSync(
