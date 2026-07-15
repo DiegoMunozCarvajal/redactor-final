@@ -39,6 +39,7 @@ const CHAPTER_2_ID = TEST_CHAPTER_2_ID;
 const FOREIGN_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 function makeMockResult(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper that accepts partial mock data
   bundle?: any,
   executionId?: string,
 ) {
