@@ -98,39 +98,43 @@ export async function PUT(
   }
 
   // Lock the definition row before any validation so a concurrent archive
-  // cannot commit between a stale read and the upsert.  The lock serialises
-  // with setPromptDefinitionArchived which also locks FOR UPDATE.
+  // cannot commit between a stale read and the upsert.  Only lock
+  // promptDefinitions — revisions are immutable, and locking both tables
+  // in a different order than the archive path would risk deadlocks.
   try {
     await db.transaction(async (tx) => {
-      // 1. Lock the definition row first — acquire FOR UPDATE before any read
-      const revisionRow = await tx
-        .select({
-          definitionId: promptRevisions.promptDefinitionId,
-          archivedAt: promptDefinitions.archivedAt,
-        })
+      // 1. Read the definition id from the revision (no lock needed — immutable)
+      const [rev] = await tx
+        .select({ definitionId: promptRevisions.promptDefinitionId })
         .from(promptRevisions)
-        .innerJoin(
-          promptDefinitions,
-          eq(promptRevisions.promptDefinitionId, promptDefinitions.id),
-        )
         .where(eq(promptRevisions.id, parsed.data.promptRevisionId))
-        .for("update")
         .limit(1);
 
-      if (revisionRow.length === 0) {
+      if (!rev) {
         throw new PromptValidationError("Prompt revision not found");
       }
-      if (revisionRow[0].archivedAt !== null) {
+
+      // 2. Lock only the definition row — same order as archive path
+      const [def] = await tx
+        .select({ id: promptDefinitions.id, archivedAt: promptDefinitions.archivedAt })
+        .from(promptDefinitions)
+        .where(eq(promptDefinitions.id, rev.definitionId))
+        .for("update");
+
+      if (!def) {
+        throw new PromptValidationError("Prompt definition not found");
+      }
+      if (def.archivedAt !== null) {
         throw new PromptValidationError("Prompt definition is archived");
       }
 
-      // 2. Full validation (kind match, non-executable, markers) under lock
+      // 3. Full validation (kind match, non-executable, markers) under lock
       await resolvePromptRevision(
         { kind: kind as PromptKind, runRevisionId: parsed.data.promptRevisionId },
         tx,
       );
 
-      // 3. Upsert
+      // 4. Upsert
       await tx
         .insert(promptDefaults)
         .values({
