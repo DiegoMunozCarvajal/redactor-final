@@ -187,7 +187,43 @@ Docker via Colima. Workarounds applied:
 
 ## Environment Variables
 
-Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `EXA_API_KEY`, `TAVILY_API_KEY`, `COHERE_API_KEY`, `TRIGGER_SECRET_KEY`.
+### Resolution Order (Next.js)
+
+```
+.env.local > .env.development/.env.production > .env
+```
+
+`.env.local` siempre gana. No se commitea. `.env` es fallback con defaults seguros (sin secrets reales).
+
+### File Purposes
+
+| Archivo        | Git           | Contenido                                                |
+| -------------- | ------------- | -------------------------------------------------------- |
+| `.env.example` | ✅ commiteado | Template con placeholders, secciones local/remoto        |
+| `.env`         | ❌ gitignored | Defaults no-sensibles (localhost, keys vacías)           |
+| `.env.local`   | ❌ gitignored | **Activo** — secrets reales. Creado desde `.env.example` |
+
+### Local vs Remote
+
+Para desarrollo local, `.env.local` debe apuntar a `127.0.0.1`:
+
+```
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54321"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="<valor de supabase status>"
+SUPABASE_SERVICE_ROLE_KEY="<valor de supabase status>"
+```
+
+Para producción (Vercel), `.env.local` apunta a Supabase remoto:
+
+```
+DATABASE_URL="postgresql://postgres.<ref>:<pwd>@aws-1-us-west-1.pooler.supabase.com:6543/postgres"
+NEXT_PUBLIC_SUPABASE_URL="https://<ref>.supabase.co"
+```
+
+**Migration scripts** cargan `.env.local` → `.env` (mismo orden que Next.js). `db:migrate:local` ignora ambos — hardcodea `127.0.0.1:54322`.
+
+Required vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `EXA_API_KEY`, `TAVILY_API_KEY`, `COHERE_API_KEY`, `TRIGGER_SECRET_KEY`.
 
 ## Removed from v2
 
