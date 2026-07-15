@@ -7,9 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, GitCompare, AlertTriangle, History } from "lucide-react";
 import { toast } from "sonner";
 import { assertPromptMarkers, requiredMarkersByKind } from "@/lib/prompts/contracts";
+import { RevisionDiff } from "@/components/prompts/revision-diff";
 import type { PromptKind } from "@/lib/db/schema/prompt-registry";
 
 export interface RevisionSummary {
@@ -23,34 +25,46 @@ export interface RevisionSummary {
   configuration: Record<string, unknown>;
   createdAt: string;
   createdBy: string | null;
+  isDefault: boolean;
+  bindingCount: number;
+  executionCount: number;
 }
 
 export interface PromptRevisionEditorProps {
   definitionId: string;
   definitionName: string;
   kind: PromptKind;
+  archived: boolean;
+  currentDefaultRevisionId?: string | null;
   revisions: RevisionSummary[];
-  onRevisionCreated(): void;
+  onChanged(): void;
 }
 
 export function PromptRevisionEditor({
   definitionId,
   definitionName,
   kind,
+  archived,
+  currentDefaultRevisionId,
   revisions,
-  onRevisionCreated,
+  onChanged,
 }: PromptRevisionEditorProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [baseRevisionId, setBaseRevisionId] = useState<string | null>(null);
   const [versionLabel, setVersionLabel] = useState("");
   const [systemTemplate, setSystemTemplate] = useState("");
   const [userTemplate, setUserTemplate] = useState("");
   const [outputContract, setOutputContract] = useState("");
+  const [configurationJson, setConfigurationJson] = useState("{}");
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
 
   const requiredMarkers = requiredMarkersByKind[kind] ?? [];
+  const baseRevision = baseRevisionId
+    ? revisions.find((r) => r.id === baseRevisionId)
+    : null;
 
   function validateMarkers(): string | null {
     try {
@@ -61,8 +75,43 @@ export function PromptRevisionEditor({
     }
   }
 
+  function parseConfiguration(): Record<string, unknown> | null {
+    try {
+      const parsed: unknown = JSON.parse(configurationJson);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const configValid = parseConfiguration() !== null;
+  const markerError = systemTemplate || userTemplate ? validateMarkers() : null;
+  const canSave =
+    versionLabel.trim() && !markerError && configValid;
+
+  function openFromRevision(base: RevisionSummary | null) {
+    setBaseRevisionId(base?.id ?? null);
+    if (base) {
+      setVersionLabel("");
+      setSystemTemplate(base.systemTemplate);
+      setUserTemplate(base.userTemplate);
+      setOutputContract(base.outputContract ?? "");
+      setConfigurationJson(
+        JSON.stringify(base.configuration ?? {}, null, 2),
+      );
+    } else {
+      setVersionLabel("");
+      setSystemTemplate("");
+      setUserTemplate("");
+      setOutputContract("");
+      setConfigurationJson("{}");
+    }
+  }
+
   async function createRevision() {
-    if (!versionLabel.trim()) return;
+    if (!canSave) return;
     setCreating(true);
     const res = await fetch(`/api/prompt-definitions/${definitionId}/revisions`, {
       method: "POST",
@@ -72,16 +121,18 @@ export function PromptRevisionEditor({
         systemTemplate,
         userTemplate,
         outputContract: outputContract.trim() || null,
-        configuration: {},
+        configuration: parseConfiguration() ?? {},
       }),
     });
     if (res.ok) {
       setCreateOpen(false);
+      setBaseRevisionId(null);
       setVersionLabel("");
       setSystemTemplate("");
       setUserTemplate("");
       setOutputContract("");
-      onRevisionCreated();
+      setConfigurationJson("{}");
+      onChanged();
       toast.success("Revisión creada");
     } else {
       const err = await res.json().catch(() => ({}));
@@ -90,20 +141,23 @@ export function PromptRevisionEditor({
     setCreating(false);
   }
 
-  function initFromLatest() {
-    const latest = revisions[0];
-    if (latest) {
-      setVersionLabel("");
-      setSystemTemplate(latest.systemTemplate);
-      setUserTemplate(latest.userTemplate);
-      setOutputContract(latest.outputContract ?? "");
+  async function setDefault(revisionId: string) {
+    const res = await fetch(`/api/prompt-defaults/${kind}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promptRevisionId: revisionId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error(body.error ?? "No se pudo cambiar el default");
+      return;
     }
+    toast.success("Default actualizado");
+    onChanged();
   }
 
   const leftRev = compareLeft ? revisions.find((r) => r.id === compareLeft) : null;
   const rightRev = compareRight ? revisions.find((r) => r.id === compareRight) : null;
-
-  const markerError = systemTemplate || userTemplate ? validateMarkers() : null;
 
   return (
     <div className="space-y-4">
@@ -112,91 +166,117 @@ export function PromptRevisionEditor({
           <History className="h-5 w-5" />
           Revisiones
         </h3>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" onClick={initFromLatest}>
-              <Plus className="h-4 w-4 mr-1" />Crear revisión
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Nueva revisión — {definitionName}</DialogTitle>
-              <DialogDescription>
-                Las revisiones son inmutables. Cada cambio crea una nueva revisión.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="ver">Versión</Label>
-                <Input
-                  id="ver"
-                  value={versionLabel}
-                  onChange={(e) => setVersionLabel(e.target.value)}
-                  placeholder="1.0"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="sys">System Template</Label>
-                <Textarea
-                  id="sys"
-                  value={systemTemplate}
-                  onChange={(e) => setSystemTemplate(e.target.value)}
-                  className="font-mono text-xs min-h-[200px]"
-                  placeholder="Eres un escritor..."
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="usr">User Template</Label>
-                <Textarea
-                  id="usr"
-                  value={userTemplate}
-                  onChange={(e) => setUserTemplate(e.target.value)}
-                  className="font-mono text-xs min-h-[150px]"
-                  placeholder="{{EDITORIAL_CONTEXT}} {{ASSEMBLY_PLAN}}..."
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="oc">Output Contract (opcional)</Label>
-                <Input
-                  id="oc"
-                  value={outputContract}
-                  onChange={(e) => setOutputContract(e.target.value)}
-                  placeholder="assembly-plan-v1"
-                />
-              </div>
-
-              <div>
-                <Label>Markers requeridos</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {requiredMarkers.map((m) => (
-                    <code key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                      {m}
-                    </code>
-                  ))}
-                </div>
-              </div>
-
-              {markerError && (
-                <div className="flex items-center gap-2 text-sm text-destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  {markerError}
-                </div>
-              )}
-
-              <Button
-                onClick={createRevision}
-                disabled={creating || !versionLabel.trim() || !!markerError}
-                className="w-full"
-              >
-                {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Crear revisión inmutable
+        {!archived && (
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" onClick={() => openFromRevision(null)}>
+                <Plus className="h-4 w-4 mr-1" />Crear revisión
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nueva revisión — {definitionName}</DialogTitle>
+                <DialogDescription>
+                  Las revisiones son inmutables. Cada cambio crea una nueva revisión.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="ver">Versión</Label>
+                  <Input
+                    id="ver"
+                    value={versionLabel}
+                    onChange={(e) => setVersionLabel(e.target.value)}
+                    placeholder="1.0"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="sys">System Template</Label>
+                  <Textarea
+                    id="sys"
+                    value={systemTemplate}
+                    onChange={(e) => setSystemTemplate(e.target.value)}
+                    className="font-mono text-xs min-h-[200px]"
+                    placeholder="Eres un escritor..."
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="usr">User Template</Label>
+                  <Textarea
+                    id="usr"
+                    value={userTemplate}
+                    onChange={(e) => setUserTemplate(e.target.value)}
+                    className="font-mono text-xs min-h-[150px]"
+                    placeholder="{{EDITORIAL_CONTEXT}} {{ASSEMBLY_PLAN}}..."
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="oc">Output Contract (opcional)</Label>
+                  <Input
+                    id="oc"
+                    value={outputContract}
+                    onChange={(e) => setOutputContract(e.target.value)}
+                    placeholder="assembly-plan-v1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="cfg">Configuración JSON</Label>
+                  <Textarea
+                    id="cfg"
+                    value={configurationJson}
+                    onChange={(e) => setConfigurationJson(e.target.value)}
+                    className="font-mono text-xs min-h-[100px]"
+                    placeholder='{"temperature": 0}'
+                  />
+                  {!configValid && configurationJson.trim() && (
+                    <p className="text-xs text-destructive mt-1">JSON inválido</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Markers requeridos</Label>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {requiredMarkers.map((m) => (
+                      <code key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                        {m}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+
+                {markerError && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    {markerError}
+                  </div>
+                )}
+
+                {baseRevision && (
+                  <div className="space-y-2">
+                    <Label>Cambios desde v{baseRevision.versionLabel}</Label>
+                    <RevisionDiff
+                      before={`${baseRevision.systemTemplate}\n\n---\n\n${baseRevision.userTemplate}`}
+                      after={`${systemTemplate}\n\n---\n\n${userTemplate}`}
+                    />
+                  </div>
+                )}
+
+                <Button
+                  onClick={createRevision}
+                  disabled={creating || !canSave}
+                  className="w-full"
+                >
+                  {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Crear revisión inmutable
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Revisions list */}
@@ -208,6 +288,7 @@ export function PromptRevisionEditor({
             const isLegacy = rev.configuration?.legacyNonExecutable === true;
             const isSelected =
               compareLeft === rev.id || compareRight === rev.id;
+            const isCurrentDefault = rev.id === currentDefaultRevisionId;
             return (
               <Card
                 key={rev.id}
@@ -238,6 +319,11 @@ export function PromptRevisionEditor({
                           Histórica — no ejecutable
                         </span>
                       )}
+                      {isCurrentDefault && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-auto">
+                          Default
+                        </Badge>
+                      )}
                     </CardTitle>
                     <span className="text-xs text-muted-foreground">
                       {rev.createdAt.slice(0, 10)}
@@ -247,6 +333,47 @@ export function PromptRevisionEditor({
                 <CardContent className="py-1 px-3">
                   <div className="text-xs text-muted-foreground line-clamp-2 font-mono">
                     {rev.systemTemplate.slice(0, 200)}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {rev.executionCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {rev.executionCount} ejec.
+                      </span>
+                    )}
+                    {rev.bindingCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {rev.bindingCount} proyectos
+                      </span>
+                    )}
+                    {!archived && !isLegacy && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px] px-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFromRevision(rev);
+                            setCreateOpen(true);
+                          }}
+                        >
+                          Crear desde v{rev.versionLabel}
+                        </Button>
+                        {!isCurrentDefault && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] px-1.5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDefault(rev.id);
+                            }}
+                          >
+                            Set default
+                          </Button>
+                        )}
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>

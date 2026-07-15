@@ -100,3 +100,86 @@ describe('prompt kind grouping', () => {
     expect(typeof mod.PromptKindNav).toBe('function');
   });
 });
+
+describe('RevisionDiff', () => {
+  it('marks removed and added draft lines', async () => {
+    const React = await import('react');
+    const { render, screen } = await import('@testing-library/react');
+    const { RevisionDiff } = await import('@/components/prompts/revision-diff');
+    render(
+      React.createElement(RevisionDiff, {
+        before: 'línea anterior\n',
+        after: 'línea nueva\n',
+      }),
+    );
+    expect(screen.getByText('línea anterior').getAttribute('data-change')).toBe(
+      'removed',
+    );
+    expect(screen.getByText('línea nueva').getAttribute('data-change')).toBe(
+      'added',
+    );
+  });
+});
+
+describe('PromptRevisionEditor create from base', () => {
+  it('creates a draft from the selected revision, not always latest', async () => {
+    const { fireEvent, render, screen } = await import('@testing-library/react');
+    const React = await import('react');
+    const { PromptRevisionEditor } = await import(
+      '@/components/prompts/prompt-revision-editor'
+    );
+
+    render(
+      React.createElement(PromptRevisionEditor, {
+        definitionId: 'def-1',
+        definitionName: 'Assembly',
+        kind: 'assembly',
+        archived: false,
+        currentDefaultRevisionId: 'rev-2',
+        revisions: [
+          {
+            id: 'rev-2',
+            revisionNumber: 2,
+            versionLabel: '1.1',
+            systemTemplate: 'latest',
+            userTemplate: 'latest user',
+            requiredMarkers: [],
+            outputContract: null,
+            configuration: {},
+            createdAt: '2026-07-14',
+            createdBy: null,
+            isDefault: true,
+            bindingCount: 0,
+            executionCount: 0,
+          },
+          {
+            id: 'rev-1',
+            revisionNumber: 1,
+            versionLabel: '1.0',
+            systemTemplate: 'chosen base',
+            userTemplate: 'chosen user',
+            requiredMarkers: [],
+            outputContract: null,
+            configuration: { temperature: 0 },
+            createdAt: '2026-07-13',
+            createdBy: null,
+            isDefault: false,
+            bindingCount: 0,
+            executionCount: 0,
+          },
+        ],
+        onChanged: vi.fn(),
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Crear desde v1.0' }));
+    expect(
+      (screen.getByLabelText('System Template') as HTMLTextAreaElement).value,
+    ).toBe('chosen base');
+    expect(
+      (screen.getByLabelText('User Template') as HTMLTextAreaElement).value,
+    ).toBe('chosen user');
+    expect(
+      (screen.getByLabelText('Configuración JSON') as HTMLTextAreaElement).value,
+    ).toBe('{\n  "temperature": 0\n}');
+  });
+});
