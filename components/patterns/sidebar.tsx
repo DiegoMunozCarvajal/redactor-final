@@ -12,8 +12,6 @@ import {
   Columns2,
   ChevronRight,
   FileText,
-  Wand2,
-  Puzzle,
   Sparkles,
 } from "lucide-react";
 import { useDensity } from "@/lib/hooks/use-density";
@@ -33,9 +31,7 @@ interface NavItem {
 const STATIC_ITEMS: NavItem[] = [
   { href: "/projects", label: "Projects", icon: BookOpen },
   { href: "/templates", label: "Templates", icon: Layers },
-  { href: "/meta-prompts", label: "Meta-Prompts", icon: Wand2 },
-  { href: "/prompt-library", label: "Prompt Library", icon: Puzzle },
-  { href: "/generation", label: "Generation", icon: Sparkles },
+  { href: "/generation", label: "Prompts", icon: Sparkles },
 ];
 
 function getStoredCollapsed(): boolean {
