@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+const root = new URL('../..', import.meta.url).pathname;
 
 // Mock the DB and auth modules so we can test route handler signatures
 const { mockDb } = vi.hoisted(() => ({
@@ -86,5 +89,27 @@ describe('prompt revision input validation', () => {
       configuration: {},
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('canonical API route contracts', () => {
+  it('definition list delegates to bulk admin repository', () => {
+    const source = readFileSync(`${root}/app/api/prompt-definitions/route.ts`, 'utf8');
+    expect(source).toContain('listPromptDefinitionSummaries');
+    expect(source).not.toContain('definitions.map(async');
+  });
+
+  it('definition detail exposes archive conflict counts', () => {
+    const source = readFileSync(`${root}/app/api/prompt-definitions/[id]/route.ts`, 'utf8');
+    expect(source).toContain('PromptArchiveConflictError');
+    expect(source).toContain('defaultCount');
+    expect(source).toContain('bindingCount');
+    expect(source).toContain('status: 409');
+  });
+
+  it('revision duplicate labels return conflict', () => {
+    const source = readFileSync(`${root}/app/api/prompt-definitions/[id]/revisions/route.ts`, 'utf8');
+    expect(source).toContain('23505');
+    expect(source).toContain('status: 409');
   });
 });

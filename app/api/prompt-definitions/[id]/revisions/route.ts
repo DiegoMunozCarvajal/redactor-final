@@ -52,6 +52,12 @@ export async function POST(
     const revision = await createPromptRevision(id, parsed.data, admin.user.id);
     return NextResponse.json(revision, { status: 201 });
   } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return NextResponse.json(
+        { error: "versionLabel already exists for this definition" },
+        { status: 409 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("not found")) {
       return NextResponse.json({ error: message }, { status: 404 });

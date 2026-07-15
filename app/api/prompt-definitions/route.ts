@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { promptDefinitions, promptRevisions, promptKindValues } from "@/lib/db/schema/prompt-registry";
-import { eq, asc, desc } from "drizzle-orm";
+import { promptKindValues } from "@/lib/db/schema/prompt-registry";
+import type { PromptKind } from "@/lib/db/schema/prompt-registry";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
+import { listPromptDefinitionSummaries } from "@/lib/prompts/admin-repository";
+import { db } from "@/lib/db";
+import { promptDefinitions } from "@/lib/db/schema/prompt-registry";
 
 const createDefinitionSchema = z.object({
   kind: z.enum(promptKindValues),
@@ -13,45 +15,33 @@ const createDefinitionSchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
 });
 
+const archiveViewSchema = z.enum(["active", "archived", "all"]);
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const kind = searchParams.get("kind");
+  const params = new URL(req.url).searchParams;
+  const kind = params.get("kind");
+  const archiveResult = archiveViewSchema.safeParse(params.get("archive") ?? "active");
 
   if (kind && !(promptKindValues as readonly string[]).includes(kind)) {
     return NextResponse.json({ error: `invalid kind: ${kind}` }, { status: 400 });
   }
+  if (!archiveResult.success) {
+    return NextResponse.json(
+      { error: "archive must be active, archived, or all" },
+      { status: 400 },
+    );
+  }
 
-  const base = db.select().from(promptDefinitions).$dynamic();
-  if (kind) base.where(eq(promptDefinitions.kind, kind));
-
-  const definitions = await base.orderBy(asc(promptDefinitions.createdAt)).limit(100);
-
-  // Attach latest revision info
-  const result = await Promise.all(
-    definitions.map(async (def) => {
-      const [latest] = await db
-        .select({
-          id: promptRevisions.id,
-          versionLabel: promptRevisions.versionLabel,
-          revisionNumber: promptRevisions.revisionNumber,
-        })
-        .from(promptRevisions)
-        .where(eq(promptRevisions.promptDefinitionId, def.id))
-        .orderBy(desc(promptRevisions.revisionNumber))
-        .limit(1);
-
-      return {
-        ...def,
-        latestRevision: latest ?? null,
-      };
+  return NextResponse.json(
+    await listPromptDefinitionSummaries({
+      kind: kind as PromptKind | undefined,
+      archive: archiveResult.data,
     }),
   );
-
-  return NextResponse.json(result);
 }
 
 export async function POST(req: NextRequest) {

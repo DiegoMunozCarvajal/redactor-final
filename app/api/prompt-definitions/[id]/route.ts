@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  promptDefinitions,
-  promptRevisions,
-  promptDefaults,
-  projectPromptBindings,
-} from "@/lib/db/schema/prompt-registry";
-import { eq, desc, or, and } from "drizzle-orm";
+import { promptDefinitions } from "@/lib/db/schema/prompt-registry";
+import { eq } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { requireAdmin } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getPromptDefinitionDetail,
+  setPromptDefinitionArchived,
+  PromptArchiveConflictError,
+} from "@/lib/prompts/admin-repository";
 
 const updateDefinitionSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
@@ -28,21 +28,15 @@ export async function GET(
 
   const { id } = await params;
 
-  const [def] = await db
-    .select()
-    .from(promptDefinitions)
-    .where(eq(promptDefinitions.id, id))
-    .limit(1);
-
-  if (!def) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-  const revisions = await db
-    .select()
-    .from(promptRevisions)
-    .where(eq(promptRevisions.promptDefinitionId, id))
-    .orderBy(desc(promptRevisions.revisionNumber));
-
-  return NextResponse.json({ ...def, revisions });
+  try {
+    const detail = await getPromptDefinitionDetail(id);
+    return NextResponse.json(detail);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not found")) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    throw error;
+  }
 }
 
 export async function PATCH(
@@ -57,14 +51,6 @@ export async function PATCH(
 
   const { id } = await params;
 
-  const [def] = await db
-    .select()
-    .from(promptDefinitions)
-    .where(eq(promptDefinitions.id, id))
-    .limit(1);
-
-  if (!def) return NextResponse.json({ error: "not found" }, { status: 404 });
-
   const body = await req.json().catch(() => ({}));
   const parsed = updateDefinitionSchema.safeParse(body);
   if (!parsed.success) {
@@ -74,56 +60,32 @@ export async function PATCH(
     );
   }
 
-  if (parsed.data.archived) {
-    // Safety check: reject if any current default or binding references a revision of this definition
-    const revisions = await db
-      .select({ id: promptRevisions.id })
-      .from(promptRevisions)
-      .where(eq(promptRevisions.promptDefinitionId, id));
-
-    const revisionIds = revisions.map((r) => r.id);
-
-    if (revisionIds.length > 0) {
-      const [defaultRef] = await db
-        .select({ kind: promptDefaults.kind })
-        .from(promptDefaults)
-        .where(
-          or(...revisionIds.map((rid) => eq(promptDefaults.promptRevisionId, rid))),
-        )
-        .limit(1);
-
-      if (defaultRef) {
+  // Archive / restore
+  if (parsed.data.archived !== undefined) {
+    try {
+      await setPromptDefinitionArchived(id, parsed.data.archived);
+      return NextResponse.json({ id, archived: parsed.data.archived });
+    } catch (error) {
+      if (error instanceof PromptArchiveConflictError) {
         return NextResponse.json(
-          { error: `definition is in use as default for kind "${defaultRef.kind}"` },
+          {
+            error: error.message,
+            blockers: {
+              defaultCount: error.blockers.defaultCount,
+              bindingCount: error.blockers.bindingCount,
+            },
+          },
           { status: 409 },
         );
       }
-
-      const [bindingRef] = await db
-        .select({ kind: projectPromptBindings.kind })
-        .from(projectPromptBindings)
-        .where(
-          or(...revisionIds.map((rid) => eq(projectPromptBindings.promptRevisionId, rid))),
-        )
-        .limit(1);
-
-      if (bindingRef) {
-        return NextResponse.json(
-          { error: `definition is in use by project binding for kind "${bindingRef.kind}"` },
-          { status: 409 },
-        );
+      if (error instanceof Error && error.message.includes("not found")) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
       }
+      throw error;
     }
-
-    const [updated] = await db
-      .update(promptDefinitions)
-      .set({ archivedAt: new Date() })
-      .where(eq(promptDefinitions.id, id))
-      .returning();
-
-    return NextResponse.json(updated);
   }
 
+  // Metadata update (name / description only)
   const [updated] = await db
     .update(promptDefinitions)
     .set({
@@ -132,6 +94,10 @@ export async function PATCH(
     })
     .where(eq(promptDefinitions.id, id))
     .returning();
+
+  if (!updated) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
 
   return NextResponse.json(updated);
 }

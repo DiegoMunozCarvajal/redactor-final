@@ -19,6 +19,17 @@ import type {
   ArchiveConflictError,
 } from "./admin-types";
 
+export class PromptArchiveConflictError extends Error {
+  blockers: ArchiveConflictError;
+  constructor(blockers: ArchiveConflictError) {
+    super(
+      `Cannot archive: ${blockers.defaultCount} defaults, ${blockers.bindingCount} bindings`,
+    );
+    this.name = "PromptArchiveConflictError";
+    this.blockers = blockers;
+  }
+}
+
 type PgSchema = typeof schema;
 export type DB =
   | PostgresJsDatabase<PgSchema>
@@ -308,9 +319,7 @@ export async function setPromptDefinitionArchived(
   if (archived) {
     const blockers = await getArchiveBlockers(definitionId, ctx);
     if (blockers.defaultCount > 0 || blockers.bindingCount > 0) {
-      throw new Error(
-        `Cannot archive: ${blockers.defaultCount} defaults, ${blockers.bindingCount} bindings`,
-      );
+      throw new PromptArchiveConflictError(blockers);
     }
   }
 
