@@ -44,20 +44,19 @@ describe('PromptRevisionEditor component exports', () => {
 });
 
 describe('prompt kind grouping', () => {
-  it('groups exactly six Core and three Utility kinds', () => {
+  it('lists all nine kinds in pipeline order without utility split', () => {
     expect(CORE_PROMPT_KINDS).toEqual([
+      'editorial-brief-extractor',
+      'meta-template',
+      'placeholder-fill',
+      'generation-system',
       'assembly-planner',
       'assembly',
+      'title',
       'critique',
       'corrector',
-      'generation-system',
-      'meta-template',
     ]);
-    expect(UTILITY_PROMPT_KINDS).toEqual([
-      'title',
-      'placeholder-fill',
-      'editorial-brief-extractor',
-    ]);
+    expect(UTILITY_PROMPT_KINDS).toEqual([]);
   });
 
   it('PromptDefinitionList shows exact default and usage counts', async () => {

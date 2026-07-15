@@ -1,19 +1,18 @@
 import type { PromptKind } from "@/lib/db/schema/prompt-registry";
 
 export const CORE_PROMPT_KINDS = [
+  "editorial-brief-extractor",
+  "meta-template",
+  "placeholder-fill",
+  "generation-system",
   "assembly-planner",
   "assembly",
+  "title",
   "critique",
   "corrector",
-  "generation-system",
-  "meta-template",
 ] as const satisfies readonly PromptKind[];
 
-export const UTILITY_PROMPT_KINDS = [
-  "title",
-  "placeholder-fill",
-  "editorial-brief-extractor",
-] as const satisfies readonly PromptKind[];
+export const UTILITY_PROMPT_KINDS = [] as const satisfies readonly PromptKind[];
 
 export const KIND_LABELS: Record<PromptKind, string> = {
   "assembly-planner": "Planificador",
