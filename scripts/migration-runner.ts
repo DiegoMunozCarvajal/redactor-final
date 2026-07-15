@@ -12,7 +12,15 @@ export function getPendingMigrationFiles(
 
 export function unwrapOuterTransaction(content: string): string {
   const trimmed = content.trim();
-  const match = trimmed.match(/^BEGIN;\s*([\s\S]*?)\s*COMMIT;$/i);
+
+  // Strip leading SQL comments so the BEGIN wrapper can be detected even when
+  // the file opens with a comment block.
+  const commentStripped = trimmed.replace(
+    /^(?:\s*--[^\n]*\n)+(?=\s*BEGIN;)/i,
+    "",
+  );
+
+  const match = commentStripped.match(/^BEGIN;\s*([\s\S]*?)\s*COMMIT;$/i);
   return match?.[1].trim() ?? trimmed;
 }
 

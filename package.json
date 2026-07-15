@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/apply-supabase-migrations.ts",
+    "db:migrate:local": "tsx scripts/sync-local-migrations.ts && tsx scripts/apply-supabase-migrations.ts --local",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",

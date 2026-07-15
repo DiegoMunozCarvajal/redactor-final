@@ -8,12 +8,32 @@ import {
   getPendingMigrationFiles,
 } from "./migration-runner";
 
-if (!process.env.DATABASE_URL && existsSync(".env")) {
-  loadEnvFile(".env");
+const isLocal = process.argv.includes("--local");
+
+const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
+let databaseUrl: string | undefined;
+
+if (isLocal) {
+  databaseUrl = LOCAL_DB_URL;
+} else {
+  // Remote: prefer .env.local (Next.js convention), fall back to .env
+  if (!process.env.DATABASE_URL) {
+    if (existsSync(".env.local")) loadEnvFile(".env.local");
+    if (!process.env.DATABASE_URL && existsSync(".env")) loadEnvFile(".env");
+  }
+  databaseUrl = process.env.DATABASE_URL;
 }
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("DATABASE_URL is required");
+if (!databaseUrl) {
+  throw new Error(
+    isLocal
+      ? `Local DB not reachable. Is supabase running? Expected: ${LOCAL_DB_URL}`
+      : "DATABASE_URL is required. Set it in .env.local or pass --local for local development.",
+  );
+}
+
+console.log(`Using ${isLocal ? "local" : "remote"} database.`);
 
 const MIGRATIONS_DIR = join(import.meta.dirname, "..", "supabase", "migrations");
 
