@@ -27,7 +27,12 @@ export const KIND_LABELS: Record<PromptKind, string> = {
   "editorial-brief-extractor": "Extractor editorial",
 };
 
-const ALL = new Set<PromptKind>([...CORE_PROMPT_KINDS, ...UTILITY_PROMPT_KINDS]);
+export const ALL_PROMPT_KINDS = [
+  ...CORE_PROMPT_KINDS,
+  ...UTILITY_PROMPT_KINDS,
+] as const satisfies readonly PromptKind[];
+
+const ALL = new Set<PromptKind>(ALL_PROMPT_KINDS);
 
 export function parsePromptKind(value: string | null): PromptKind {
   return value && ALL.has(value as PromptKind) ? (value as PromptKind) : "generation-system";
