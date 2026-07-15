@@ -67,7 +67,7 @@ export async function listPromptDefinitionSummaries(
 
   const defIds = defs.map((d) => d.id);
 
-  // Fetch all revisions for these definitions, pick latest in JS (small N — admin panel)
+  // Fetch all revisions for these definitions, pick latest non-legacy (small N — admin panel)
   const allRevs =
     defIds.length > 0
       ? await ctx
@@ -76,14 +76,25 @@ export async function listPromptDefinitionSummaries(
             id: promptRevisions.id,
             versionLabel: promptRevisions.versionLabel,
             revisionNumber: promptRevisions.revisionNumber,
+            configuration: promptRevisions.configuration,
           })
           .from(promptRevisions)
           .where(inArray(promptRevisions.promptDefinitionId, defIds))
           .orderBy(desc(promptRevisions.revisionNumber))
       : [];
+  // First pass: latest non-legacy revision per definition
   const latestMap = new Map<string, (typeof allRevs)[number]>();
   for (const r of allRevs) {
-    if (!latestMap.has(r.promptDefinitionId)) latestMap.set(r.promptDefinitionId, r);
+    const isLegacy = (r.configuration as Record<string, unknown>)?.legacyNonExecutable === true;
+    if (!isLegacy && !latestMap.has(r.promptDefinitionId)) {
+      latestMap.set(r.promptDefinitionId, r);
+    }
+  }
+  // Fallback: any revision if no non-legacy exists
+  for (const r of allRevs) {
+    if (!latestMap.has(r.promptDefinitionId)) {
+      latestMap.set(r.promptDefinitionId, r);
+    }
   }
 
   // Batch: defaults (per-kind)
