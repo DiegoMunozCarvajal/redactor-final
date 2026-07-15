@@ -4,6 +4,14 @@
 -- 3. Drop legacy columns and tables in FK order.
 BEGIN;
 
+-- Block concurrent writes to legacy tables so no row is inserted, updated,
+-- or deleted after snapshots and before the final DROP.
+LOCK TABLE generation_system_prompts IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE meta_prompts IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE prompt_library IN SHARE ROW EXCLUSIVE MODE;
+-- Also block writes to the legacy FK columns on projects.
+LOCK TABLE projects IN SHARE ROW EXCLUSIVE MODE;
+
 -- ---------------------------------------------------------------------------
 -- Reject unsupported categories
 -- ---------------------------------------------------------------------------

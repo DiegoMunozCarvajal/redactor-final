@@ -35,6 +35,7 @@ export default function GenerationDetailPage() {
   const [metaOpen, setMetaOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const fetchDefinition = useCallback(async (signal?: AbortSignal) => {
@@ -138,7 +139,7 @@ export default function GenerationDetailPage() {
           ) : (
             <Button
               variant="outline"
-              onClick={() => toggleArchived(true)}
+              onClick={() => setArchiveConfirmOpen(true)}
             >
               <Archive className="h-4 w-4 mr-2" />Archivar
             </Button>
@@ -202,6 +203,35 @@ export default function GenerationDetailPage() {
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Guardar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Archive confirmation dialog */}
+      <Dialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+        <DialogTrigger asChild>
+          <span />
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Archivar definición?</DialogTitle>
+            <DialogDescription>
+              Una definición archivada no se usará en ejecuciones. Solo se puede
+              archivar si no tiene defaults ni bindings activos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setArchiveConfirmOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                setArchiveConfirmOpen(false);
+                toggleArchived(true);
+              }}
+            >
+              Archivar
             </Button>
           </div>
         </DialogContent>

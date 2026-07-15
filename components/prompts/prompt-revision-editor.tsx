@@ -12,6 +12,7 @@ import { Loader2, Plus, GitCompare, AlertTriangle, History } from "lucide-react"
 import { toast } from "sonner";
 import { assertPromptMarkers, requiredMarkersByKind } from "@/lib/prompts/contracts";
 import { RevisionDiff } from "@/components/prompts/revision-diff";
+import { KIND_LABELS } from "@/lib/prompts/kinds";
 import type { PromptKind } from "@/lib/db/schema/prompt-registry";
 
 export interface RevisionSummary {
@@ -60,6 +61,7 @@ export function PromptRevisionEditor({
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
+  const [confirmDefaultRevId, setConfirmDefaultRevId] = useState<string | null>(null);
 
   const requiredMarkers = requiredMarkersByKind[kind] ?? [];
   const baseRevision = baseRevisionId
@@ -366,7 +368,7 @@ export function PromptRevisionEditor({
                             className="h-6 text-[10px] px-1.5"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDefault(rev.id);
+                              setConfirmDefaultRevId(rev.id);
                             }}
                           >
                             Set default
@@ -429,6 +431,40 @@ export function PromptRevisionEditor({
               }}
             >
               Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm set-default dialog */}
+      <Dialog
+        open={confirmDefaultRevId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDefaultRevId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Cambiar default global?</DialogTitle>
+            <DialogDescription>
+              Esta revisión se usará como prompt por defecto para{" "}
+              <strong>{KIND_LABELS[kind]}</strong> en todos los proyectos sin
+              binding propio. Esta acción afecta a ejecuciones futuras.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmDefaultRevId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmDefaultRevId) {
+                  setDefault(confirmDefaultRevId);
+                  setConfirmDefaultRevId(null);
+                }
+              }}
+            >
+              Cambiar default
             </Button>
           </div>
         </DialogContent>

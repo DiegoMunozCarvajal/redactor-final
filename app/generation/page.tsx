@@ -14,7 +14,7 @@ import { PromptKindNav } from "@/components/prompts/prompt-kind-nav";
 import type { DefinitionSummary } from "@/lib/prompts/admin-types";
 import { parsePromptKind, KIND_LABELS } from "@/lib/prompts/kinds";
 import type { PromptKind } from "@/lib/db/schema/prompt-registry";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Archive } from "lucide-react";
 import { toast } from "sonner";
 
 export default function GenerationPage() {
@@ -104,6 +104,24 @@ export default function GenerationPage() {
         title="Prompts"
         subtitle="Administración de definiciones y revisiones inmutables de prompts."
       />
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant={archive === "active" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => replaceQuery({ archive: "active" })}
+        >
+          Activas
+        </Button>
+        <Button
+          variant={archive === "archived" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => replaceQuery({ archive: "archived" })}
+        >
+          <Archive className="h-3.5 w-3.5 mr-1" />
+          Archivadas
+        </Button>
+      </div>
 
       <Tabs
         value={activeKind}

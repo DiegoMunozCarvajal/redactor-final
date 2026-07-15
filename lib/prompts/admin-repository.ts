@@ -315,16 +315,41 @@ export async function setPromptDefinitionArchived(
   definitionId: string,
   archived: boolean,
   ctx: DB = globalDb,
-): Promise<void> {
-  if (archived) {
-    const blockers = await getArchiveBlockers(definitionId, ctx);
-    if (blockers.defaultCount > 0 || blockers.bindingCount > 0) {
-      throw new PromptArchiveConflictError(blockers);
-    }
-  }
+): Promise<{ found: boolean }> {
+  return ctx.transaction(async (tx) => {
+    // Lock definition row first
+    const [def] = await tx
+      .select({ id: promptDefinitions.id, archivedAt: promptDefinitions.archivedAt })
+      .from(promptDefinitions)
+      .where(eq(promptDefinitions.id, definitionId))
+      .for("update");
 
-  await ctx
-    .update(promptDefinitions)
-    .set({ archivedAt: archived ? new Date() : null })
-    .where(eq(promptDefinitions.id, definitionId));
+    if (!def) return { found: false };
+
+    // If already in desired state, no-op (idempotent)
+    const currentlyArchived = def.archivedAt !== null;
+    if (archived === currentlyArchived) return { found: true };
+
+    // Lock all revisions for this definition (blocks concurrent binding inserts
+    // that reference these revisions via FK)
+    await tx
+      .select({ id: promptRevisions.id })
+      .from(promptRevisions)
+      .where(eq(promptRevisions.promptDefinitionId, definitionId))
+      .for("update");
+
+    if (archived) {
+      const blockers = await getArchiveBlockers(definitionId, tx);
+      if (blockers.defaultCount > 0 || blockers.bindingCount > 0) {
+        throw new PromptArchiveConflictError(blockers);
+      }
+    }
+
+    await tx
+      .update(promptDefinitions)
+      .set({ archivedAt: archived ? new Date() : null })
+      .where(eq(promptDefinitions.id, definitionId));
+
+    return { found: true };
+  });
 }

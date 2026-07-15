@@ -12,11 +12,17 @@ import {
   PromptArchiveConflictError,
 } from "@/lib/prompts/admin-repository";
 
-const updateDefinitionSchema = z.object({
+const archiveSchema = z.object({ archived: z.boolean() });
+const metadataSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  archived: z.boolean().optional(),
 });
+
+function isArchiveBody(
+  body: Record<string, unknown>,
+): body is z.infer<typeof archiveSchema> {
+  return "archived" in body;
+}
 
 export async function GET(
   _req: NextRequest,
@@ -52,18 +58,22 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await req.json().catch(() => ({}));
-  const parsed = updateDefinitionSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "invalid body", details: parsed.error.flatten() },
-      { status: 400 },
-    );
-  }
 
-  // Archive / restore
-  if (parsed.data.archived !== undefined) {
+  // Discriminate: archive/restore vs metadata update
+  if (isArchiveBody(body)) {
+    const parsed = archiveSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "invalid body", details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
     try {
-      await setPromptDefinitionArchived(id, parsed.data.archived);
+      const result = await setPromptDefinitionArchived(id, parsed.data.archived);
+      if (!result.found) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
       return NextResponse.json({ id, archived: parsed.data.archived });
     } catch (error) {
       if (error instanceof PromptArchiveConflictError) {
@@ -78,14 +88,26 @@ export async function PATCH(
           { status: 409 },
         );
       }
-      if (error instanceof Error && error.message.includes("not found")) {
-        return NextResponse.json({ error: "not found" }, { status: 404 });
-      }
       throw error;
     }
   }
 
-  // Metadata update (name / description only)
+  // Metadata update
+  const parsed = metadataSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "invalid body", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  if (parsed.data.name === undefined && parsed.data.description === undefined) {
+    return NextResponse.json(
+      { error: "at least one of name or description is required" },
+      { status: 400 },
+    );
+  }
+
   const [updated] = await db
     .update(promptDefinitions)
     .set({
