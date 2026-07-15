@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, GitCompare, AlertTriangle, History, Eye, Trash2 } from "lucide-react";
+import { Loader2, Plus, AlertTriangle, History, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { assertPromptMarkers, requiredMarkersByKind } from "@/lib/prompts/contracts";
 import { RevisionDiff } from "@/components/prompts/revision-diff";
@@ -58,13 +58,9 @@ export function PromptRevisionEditor({
   const [userTemplate, setUserTemplate] = useState("");
   const [outputContract, setOutputContract] = useState("");
   const [configurationJson, setConfigurationJson] = useState("{}");
-  const [compareLeft, setCompareLeft] = useState<string | null>(null);
-  const [compareRight, setCompareRight] = useState<string | null>(null);
-  const [showCompare, setShowCompare] = useState(false);
   const [confirmDefaultRevId, setConfirmDefaultRevId] = useState<string | null>(null);
   const [detailRevId, setDetailRevId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [compareMode, setCompareMode] = useState(false);
 
   const requiredMarkers = requiredMarkersByKind[kind] ?? [];
   const baseRevision = baseRevisionId
@@ -178,9 +174,6 @@ export function PromptRevisionEditor({
     setDeleting(false);
   }
 
-  const leftRev = compareLeft ? revisions.find((r) => r.id === compareLeft) : null;
-  const rightRev = compareRight ? revisions.find((r) => r.id === compareRight) : null;
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -189,21 +182,7 @@ export function PromptRevisionEditor({
           Revisiones
         </h3>
         {!archived && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant={compareMode ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => {
-                setCompareMode(!compareMode);
-                setCompareLeft(null);
-                setCompareRight(null);
-                setShowCompare(false);
-              }}
-            >
-              <GitCompare className="h-4 w-4 mr-1" />
-              {compareMode ? "Cancelar comparación" : "Comparar"}
-            </Button>
-            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button size="sm" onClick={() => openFromRevision(null)}>
                 <Plus className="h-4 w-4 mr-1" />Crear revisión
@@ -312,7 +291,6 @@ export function PromptRevisionEditor({
               </div>
             </DialogContent>
           </Dialog>
-          </div>
         )}
       </div>
 
@@ -323,30 +301,12 @@ export function PromptRevisionEditor({
         <div className="space-y-2">
           {revisions.map((rev) => {
             const isLegacy = rev.configuration?.legacyNonExecutable === true;
-            const isSelected =
-              compareLeft === rev.id || compareRight === rev.id;
             const isCurrentDefault = rev.id === currentDefaultRevisionId;
             return (
               <Card
                 key={rev.id}
-                className={`cursor-pointer transition-colors ${
-                  isSelected ? "ring-2 ring-brand-500" : "hover:bg-muted/50"
-                }`}
-                onClick={() => {
-                  if (compareMode) {
-                    if (!compareLeft) setCompareLeft(rev.id);
-                    else if (!compareRight && rev.id !== compareLeft) {
-                      setCompareRight(rev.id);
-                      setShowCompare(true);
-                    } else {
-                      setCompareLeft(rev.id);
-                      setCompareRight(null);
-                      setShowCompare(false);
-                    }
-                  } else {
-                    setDetailRevId(rev.id);
-                  }
-                }}
+                className="cursor-pointer transition-colors hover:bg-muted/50"
+                onClick={() => setDetailRevId(rev.id)}
               >
                 <CardHeader className="py-2 px-3">
                   <div className="flex items-center justify-between">
@@ -423,58 +383,6 @@ export function PromptRevisionEditor({
         </div>
       )}
 
-      {/* Compare dialog */}
-      <Dialog open={showCompare} onOpenChange={setShowCompare}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GitCompare className="h-5 w-5" />
-              Comparar revisiones
-            </DialogTitle>
-            <DialogDescription>
-              {leftRev ? `v${leftRev.versionLabel}` : "—"} vs{" "}
-              {rightRev ? `v${rightRev.versionLabel}` : "—"}
-            </DialogDescription>
-          </DialogHeader>
-          {leftRev && rightRev ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-medium text-sm mb-1">v{leftRev.versionLabel}</h4>
-                <pre className="text-xs bg-muted p-2 rounded whitespace-pre-wrap max-h-96 overflow-y-auto">
-                  {leftRev.systemTemplate}
-                  {"\n\n---\n\n"}
-                  {leftRev.userTemplate}
-                </pre>
-              </div>
-              <div>
-                <h4 className="font-medium text-sm mb-1">v{rightRev.versionLabel}</h4>
-                <pre className="text-xs bg-muted p-2 rounded whitespace-pre-wrap max-h-96 overflow-y-auto">
-                  {rightRev.systemTemplate}
-                  {"\n\n---\n\n"}
-                  {rightRev.userTemplate}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Selecciona dos revisiones para comparar.
-            </p>
-          )}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCompareLeft(null);
-                setCompareRight(null);
-                setShowCompare(false);
-              }}
-            >
-              Cerrar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Detail dialog */}
       <Dialog
         open={detailRevId !== null}
@@ -549,13 +457,6 @@ export function PromptRevisionEditor({
                   </div>
                 )}
 
-                <div>
-                  <Label className="text-xs text-muted-foreground">Configuración</Label>
-                  <pre className="text-xs bg-muted p-2 rounded mt-1 font-mono max-h-40 overflow-y-auto">
-                    {JSON.stringify(rev.configuration, null, 2)}
-                  </pre>
-                </div>
-
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="flex gap-2">
                     {!archived && !isLegacy && (
@@ -572,20 +473,6 @@ export function PromptRevisionEditor({
                         Crear desde v{rev.versionLabel}
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setDetailRevId(null);
-                        setCompareMode(true);
-                        setCompareLeft(rev.id);
-                        setCompareRight(null);
-                        setShowCompare(false);
-                      }}
-                    >
-                      <GitCompare className="h-4 w-4 mr-1" />
-                      Comparar
-                    </Button>
                   </div>
                   {!archived && !isCurrentDefault && rev.bindingCount === 0 && (
                     <Button
