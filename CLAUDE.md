@@ -12,10 +12,11 @@ pnpm test             # Vitest test suite
 pnpm lint             # ESLint
 
 pnpm db:generate      # Generate Drizzle migrations from schema
-pnpm db:migrate       # Apply SQL migrations in supabase/migrations/
-pnpm db:push          # Push Drizzle schema directly to DB
-pnpm db:studio        # Drizzle Studio (DB browser)
-pnpm db:seed          # Seed initial book template + chapters
+pnpm db:migrate        # Apply pending migrations to REMOTE DB (.env.local DATABASE_URL)
+pnpm db:migrate:local  # Sync + apply pending migrations to local Supabase (127.0.0.1:54322)
+pnpm db:push           # Push Drizzle schema directly to DB
+pnpm db:studio         # Drizzle Studio (DB browser)
+pnpm db:seed           # Seed initial book template + chapters
 
 pnpm trigger:dev      # Trigger.dev local dev server
 pnpm trigger:deploy   # Deploy Trigger.dev tasks
@@ -153,6 +154,36 @@ Two layers: PostgreSQL advisory lock per project via `withProjectLock()` (serial
 - **Generation status flow**: `pending` → `generating` → `assembling` → `completed` | `failed`.
 - **UI polling**: Must poll on ALL active states: `status === "pending" || status === "generating" || status === "assembling"`. Polling only on `"generating"` misses pending (not yet picked up by Trigger) and assembling (after content, before completion).
 - **Template status**: `ready` | `generating` | `failed`. Non-ready templates disabled in project creation dialog.
+
+## Database Migrations
+
+Migrations live in `supabase/migrations/` and run via `scripts/apply-supabase-migrations.ts`. Custom `_migrations` table tracks applied files (not Supabase's native `schema_migrations`).
+
+### Local vs Remote
+
+| Command                 | Target              | DB Source                                      |
+| ----------------------- | ------------------- | ---------------------------------------------- |
+| `pnpm db:migrate`       | Remote (production) | `.env.local` → `DATABASE_URL`                  |
+| `pnpm db:migrate:local` | Local Supabase      | `127.0.0.1:54322`                              |
+| `supabase db reset`     | Local (full reset)  | Applies all migrations natively, then restarts |
+
+`db:migrate:local` runs `sync-local-migrations.ts` first — seeds the `_migrations` table from files on disk since `supabase db reset` applies migrations through Supabase's own mechanism.
+
+### Migration Runner (`scripts/migration-runner.ts`)
+
+- `getPendingMigrationFiles(files, tracked)` — filters disk files against `_migrations` table
+- `unwrapOuterTransaction(content)` — strips `BEGIN;/COMMIT;` wrapper (handles leading SQL comments)
+- `applyMigrationAtomically(sql, filename, content)` — runs unwrapped SQL in transaction + tracks filename
+
+Migration files may optionally wrap content in `BEGIN;/COMMIT;`. The runner unwraps them because it manages its own transaction (needed for atomic `_migrations` insert). SQL comments before `BEGIN;` are supported.
+
+### Local Supabase Setup
+
+Docker via Colima. Workarounds applied:
+
+- **Docker socket**: symlinked `/tmp/docker.sock` → `~/.colima/default/docker.sock`; `DOCKER_HOST=unix:///tmp/docker.sock` in `~/.zshrc`
+- **Disabled services** in `supabase/config.toml`: `analytics`, `edge_runtime` (require Docker socket mount — incompatible with Colima's VM filesystem)
+- **Mount type**: `sshfs` (virtiofs also works; neither supports Unix socket sharing across VM boundary)
 
 ## Environment Variables
 
