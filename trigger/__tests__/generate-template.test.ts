@@ -124,8 +124,8 @@ describe("generateTemplate", () => {
       revision: {
         id: "rev-1",
         definitionId: "def-1",
-        kind: "meta-template",
-        name: "Meta Template v1",
+        kind: "template-generator",
+        name: "Template Generator v1",
         revisionNumber: 1,
         versionLabel: "v1",
         systemTemplate: "",
@@ -137,7 +137,7 @@ describe("generateTemplate", () => {
     });
   });
 
-  it("calls executeVersionedPrompt with kind meta-template and stage template-generation", async () => {
+  it("calls executeVersionedPrompt with kind template-generator and stage template-generation", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
       metaPromptRevisionId: "rev-meta-1",
@@ -154,7 +154,7 @@ describe("generateTemplate", () => {
 
     expect(mocks.executeVersionedPrompt).toHaveBeenCalledTimes(1);
     const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
-    expect(callArg.kind).toBe("meta-template");
+    expect(callArg.kind).toBe("template-generator");
     expect(callArg.stage).toBe("template-generation");
   });
 
@@ -257,7 +257,7 @@ describe("generateTemplate", () => {
     expect(mocks.select).toHaveBeenCalledTimes(1);
   });
 
-  it('escapes chapter source before meta-template composition', async () => {
+  it('escapes chapter source before template-generator composition', async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: 'template-1',
       metaPromptRevisionId: 'rev-meta-1',

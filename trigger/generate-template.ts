@@ -97,7 +97,7 @@ export const generateTemplate = task({
 
           const { result } = await executeVersionedPrompt({
             stage: 'template-generation',
-            kind: 'meta-template',
+            kind: 'template-generator',
             revisionId: metaPromptRevisionId,
             bookTemplateId: templateId,
             chapterId: chapter.chapterId,

@@ -4,7 +4,7 @@ export function legacyPromptLibraryTarget(tab?: string): string {
 }
 
 export function legacyMetaPromptsTarget(): string {
-  return "/generation?kind=meta-template";
+  return "/generation?kind=template-generator";
 }
 
 export function legacyGenerationPromptsTarget(): string {

@@ -36,8 +36,8 @@ describe("legacy prompt cutover", () => {
     );
   });
 
-  it("maps meta-prompts to meta-template", () => {
-    expect(legacyMetaPromptsTarget()).toBe("/generation?kind=meta-template");
+  it("maps meta-prompts to template-generator", () => {
+    expect(legacyMetaPromptsTarget()).toBe("/generation?kind=template-generator");
   });
 
   it("maps generation-prompts to generation-system", () => {

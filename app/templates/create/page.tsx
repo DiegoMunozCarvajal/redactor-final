@@ -49,7 +49,7 @@ export default function CreateTemplatePage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch("/api/prompt-definitions?kind=meta-template")
+    fetch("/api/prompt-definitions?kind=template-generator")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -57,7 +57,7 @@ export default function CreateTemplatePage() {
           setPromptDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
         }
       })
-      .catch(() => toast.error("Failed to load meta-template prompts"))
+      .catch(() => toast.error("Failed to load template-generator prompts"))
       .finally(() => setLoadingMeta(false));
   }, []);
 
@@ -169,8 +169,8 @@ export default function CreateTemplatePage() {
             <div className="h-10 bg-muted animate-pulse rounded-md" />
           ) : promptDefinitions.length === 0 ? (
             <div className="text-sm text-muted-foreground">
-              No meta-template prompts available.{" "}
-              <Link href="/admin/prompt-definitions?kind=meta-template" className="text-primary hover:underline">Create one first</Link>.
+              No template-generator prompts available.{" "}
+              <Link href="/admin/prompt-definitions?kind=template-generator" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
             <Select
@@ -178,7 +178,7 @@ export default function CreateTemplatePage() {
               onValueChange={(v) => setSelectedMetaPromptRevisionId(v)}
             >
               <SelectTrigger id="metaPrompt">
-                <SelectValue placeholder="Select a meta-template revision..." />
+                <SelectValue placeholder="Select a template-generator revision..." />
               </SelectTrigger>
               <SelectContent>
                 {promptDefinitions.map((def) => (

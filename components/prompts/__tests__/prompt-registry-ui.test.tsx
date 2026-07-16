@@ -25,7 +25,8 @@ describe('KIND_LABELS', () => {
     expect(KIND_LABELS.title).toBe('Título');
     expect(KIND_LABELS['placeholder-fill']).toBe('Placeholders');
     expect(KIND_LABELS['editorial-brief-extractor']).toBe('Extractor editorial');
-    expect(KIND_LABELS['meta-template']).toBe('Meta-prompt');
+    expect(KIND_LABELS['rhetoric-trace']).toBe('Traza retórica');
+    expect(KIND_LABELS['template-generator']).toBe('Generador de templates');
   });
 });
 
@@ -44,10 +45,11 @@ describe('PromptRevisionEditor component exports', () => {
 });
 
 describe('prompt kind grouping', () => {
-  it('lists all nine kinds in pipeline order without utility split', () => {
+  it('lists all ten kinds in pipeline order without utility split', () => {
     expect(CORE_PROMPT_KINDS).toEqual([
       'editorial-brief-extractor',
-      'meta-template',
+      'rhetoric-trace',
+      'template-generator',
       'placeholder-fill',
       'generation-system',
       'assembly-planner',
