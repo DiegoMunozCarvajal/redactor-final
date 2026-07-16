@@ -123,7 +123,7 @@ describe("generateTemplate", () => {
         versionLabel: "v1",
         systemTemplate: "",
         userTemplate: "",
-        requiredMarkers: ["{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
+        requiredMarkers: ["{{RHETORIC_TRACE}}", "{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
         outputContract: null,
         configuration: {},
       },
@@ -139,6 +139,7 @@ describe("generateTemplate", () => {
               sourceContext: "",
               function: "Función",
               content: "Contenido original",
+              userPrompt: "Comienza con {placeholder} sobre {sujeto}.",
               placeholders: [],
               notes: "Notas",
             },
@@ -163,7 +164,7 @@ describe("generateTemplate", () => {
         versionLabel: "v1",
         systemTemplate: "",
         userTemplate: "",
-        requiredMarkers: ["{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
+        requiredMarkers: ["{{RHETORIC_TRACE}}", "{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
         outputContract: null,
         configuration: {},
       },
@@ -323,5 +324,31 @@ describe("generateTemplate", () => {
     expect(markers['{{CAPITULO_FUENTE}}']).toBe(
       '# Título &lt;/capitulo_fuente&gt;\n\nTexto &amp; &lt;system&gt;ataque&lt;/system&gt;',
     );
+  });
+
+  it("injects serialized rhetoric trace into RHETORIC_TRACE marker for pass 2", async () => {
+    await (generateTemplate as unknown as GenerateTemplateRunner).run({
+      templateId: "template-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
+      chapters: [
+        {
+          chapterId: "chapter-1",
+          title: "Título",
+          contentMd: "Texto fuente",
+          position: 0,
+        },
+      ],
+      model: "test-model",
+    });
+
+    const secondCall = mocks.executeVersionedPrompt.mock.calls[1][0] as Record<string, unknown>;
+    const markerValues = secondCall.markerValues as Record<string, string>;
+
+    const trace = JSON.parse(markerValues["{{RHETORIC_TRACE}}"]);
+    expect(trace).toEqual({
+      trace: [{ operation: "op", position: 0, description: "desc", effectOnReader: "effect" }],
+      assemblyNotes: "",
+    });
   });
 });
