@@ -36,7 +36,7 @@ export const ALL_PROMPT_KINDS = [
 const ALL = new Set<PromptKind>(ALL_PROMPT_KINDS);
 
 export function parsePromptKind(value: string | null): PromptKind {
-  return value && ALL.has(value as PromptKind) ? (value as PromptKind) : "generation-system";
+  return value && ALL.has(value as PromptKind) ? (value as PromptKind) : ALL_PROMPT_KINDS[0];
 }
 
 export function isUtilityKind(kind: PromptKind): boolean {
