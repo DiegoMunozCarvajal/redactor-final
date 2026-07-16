@@ -32,6 +32,7 @@ interface ProjectPrompt {
   isAssembly: boolean;
   title: string;
   content: string;
+  userPrompt: string | null;
 }
 
 export default function PromptEditPage() {
@@ -44,6 +45,7 @@ export default function PromptEditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [content, setContent] = useState("");
+  const [userPrompt, setUserPrompt] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -78,6 +80,7 @@ export default function PromptEditPage() {
         if (!found) throw new Error("Prompt not found");
         setPrompt(found);
         setContent(found.content);
+        setUserPrompt(found.userPrompt ?? "");
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -91,17 +94,23 @@ export default function PromptEditPage() {
   }, [params.id, params.chapterId, params.promptId]);
 
   async function saveContent() {
-    if (!prompt || content === prompt.content) return;
+    if (!prompt) return;
+    const contentChanged = content !== prompt.content;
+    const upChanged = userPrompt !== (prompt.userPrompt ?? "");
+    if (!contentChanged && !upChanged) return;
     setSaving(true);
     setSaved(false);
     try {
+      const body: Record<string, unknown> = {};
+      if (contentChanged) body.content = content;
+      if (upChanged) body.userPrompt = userPrompt || null;
       const res = await fetch(`/api/projects/${params.id}/prompts/${prompt.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
-      setPrompt((prev) => prev ? { ...prev, content } : prev);
+      setPrompt((prev) => prev ? { ...prev, content, userPrompt: userPrompt || null } : prev);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -177,7 +186,9 @@ export default function PromptEditPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Content</CardTitle>
+            <div>
+              <CardTitle className="text-sm">Content (System Prompt)</CardTitle>
+            </div>
             <div className="flex items-center gap-2">
               {saved && (
                 <span className="text-xs text-green-600">Saved</span>
@@ -189,7 +200,10 @@ export default function PromptEditPage() {
                 size="sm"
                 variant="default"
                 onClick={saveContent}
-                disabled={saving || content === prompt.content}
+                disabled={
+                  saving ||
+                  (content === prompt.content && userPrompt === (prompt.userPrompt ?? ""))
+                }
               >
                 <Save className="h-4 w-4 mr-1" />
                 Save
@@ -206,13 +220,30 @@ export default function PromptEditPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={20}
-            className="text-sm font-mono"
-          />
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] text-muted-foreground font-medium">
+              Content (System Prompt)
+            </label>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={14}
+              className="text-sm font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] text-muted-foreground font-medium">
+              User Prompt
+            </label>
+            <Textarea
+              value={userPrompt}
+              onChange={(e) => setUserPrompt(e.target.value)}
+              rows={10}
+              className="text-sm font-mono"
+              placeholder="User message. Leave empty to use Content as user message with default system prompt."
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

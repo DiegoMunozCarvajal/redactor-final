@@ -279,7 +279,7 @@ export default function ChapterPromptEditorPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground">Content</Label>
+                    <Label className="text-[10px] text-muted-foreground">Content (System Prompt)</Label>
                     <Textarea
                       value={data.content}
                       onChange={(e) => {
@@ -289,7 +289,21 @@ export default function ChapterPromptEditorPage() {
                         }))
                       }}
                       className="text-xs min-h-[100px]"
-                      placeholder="Prompt content..."
+                      placeholder="System prompt..."
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-muted-foreground">User Prompt</Label>
+                    <Textarea
+                      value={data.userPrompt ?? ""}
+                      onChange={(e) => {
+                        setPromptFormData((prev) => ({
+                          ...prev,
+                          [prompt.id]: { ...data, userPrompt: e.target.value || null },
+                        }))
+                      }}
+                      className="text-xs min-h-[80px]"
+                      placeholder="User message. Leave empty to use Content as user message with default system prompt."
                     />
                   </div>
                   <div className="flex justify-end">
@@ -335,14 +349,25 @@ export default function ChapterPromptEditorPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[10px] text-muted-foreground">Content</Label>
+                <Label className="text-[10px] text-muted-foreground">Content (System Prompt)</Label>
                 <Textarea
                   value={newPrompt.content}
                   onChange={(e) =>
                     setNewPrompt((prev) => ({ ...prev, content: e.target.value }))
                   }
                   className="text-xs min-h-[100px]"
-                  placeholder="Prompt content with {tema} placeholder..."
+                  placeholder="System prompt with {tema} placeholder..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">User Prompt</Label>
+                <Textarea
+                  value={newPrompt.userPrompt}
+                  onChange={(e) =>
+                    setNewPrompt((prev) => ({ ...prev, userPrompt: e.target.value }))
+                  }
+                  className="text-xs min-h-[80px]"
+                  placeholder="User message. Leave empty to use Content as user message with default system prompt."
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
