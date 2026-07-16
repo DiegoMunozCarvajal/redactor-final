@@ -12,6 +12,24 @@ import type { ReasoningEffort } from "@/lib/ai/completion";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { assertOriginalEnough } from "@/lib/ai/originality-check";
 
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
+
+// Pass 1: rhetoric trace
+const traceEntrySchema = z.object({
+  operation: z.string(),
+  position: z.number(),
+  description: z.string(),
+  effectOnReader: z.string(),
+});
+
+const rhetoricTraceOutputSchema = z.object({
+  trace: z.array(traceEntrySchema),
+  assemblyNotes: z.string(),
+});
+
+// Pass 2: template blocks (extended — userPrompt is mandatory)
 const placeholderSchema = z.object({
   name: z.string(),
   function: z.string(),
@@ -20,16 +38,21 @@ const placeholderSchema = z.object({
 
 const templateBlockSchema = z.object({
   name: z.string(),
-  sourceContext: z.string(),
   function: z.string(),
   content: z.string(),
+  userPrompt: z.string(),
+  sourceContext: z.string(),
   placeholders: z.array(placeholderSchema),
   notes: z.string(),
 });
 
-const metaPromptOutputSchema = z.object({
+const templateGeneratorOutputSchema = z.object({
   templates: z.array(templateBlockSchema),
 });
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface ChapterPayload {
   chapterId: string;
@@ -49,12 +72,13 @@ export const generateTemplate = task({
   },
   run: async (payload: {
     templateId: string;
-    metaPromptRevisionId: string;
+    rhetoricTraceRevisionId: string;
+    templateGeneratorRevisionId: string;
     chapters: ChapterPayload[];
     model?: string;
     effort?: ReasoningEffort;
   }) => {
-    const { templateId, metaPromptRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
+    const { templateId, rhetoricTraceRevisionId, templateGeneratorRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
 
     // Idempotency guard: if the template already completed successfully,
     // don't reprocess. "failed" is NOT terminal — retries recover from
@@ -78,16 +102,21 @@ export const generateTemplate = task({
       .where(eq(bookTemplates.id, templateId));
 
     try {
-      // Serialize the output schema for the {{OUTPUT_SCHEMA}} marker — same value
-      // across all chapters, so compute once before the concurrency loop.
-      const outputSchemaStr = JSON.stringify(
-        zodToJsonSchema(metaPromptOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
+      // Serialize output schemas for marker injection. The two passes use
+      // different schemas, so compute both JSON strings before the loop.
+      const rhetoricTraceSchemaStr = JSON.stringify(
+        zodToJsonSchema(rhetoricTraceOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
+        null,
+        2,
+      );
+      const templateGeneratorSchemaStr = JSON.stringify(
+        zodToJsonSchema(templateGeneratorOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
         null,
         2,
       );
 
       // Process chapters concurrently (3 at a time) to avoid sequential timeout.
-      // Each chapter's LLM call and DB inserts are independent — safe to parallelize.
+      // Each chapter runs two LLM calls in sequence: trace extraction → template generation.
       const TEMPLATE_CONCURRENCY = 3;
       const results = await runSettledWithConcurrency(
         chapters,
@@ -95,26 +124,44 @@ export const generateTemplate = task({
         async (chapter) => {
           const capituloFuente = serializePromptText(`# ${chapter.title}\n\n${chapter.contentMd}`);
 
-          const { result } = await executeVersionedPrompt({
+          // ---- Pass 1: Extract rhetoric trace ----
+          const { result: traceResult } = await executeVersionedPrompt({
             stage: 'template-generation',
-            kind: 'meta-template',
-            revisionId: metaPromptRevisionId,
+            kind: 'rhetoric-trace',
+            revisionId: rhetoricTraceRevisionId,
             bookTemplateId: templateId,
             chapterId: chapter.chapterId,
             markerValues: {
               '{{CAPITULO_FUENTE}}': capituloFuente,
-              '{{OUTPUT_SCHEMA}}': outputSchemaStr,
+              '{{OUTPUT_SCHEMA}}': rhetoricTraceSchemaStr,
             },
             model,
-            schema: metaPromptOutputSchema,
+            schema: rhetoricTraceOutputSchema,
             ...(effort ? { effort } : {}),
           });
 
-          const blocks = result.data.templates;
+          // ---- Pass 2: Generate template blocks from trace ----
+          const { result: templateResult } = await executeVersionedPrompt({
+            stage: 'template-generation',
+            kind: 'template-generator',
+            revisionId: templateGeneratorRevisionId,
+            bookTemplateId: templateId,
+            chapterId: chapter.chapterId,
+            markerValues: {
+              '{{RHETORIC_TRACE}}': JSON.stringify(traceResult.data),
+              '{{CAPITULO_FUENTE}}': capituloFuente,
+              '{{OUTPUT_SCHEMA}}': templateGeneratorSchemaStr,
+            },
+            model,
+            schema: templateGeneratorOutputSchema,
+            ...(effort ? { effort } : {}),
+          });
+
+          const blocks = templateResult.data.templates;
 
           if (!blocks || blocks.length === 0) {
             throw new Error(
-              `Chapter "${chapter.title}" generated 0 template blocks. The metaprompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
+              `Chapter "${chapter.title}" generated 0 template blocks. The template-generator prompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
             );
           }
 
@@ -159,6 +206,7 @@ export const generateTemplate = task({
                 isAssembly: false,
                 title: block.name,
                 content: block.content,
+                userPrompt: block.userPrompt,
                 function: block.function,
                 notes: block.notes,
                 sourceContext: (block.sourceContext?.slice(0, 300) || null) as string | null,

@@ -7,7 +7,6 @@ import { promptVersions } from "./prompt-versions";
 
 export const promptKindValues = [
   "generation-system",
-  "meta-template",
   "assembly-planner",
   "assembly",
   "critique",
@@ -15,6 +14,8 @@ export const promptKindValues = [
   "title",
   "placeholder-fill",
   "editorial-brief-extractor",
+  "rhetoric-trace",
+  "template-generator",
 ] as const;
 
 export type PromptKind = (typeof promptKindValues)[number];

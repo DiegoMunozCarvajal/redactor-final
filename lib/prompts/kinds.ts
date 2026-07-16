@@ -2,7 +2,8 @@ import type { PromptKind } from "@/lib/db/schema/prompt-registry";
 
 export const CORE_PROMPT_KINDS = [
   "editorial-brief-extractor",
-  "meta-template",
+  "rhetoric-trace",
+  "template-generator",
   "placeholder-fill",
   "generation-system",
   "assembly-planner",
@@ -20,7 +21,8 @@ export const KIND_LABELS: Record<PromptKind, string> = {
   critique: "Crítica",
   corrector: "Corrector",
   "generation-system": "Sistema",
-  "meta-template": "Meta-prompt",
+  "rhetoric-trace": "Traza retórica",
+  "template-generator": "Generador de templates",
   title: "Título",
   "placeholder-fill": "Placeholders",
   "editorial-brief-extractor": "Extractor editorial",
