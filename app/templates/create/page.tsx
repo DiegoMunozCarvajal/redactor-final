@@ -39,26 +39,40 @@ interface ChapterFile {
 
 export default function CreateTemplatePage() {
   const router = useRouter();
-  const [promptDefinitions, setPromptDefinitions] = useState<PromptDefinition[]>([]);
-  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [rhetoricTraceDefinitions, setRhetoricTraceDefinitions] = useState<PromptDefinition[]>([]);
+  const [templateGeneratorDefinitions, setTemplateGeneratorDefinitions] = useState<PromptDefinition[]>([]);
+  const [loadingRhetoricTrace, setLoadingRhetoricTrace] = useState(true);
+  const [loadingTemplateGenerator, setLoadingTemplateGenerator] = useState(true);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
-  const [selectedMetaPromptRevisionId, setSelectedMetaPromptRevisionId] = useState("");
+  const [selectedRhetoricTraceRevisionId, setSelectedRhetoricTraceRevisionId] = useState("");
+  const [selectedTemplateGeneratorRevisionId, setSelectedTemplateGeneratorRevisionId] = useState("");
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [chapters, setChapters] = useState<ChapterFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/prompt-definitions?kind=rhetoric-trace")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRhetoricTraceDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
+        }
+      })
+      .catch(() => toast.error("Failed to load rhetoric-trace prompts"))
+      .finally(() => setLoadingRhetoricTrace(false));
+  }, []);
 
   useEffect(() => {
     fetch("/api/prompt-definitions?kind=template-generator")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          // Only include definitions that have a revision to select
-          setPromptDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
+          setTemplateGeneratorDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
         }
       })
       .catch(() => toast.error("Failed to load template-generator prompts"))
-      .finally(() => setLoadingMeta(false));
+      .finally(() => setLoadingTemplateGenerator(false));
   }, []);
 
   const MAX_FILE_READ_SIZE = 10 * 1024 * 1024; // 10MB — browser FileReader limit
@@ -98,8 +112,8 @@ export default function CreateTemplatePage() {
   }
 
   async function handleSubmit() {
-    if (!templateName.trim() || !selectedMetaPromptRevisionId || chapters.length === 0) {
-      toast.error("Name, meta-prompt, and at least one chapter are required");
+    if (!templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedTemplateGeneratorRevisionId || chapters.length === 0) {
+      toast.error("Name, both revision selectors, and at least one chapter are required");
       return;
     }
 
@@ -111,7 +125,8 @@ export default function CreateTemplatePage() {
         body: JSON.stringify({
           name: templateName.trim(),
           description: templateDescription.trim() || null,
-          metaPromptRevisionId: selectedMetaPromptRevisionId,
+          rhetoricTraceRevisionId: selectedRhetoricTraceRevisionId,
+          templateGeneratorRevisionId: selectedTemplateGeneratorRevisionId,
           chapters,
           model,
           effort: "max",
@@ -136,7 +151,7 @@ export default function CreateTemplatePage() {
     <div className="py-6">
       <Breadcrumbs items={[
         { label: "Templates", href: "/templates" },
-        { label: "Create from Meta-Prompt" },
+        { label: "Create from Templates" },
       ]} />
 
       <div className="mt-6 max-w-2xl space-y-8">
@@ -144,9 +159,9 @@ export default function CreateTemplatePage() {
           <Link href="/templates" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-4">
             <ArrowLeft className="h-3 w-3" /> Back to templates
           </Link>
-          <h1 className="text-2xl font-bold">Generate Template from Meta-Prompt</h1>
+          <h1 className="text-2xl font-bold">Generate Template from Source Chapters</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Upload source chapters in Markdown. The meta-prompt will analyze each chapter&rsquo;s architecture and generate content-creating prompts.
+            Upload source chapters in Markdown. The rhetoric trace will analyze each chapter&rsquo;s architecture, then the template generator will produce content-creating prompts.
           </p>
         </div>
 
@@ -162,26 +177,55 @@ export default function CreateTemplatePage() {
           </div>
         </div>
 
-        {/* Meta-prompt revision selector */}
+        {/* Rhetoric Trace revision selector */}
         <div className="space-y-2">
-          <Label htmlFor="metaPrompt">Meta-Prompt Revision</Label>
-          {loadingMeta ? (
+          <Label htmlFor="rhetoricTrace">Rhetoric Trace Revision</Label>
+          {loadingRhetoricTrace ? (
             <div className="h-10 bg-muted animate-pulse rounded-md" />
-          ) : promptDefinitions.length === 0 ? (
+          ) : rhetoricTraceDefinitions.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No rhetoric-trace prompts available.{" "}
+              <Link href="/admin/prompt-definitions?kind=rhetoric-trace" className="text-primary hover:underline">Create one first</Link>.
+            </div>
+          ) : (
+            <Select
+              value={selectedRhetoricTraceRevisionId}
+              onValueChange={(v) => setSelectedRhetoricTraceRevisionId(v)}
+            >
+              <SelectTrigger id="rhetoricTrace">
+                <SelectValue placeholder="Select a rhetoric-trace revision..." />
+              </SelectTrigger>
+              <SelectContent>
+                {rhetoricTraceDefinitions.map((def) => (
+                  <SelectItem key={def.id} value={def.latestRevision!.id}>
+                    {def.name} ({def.latestRevision!.versionLabel})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        {/* Template Generator revision selector */}
+        <div className="space-y-2">
+          <Label htmlFor="templateGenerator">Template Generator Revision</Label>
+          {loadingTemplateGenerator ? (
+            <div className="h-10 bg-muted animate-pulse rounded-md" />
+          ) : templateGeneratorDefinitions.length === 0 ? (
             <div className="text-sm text-muted-foreground">
               No template-generator prompts available.{" "}
               <Link href="/admin/prompt-definitions?kind=template-generator" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
             <Select
-              value={selectedMetaPromptRevisionId}
-              onValueChange={(v) => setSelectedMetaPromptRevisionId(v)}
+              value={selectedTemplateGeneratorRevisionId}
+              onValueChange={(v) => setSelectedTemplateGeneratorRevisionId(v)}
             >
-              <SelectTrigger id="metaPrompt">
+              <SelectTrigger id="templateGenerator">
                 <SelectValue placeholder="Select a template-generator revision..." />
               </SelectTrigger>
               <SelectContent>
-                {promptDefinitions.map((def) => (
+                {templateGeneratorDefinitions.map((def) => (
                   <SelectItem key={def.id} value={def.latestRevision!.id}>
                     {def.name} ({def.latestRevision!.versionLabel})
                   </SelectItem>
@@ -257,7 +301,7 @@ export default function CreateTemplatePage() {
 
         <Button
           onClick={handleSubmit}
-          disabled={submitting || !templateName.trim() || !selectedMetaPromptRevisionId || chapters.length === 0}
+          disabled={submitting || !templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedTemplateGeneratorRevisionId || chapters.length === 0}
           className="w-full"
         >
           {submitting ? (

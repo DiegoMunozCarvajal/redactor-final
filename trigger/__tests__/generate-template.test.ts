@@ -44,7 +44,8 @@ import { generateTemplate } from "@/trigger/generate-template";
 type GenerateTemplateRunner = {
   run: (payload: {
     templateId: string;
-    metaPromptRevisionId: string;
+    rhetoricTraceRevisionId: string;
+    templateGeneratorRevisionId: string;
     chapters: Array<{
       chapterId: string;
       title: string;
@@ -96,7 +97,40 @@ describe("generateTemplate", () => {
       async (callback: (transaction: typeof tx) => Promise<void>) => callback(tx),
     );
 
-    mocks.executeVersionedPrompt.mockResolvedValue({
+    // First call: rhetoric-trace pass
+    mocks.executeVersionedPrompt.mockResolvedValueOnce({
+      result: {
+        data: {
+          trace: [{ operation: "op", position: 0, description: "desc", effectOnReader: "effect" }],
+          assemblyNotes: "",
+        },
+        usage: {
+          promptTokens: 1,
+          completionTokens: 1,
+          totalTokens: 2,
+          costUsd: 0.001,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+        },
+      },
+      executionId: "exec-rt",
+      revision: {
+        id: "rev-rt-1",
+        definitionId: "def-rt-1",
+        kind: "rhetoric-trace",
+        name: "Rhetoric Trace v1",
+        revisionNumber: 1,
+        versionLabel: "v1",
+        systemTemplate: "",
+        userTemplate: "",
+        requiredMarkers: ["{{CAPITULO_FUENTE}}", "{{OUTPUT_SCHEMA}}"],
+        outputContract: null,
+        configuration: {},
+      },
+    });
+
+    // Second call: template-generator pass
+    mocks.executeVersionedPrompt.mockResolvedValueOnce({
       result: {
         data: {
           templates: [
@@ -118,12 +152,11 @@ describe("generateTemplate", () => {
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
         },
-        durationMs: 500,
       },
-      executionId: "exec-1",
+      executionId: "exec-tg",
       revision: {
-        id: "rev-1",
-        definitionId: "def-1",
+        id: "rev-tg-1",
+        definitionId: "def-tg-1",
         kind: "template-generator",
         name: "Template Generator v1",
         revisionNumber: 1,
@@ -140,7 +173,8 @@ describe("generateTemplate", () => {
   it("calls executeVersionedPrompt with kind template-generator and stage template-generation", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -152,16 +186,18 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
-    expect(mocks.executeVersionedPrompt).toHaveBeenCalledTimes(1);
-    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    expect(mocks.executeVersionedPrompt).toHaveBeenCalledTimes(2);
+    // First call is rhetoric-trace; second is template-generator
+    const callArg = mocks.executeVersionedPrompt.mock.calls[1][0] as Record<string, unknown>;
     expect(callArg.kind).toBe("template-generator");
     expect(callArg.stage).toBe("template-generation");
   });
 
-  it("passes metaPromptRevisionId as revisionId to executor", async () => {
+  it("passes both revisionIds to executor", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -173,14 +209,17 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
-    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
-    expect(callArg.revisionId).toBe("rev-meta-1");
+    const rtCall = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    const tgCall = mocks.executeVersionedPrompt.mock.calls[1][0] as Record<string, unknown>;
+    expect(rtCall.revisionId).toBe("rev-rt-1");
+    expect(tgCall.revisionId).toBe("rev-tg-1");
   });
 
   it("replaces CAPITULO_FUENTE marker with chapter content", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -192,6 +231,7 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
+    // Both passes pass CAPITULO_FUENTE; check the rhetoric-trace call
     const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
     const markerValues = callArg.markerValues as Record<string, string>;
     expect(markerValues["{{CAPITULO_FUENTE}}"]).toBe("# Título\n\nTexto fuente");
@@ -200,7 +240,8 @@ describe("generateTemplate", () => {
   it("passes {{OUTPUT_SCHEMA}} marker value to executor", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -212,17 +253,19 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
-    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    // Both passes pass OUTPUT_SCHEMA; check the template-generator call
+    const callArg = mocks.executeVersionedPrompt.mock.calls[1][0] as Record<string, unknown>;
     const markerValues = callArg.markerValues as Record<string, string>;
     expect(markerValues["{{OUTPUT_SCHEMA}}"]).toBeDefined();
     // Should be a valid JSON string
     expect(() => JSON.parse(markerValues["{{OUTPUT_SCHEMA}}"])).not.toThrow();
   });
 
-  it("passes metaPromptOutputSchema as schema to executor", async () => {
+  it("passes templateGeneratorOutputSchema as schema to executor", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -234,14 +277,15 @@ describe("generateTemplate", () => {
       model: "test-model",
     });
 
-    const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
+    const callArg = mocks.executeVersionedPrompt.mock.calls[1][0] as Record<string, unknown>;
     expect(callArg.schema).toBeDefined();
   });
 
   it("does not query metaPrompts table", async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: "template-1",
-      metaPromptRevisionId: "rev-meta-1",
+      rhetoricTraceRevisionId: "rev-rt-1",
+      templateGeneratorRevisionId: "rev-tg-1",
       chapters: [
         {
           chapterId: "chapter-1",
@@ -260,7 +304,8 @@ describe("generateTemplate", () => {
   it('escapes chapter source before template-generator composition', async () => {
     await (generateTemplate as unknown as GenerateTemplateRunner).run({
       templateId: 'template-1',
-      metaPromptRevisionId: 'rev-meta-1',
+      rhetoricTraceRevisionId: 'rev-rt-1',
+      templateGeneratorRevisionId: 'rev-tg-1',
       chapters: [
         {
           chapterId: 'chapter-1',
@@ -272,6 +317,7 @@ describe("generateTemplate", () => {
       model: 'test-model',
     });
 
+    // Both passes escape the source; check the rhetoric-trace call
     const callArg = mocks.executeVersionedPrompt.mock.calls[0][0] as Record<string, unknown>;
     const markers = callArg.markerValues as Record<string, string>;
     expect(markers['{{CAPITULO_FUENTE}}']).toBe(
