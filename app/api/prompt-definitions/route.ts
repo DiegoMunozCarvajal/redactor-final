@@ -60,10 +60,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const [def] = await db
-    .insert(promptDefinitions)
-    .values({ ...parsed.data, createdBy: admin.user.id })
-    .returning();
+  try {
+    const [def] = await db
+      .insert(promptDefinitions)
+      .values({ ...parsed.data, createdBy: admin.user.id })
+      .returning();
 
-  return NextResponse.json(def, { status: 201 });
+    return NextResponse.json(def, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
