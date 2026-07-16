@@ -161,7 +161,7 @@ export const generateTemplate = task({
 
           if (!blocks || blocks.length === 0) {
             throw new Error(
-              `Chapter "${chapter.title}" generated 0 template blocks. The metaprompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
+              `Chapter "${chapter.title}" generated 0 template blocks. The template-generator prompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
             );
           }
 
