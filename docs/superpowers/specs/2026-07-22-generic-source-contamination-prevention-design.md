@@ -215,11 +215,19 @@ the persistence required by later deliverables.
 Add:
 
 ```ts
-interface GenerationAuthorization {
-  pipelineRunId: string;
-  sourceProfileSetHash: string;
-  originalityPolicyVersion: string;
-}
+type GenerationAuthorization =
+  | {
+      scope: "template";
+      pipelineRunId: string;
+      sourceProfileSetHash: string;
+      originalityPolicyVersion: string;
+    }
+  | {
+      scope: "source-free";
+      pipelineRunId: null;
+      sourceProfileSetHash: typeof EMPTY_SOURCE_PROFILE_SET_HASH;
+      originalityPolicyVersion: string;
+    };
 
 assertTemplateGenerationAllowed(
   projectId: string,
@@ -238,6 +246,11 @@ clean lineage above or throws `GenerationBlockedError` with one of:
 
 It never returns an ignorable `allowed: false` result. Every entry point calls it
 before provider invocation or application-data mutation.
+
+A project whose `book_template_id` is null receives `scope = "source-free"` with
+the canonical SHA-256 hash of an empty profile set. This preserves manual,
+non-template projects without pretending that they have template lineage.
+Projects that reference a template never fall back to `source-free`.
 
 All mutating generation entry points must call this guard:
 
@@ -456,6 +469,9 @@ created_at
 
 `decision` is `clean`, `suspect`, or `contaminated`. `signals` contains detector
 IDs, source risk-element IDs, scores, thresholds, and field paths only.
+
+`pipeline_run_id` is nullable only for `source-free` projects. A database check
+requires it for template-scoped assessments.
 
 For accepted content, the clean assessment and application row commit in one
 transaction and reference each other through `accepted_entity_type/id`. Rejected
@@ -824,9 +840,13 @@ Every project inherits the active clean pipeline run through
 Before generating text:
 
 1. authorize project/template;
-2. load all source profiles for the active run;
+2. load all source profiles for the active run, or the empty set for a
+   `source-free` project;
 3. compute `sourceProfileSetHash`;
 4. evaluate candidate output before application persistence.
+
+The versioned baseline blocklist still runs for `source-free` projects. Missing
+template profiles never cause a templated project to fall back to the empty set.
 
 ### 13.2 Covered outputs
 
@@ -935,18 +955,28 @@ Definitions without explicit dependency are omitted.
 Generated metadata must include:
 
 ```ts
-interface OriginalityLineage {
-  pipelineRunId: string;
-  pipelineVersion: string;
-  compilerVersion: string;
-  compilerHash: string;
-  templateArtifactHash: string;
+interface BaseOriginalityLineage {
+  scope: "template" | "source-free";
   sourceProfileSetHash: string;
-  sourceProfileVersion: string;
   originalityPolicyVersion: string;
-  placeholderFunctionHash?: string;
   promptRevisionId: string;
 }
+
+type OriginalityLineage =
+  | (BaseOriginalityLineage & {
+      scope: "template";
+      pipelineRunId: string;
+      pipelineVersion: string;
+      compilerVersion: string;
+      compilerHash: string;
+      templateArtifactHash: string;
+      sourceProfileVersion: string;
+      placeholderFunctionHash?: string;
+    })
+  | (BaseOriginalityLineage & {
+      scope: "source-free";
+      pipelineRunId: null;
+    });
 ```
 
 Placeholder freshness and generation reuse require exact equality with current
@@ -1022,7 +1052,7 @@ Response:
 
 No reduced-protection mode exists for:
 
-- missing source profile;
+- missing source profile on a templated project;
 - unavailable detector;
 - unsupported policy version;
 - unsupported compiler version;
