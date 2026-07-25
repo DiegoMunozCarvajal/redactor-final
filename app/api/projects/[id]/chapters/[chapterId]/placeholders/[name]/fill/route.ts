@@ -13,14 +13,17 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { type ReasoningEffort } from "@/lib/ai/completion";
-import { fillOnePlaceholder } from "@/lib/ai/placeholder-fill";
+import { fillOnePlaceholder, type FillOriginalityContext } from "@/lib/ai/placeholder-fill";
 import { resolvePlaceholdersDirect } from "@/lib/placeholders";
-import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
-import { hashPromptContents } from "@/lib/placeholder-utils";
+import { buildPlaceholderFillMetadata, type PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
+import { hashPromptContents, PlaceholderDependencyError } from "@/lib/placeholder-utils";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 import { llmPromptExecutions } from "@/lib/db/schema/prompt-registry";
 import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
 import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import { templateLineage, sourceFreeLineage } from "@/lib/originality/lineage";
+import type { OriginalityLineage } from "@/lib/originality/lineage";
+import { OriginalityContaminationError, OriginalityDetectorUnavailableError } from "@/lib/originality/contracts";
 import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
@@ -204,8 +207,46 @@ export async function POST(
 
   const phDef = {
     name,
+    dependencyNames: placeholderRow.dependencyNames,
     function: placeholderRow.function ?? null,
     notes: placeholderRow.notes ?? null,
+  };
+
+  // Build current lineage from authorization for originality gate context
+  const authLineage: OriginalityLineage = authorization.scope === "source-free"
+    ? sourceFreeLineage({ promptRevisions: {} })
+    : templateLineage({
+        pipelineRunId: authorization.pipelineRunId,
+        pipelineVersion: "template-pipeline-v2",
+        compilerVersion: "template-compiler-v1",
+        compilerHash: "",
+        recipeCatalogHash: "",
+        templateArtifactHash: placeholderRow.templateArtifactHash ?? "",
+        sourceProfileVersion: "source-profile-v1",
+        sourceProfileSetHash: authorization.sourceProfileSetHash,
+        originalityPolicyVersion: authorization.originalityPolicyVersion,
+        promptRevisions: {},
+      });
+
+  // Map all placeholder rows for dependency-based context selection
+  const allPlaceholderRows = existingRows.map((r) => ({
+    name: r.name,
+    definition: r.definition,
+    dependencyNames: r.dependencyNames,
+    fillMetadata: r.fillMetadata as {
+      status?: string;
+      originalityAssessmentId?: string;
+      originalityLineage?: OriginalityLineage;
+      definitionOrigin?: string;
+    } | null ?? null,
+  }));
+
+  const originalityContext: FillOriginalityContext = {
+    authorization,
+    currentLineage: authLineage,
+    templateArtifactHash: placeholderRow.templateArtifactHash ?? undefined,
+    chapterId,
+    chapterGenerationId: fillGen.id,
   };
 
   // LLM call outside the lock
@@ -222,8 +263,30 @@ export async function POST(
       chapterGenerationId: fillGen.id,
       signal: req.signal,
       editorialBundle: briefBundle,
+      originalityContext,
+      allPlaceholderRows,
     });
   } catch (err) {
+    // Originality gate errors
+    if (err instanceof OriginalityContaminationError) {
+      // Generation already quarantined by the gate
+      return NextResponse.json(
+        { error: "Content does not meet originality requirements" },
+        { status: 422 },
+      );
+    }
+    if (err instanceof OriginalityDetectorUnavailableError) {
+      return NextResponse.json(
+        { error: "Originality detection service unavailable" },
+        { status: 503 },
+      );
+    }
+    if (err instanceof PlaceholderDependencyError) {
+      return NextResponse.json(
+        { error: `Unresolved placeholder dependencies: ${err.missingNames.join(", ")}` },
+        { status: 422 },
+      );
+    }
     const message = sanitizeError(err);
     await db
       .update(chapterGenerations)
@@ -339,5 +402,134 @@ export async function POST(
     sources: result.sources,
     ragChunks: result.ragChunks,
     provider: result.provider,
+  });
+}
+
+/**
+ * PATCH /projects/[id]/chapters/[chapterId]/placeholders/[name]/fill
+ *
+ * Actions:
+ *   { action: "confirmManual" } — Confirm a manual placeholder definition.
+ *   Records current lineage and timestamp. Does NOT call an LLM provider.
+ *   Rejects if the current definitionOrigin is "legacy" (must save a manual
+ *   definition first, e.g. via the editor).
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; chapterId: string; name: string }> },
+) {
+  const csrfError = csrfCheck(req);
+  if (csrfError) return csrfError;
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id: projectId, chapterId, name } = await params;
+
+  // Verify project ownership
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project || project.userId !== user.id) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  // Verify chapter belongs to project
+  const [chapter] = await db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .limit(1);
+  if (!chapter) {
+    return NextResponse.json({ error: "chapter not found" }, { status: 404 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { action } = body;
+
+  if (action !== "confirmManual") {
+    return NextResponse.json({ error: "unsupported action" }, { status: 400 });
+  }
+
+  // Load the placeholder row
+  const [placeholderRow] = await db
+    .select()
+    .from(chapterPlaceholders)
+    .where(
+      and(
+        eq(chapterPlaceholders.chapterId, chapterId),
+        eq(chapterPlaceholders.name, name),
+      ),
+    )
+    .limit(1);
+
+  if (!placeholderRow) {
+    return NextResponse.json({ error: "placeholder not found" }, { status: 404 });
+  }
+
+  // Reject if definition is legacy (no manual definition saved yet)
+  const currentOrigin = placeholderRow.definitionOrigin ?? "legacy";
+  if (currentOrigin === "legacy" || !placeholderRow.definition) {
+    return NextResponse.json(
+      { error: "Save a manual definition before confirming it. Legacy AI definitions cannot be confirmed without review." },
+      { status: 400 },
+    );
+  }
+
+  // Build current lineage from authorization for recording
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
+
+  const authLineage: OriginalityLineage = authorization.scope === "source-free"
+    ? sourceFreeLineage({ promptRevisions: {} })
+    : templateLineage({
+        pipelineRunId: authorization.pipelineRunId,
+        pipelineVersion: "template-pipeline-v2",
+        compilerVersion: "template-compiler-v1",
+        compilerHash: "",
+        recipeCatalogHash: "",
+        templateArtifactHash: placeholderRow.templateArtifactHash ?? "",
+        sourceProfileVersion: "source-profile-v1",
+        sourceProfileSetHash: authorization.sourceProfileSetHash,
+        originalityPolicyVersion: authorization.originalityPolicyVersion,
+        promptRevisions: {},
+      });
+
+  // Update fillMetadata: set manualConfirmedAt, definitionOrigin, and lineage
+  const existingMeta = (placeholderRow.fillMetadata ?? {}) as PlaceholderFillMetadata;
+  const updatedMeta: PlaceholderFillMetadata = {
+    ...existingMeta,
+    filledAt: new Date().toISOString(),
+    definitionOrigin: "manual",
+    manualConfirmedAt: new Date().toISOString(),
+    originalityLineage: authLineage,
+  };
+  await db
+    .update(chapterPlaceholders)
+    .set({
+      fillMetadata: updatedMeta,
+      definitionOrigin: "manual",
+    })
+    .where(
+      and(
+        eq(chapterPlaceholders.chapterId, chapterId),
+        eq(chapterPlaceholders.name, name),
+      ),
+    );
+
+  return NextResponse.json({
+    name,
+    definitionOrigin: "manual",
+    manualConfirmedAt: new Date().toISOString(),
   });
 }

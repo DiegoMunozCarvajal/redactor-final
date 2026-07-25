@@ -16,6 +16,21 @@ import {
   serializeResearchResults,
   serializeValidationFeedback,
 } from "@/lib/placeholders/prompt-data";
+import {
+  runOriginalityGate,
+  type GeneratedCandidate,
+  type OriginalityGateInput,
+  type OriginalityGateResult,
+} from "@/lib/originality/gate";
+import {
+  OriginalityContaminationError,
+  OriginalityDetectorUnavailableError,
+  type OriginalityStage,
+} from "@/lib/originality/contracts";
+import { selectPlaceholderDependencies, PlaceholderDependencyError } from "@/lib/placeholder-utils";
+import type { OriginalityLineage } from "@/lib/originality/lineage";
+import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export type { SearchResult };
 
@@ -48,6 +63,8 @@ export interface PlaceholderFillEvent {
   evidenceSourceIds?: string[];
   /** Execution IDs from versioned prompt calls */
   executionIds?: string[];
+  /** Whether the definition was already persisted by the originality gate */
+  persisted?: boolean;
   /** Count of successfully filled placeholders (emitted in "done" event) */
   filled?: number;
   /** Count of failed placeholders (emitted in "done" event) */
@@ -432,9 +449,19 @@ async function generateAndValidate(
   return { status: "completed", definition: retryDefinition, executionIds };
 }
 
+export interface FillOriginalityContext {
+  authorization: GenerationAuthorization;
+  currentLineage: OriginalityLineage;
+  templateArtifactHash?: string;
+  placeholderFunctionHash?: string;
+  chapterId?: string;
+  chapterGenerationId?: string;
+}
+
 export interface PlaceholderDef {
   name: string;
   function?: string | null;
+  dependencyNames?: string[];
 }
 
 export interface FillOneResult {
@@ -478,6 +505,15 @@ export interface FillOnePlaceholderParams {
   temperature?: number;
   /** Abort signal for cancellation */
   signal?: AbortSignal;
+  /** Originality gate context — required for LLM-based fill (not direct/reused) */
+  originalityContext?: FillOriginalityContext;
+  /** All placeholder rows for this chapter (for dependency-based context selection) */
+  allPlaceholderRows?: Array<{
+    name: string;
+    definition: string | null;
+    dependencyNames: string[];
+    fillMetadata?: { status?: string; originalityAssessmentId?: string; originalityLineage?: OriginalityLineage; definitionOrigin?: string } | null;
+  }>;
 }
 
 /**
@@ -652,11 +688,40 @@ export async function fillOnePlaceholder(
   // to consume as narrative role guidance.
   // function is also used internally for buildSearchQuery and provider classification.
 
+  // When originality context and all placeholder rows are available, use
+  // dependency-based context selection (declared dependencies only).
+  // Fall back to existingDefs (all siblings) for backward compatibility.
+  const effectiveExistingDefs =
+    params.originalityContext && params.allPlaceholderRows
+      ? (() => {
+          try {
+            return selectPlaceholderDependencies({
+              current: {
+                name: ph.name,
+                dependencyNames: ph.dependencyNames ?? [],
+              },
+              rows: params.allPlaceholderRows,
+              currentLineage: params.originalityContext.currentLineage,
+            });
+          } catch (err) {
+            if (err instanceof PlaceholderDependencyError) {
+              // Log warning but fall back to all siblings — the fill still
+              // works; the consumer just gets broader context than strict
+              // dependency enforcement would allow.
+              console.warn(
+                `[placeholder-fill] Dependency resolution warning for {${ph.name}}: ${err.message}. Falling back to all siblings.`,
+              );
+            }
+            return existingDefs;
+          }
+        })()
+      : existingDefs;
+
   const placeholderContext = serializePlaceholderContext({
     placeholderName: ph.name,
     function: ph.function,
     projectTopic,
-    existingDefinitions: existingDefs,
+    existingDefinitions: effectiveExistingDefs,
   });
 
   const researchResults = serializeResearchResults({
@@ -680,25 +745,174 @@ export async function fillOnePlaceholder(
     "{{OUTPUT_SCHEMA}}": outputSchema,
   };
 
-  // Phase 3: Generate with versioned prompt (with single retry on validation failure)
-  const genResult = await generateAndValidate(
-    model,
-    projectId,
-    ph,
-    baseMarkerValues,
-    effort,
-    temperature,
-    signal,
-    currentChapterId,
-    chapterGenerationId,
-  );
+  // Phase 3: Generate with originality gate (when context provided) or legacy path
+  if (params.originalityContext) {
+    // ── Gate path: atomic generate + originality check + persist ──
+    const { authorization } = params.originalityContext;
 
-  if (genResult.status === "insufficient_evidence") {
+    const gateContext: OriginalityGateInput<string>["context"] = {
+      projectId,
+      chapterId: currentChapterId,
+      chapterGenerationId,
+      stage: "placeholder" as OriginalityStage,
+      fieldPath: `placeholder.${ph.name}`,
+      authorization,
+      templateArtifactHash: params.originalityContext.templateArtifactHash,
+      placeholderFunctionHash: params.originalityContext.placeholderFunctionHash,
+      model,
+    };
+
+    // Sentinal used by persistAccepted closure to detect whether the
+    // generate callback actually produced a definition.
+    let lastExecutionIds: string[] = [];
+
+    const gateInput: OriginalityGateInput<string> = {
+      context: gateContext,
+      generate: async ({ feedback }) => {
+        const markers = feedback
+          ? {
+              ...baseMarkerValues,
+              "{{VALIDATION_FEEDBACK}}": serializeValidationFeedback({
+                status: "retry",
+                reason: feedback,
+              }),
+            }
+          : {
+              ...baseMarkerValues,
+              "{{VALIDATION_FEEDBACK}}": serializeValidationFeedback({
+                status: "initial",
+              }),
+            };
+
+        const genResult = await generateAndValidate(
+          model,
+          projectId,
+          ph,
+          markers,
+          effort,
+          feedback ? 0.2 : temperature,
+          signal,
+          currentChapterId,
+          chapterGenerationId,
+        );
+
+        lastExecutionIds = genResult.executionIds;
+
+        if (genResult.status === "insufficient_evidence") {
+          // Signal insufficient_evidence to caller via tagged error
+          const ie = new Error(genResult.reason);
+          ie.name = "InsufficientEvidenceError";
+          throw ie;
+        }
+
+        return {
+          value: genResult.definition,
+          text: genResult.definition,
+          executionId: genResult.executionIds[genResult.executionIds.length - 1] ?? "",
+          promptRevisions: {},
+        };
+      },
+      persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+        await tx
+          .update(chapterPlaceholders)
+          .set({
+            definition: candidate.value,
+            fillMetadata: buildPlaceholderFillMetadata({
+              provider,
+              sources,
+              ragChunks: ragChunks || undefined,
+              model,
+              ...(editorialBundle
+                ? {
+                    editorialBriefId: editorialBundle.id,
+                    editorialBriefVersion: editorialBundle.version,
+                    editorialBriefHash: editorialBundle.hash,
+                  }
+                : {}),
+              ...(evidenceQuery ? { evidenceQuery } : {}),
+              ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+              status: "completed",
+              originalityLineage: lineage,
+              originalityAssessmentId: assessmentId,
+              definitionOrigin: "ai",
+            }),
+          })
+          .where(
+            and(
+              eq(chapterPlaceholders.chapterId, currentChapterId!),
+              eq(chapterPlaceholders.name, ph.name),
+            ),
+          );
+
+        return { entityType: "placeholder_definition", entityId: ph.name };
+      },
+    };
+
+    try {
+      const gateResult = await runOriginalityGate(gateInput);
+      return {
+        name: ph.name,
+        definition: gateResult.value,
+        status: "completed" as const,
+        sources,
+        ragChunks: ragChunks || undefined,
+        provider,
+        executionIds: lastExecutionIds,
+        ...(evidenceQuery ? { evidenceQuery } : {}),
+        ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+      };
+    } catch (err) {
+      if ((err as Error).name === "InsufficientEvidenceError") {
+        return {
+          name: ph.name,
+          definition: "",
+          status: "insufficient_evidence" as const,
+          insufficientReason: (err as Error).message,
+          sources,
+          ragChunks: ragChunks || undefined,
+          provider,
+          executionIds: lastExecutionIds,
+          ...(evidenceQuery ? { evidenceQuery } : {}),
+          ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+        };
+      }
+      // OriginalityContaminationError, OriginalityDetectorUnavailableError
+      // propagate up to the caller (API route handles HTTP mapping)
+      throw err;
+    }
+  } else {
+    // ── Legacy path (no gate) — existing behavior ──
+    const genResult = await generateAndValidate(
+      model,
+      projectId,
+      ph,
+      baseMarkerValues,
+      effort,
+      temperature,
+      signal,
+      currentChapterId,
+      chapterGenerationId,
+    );
+
+    if (genResult.status === "insufficient_evidence") {
+      return {
+        name: ph.name,
+        definition: "",
+        status: "insufficient_evidence" as const,
+        insufficientReason: genResult.reason,
+        sources,
+        ragChunks: ragChunks || undefined,
+        provider,
+        executionIds: genResult.executionIds,
+        ...(evidenceQuery ? { evidenceQuery } : {}),
+        ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+      };
+    }
+
     return {
       name: ph.name,
-      definition: "",
-      status: "insufficient_evidence" as const,
-      insufficientReason: genResult.reason,
+      definition: genResult.definition,
+      status: "completed" as const,
       sources,
       ragChunks: ragChunks || undefined,
       provider,
@@ -707,18 +921,6 @@ export async function fillOnePlaceholder(
       ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
     };
   }
-
-  return {
-    name: ph.name,
-    definition: genResult.definition,
-    status: "completed" as const,
-    sources,
-    ragChunks: ragChunks || undefined,
-    provider,
-    executionIds: genResult.executionIds,
-    ...(evidenceQuery ? { evidenceQuery } : {}),
-    ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
-  };
 }
 export async function* fillPlaceholdersSequential(
   placeholders: PlaceholderDef[],
