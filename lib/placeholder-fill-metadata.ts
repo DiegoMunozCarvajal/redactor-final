@@ -1,4 +1,5 @@
 import type { SearchResult } from "@/lib/ai/placeholder-fill";
+import type { OriginalityLineage } from "@/lib/originality/lineage";
 
 export interface PlaceholderFillMetadata {
   provider?: string;
@@ -19,6 +20,14 @@ export interface PlaceholderFillMetadata {
   evidenceQuery?: string;
   /** Source IDs that were searched for evidence (from approved brief). */
   evidenceSourceIds?: string[];
+  /** Lineage describing the template and prompt context for originality tracking. */
+  originalityLineage?: OriginalityLineage;
+  /** ID of the originality assessment result, if one was performed. */
+  originalityAssessmentId?: string;
+  /** How this placeholder definition was originally filled. */
+  definitionOrigin?: "legacy" | "manual" | "ai";
+  /** ISO timestamp of when a human confirmed this placeholder definition. */
+  manualConfirmedAt?: string;
 }
 
 export function buildPlaceholderFillMetadata(params: {
@@ -35,6 +44,10 @@ export function buildPlaceholderFillMetadata(params: {
   editorialBriefHash?: string;
   evidenceQuery?: string;
   evidenceSourceIds?: string[];
+  originalityLineage?: OriginalityLineage;
+  originalityAssessmentId?: string;
+  definitionOrigin?: "legacy" | "manual" | "ai";
+  manualConfirmedAt?: string;
 }): PlaceholderFillMetadata {
   return {
     ...(params.provider ? { provider: params.provider } : {}),
@@ -50,5 +63,9 @@ export function buildPlaceholderFillMetadata(params: {
     ...(params.editorialBriefHash ? { editorialBriefHash: params.editorialBriefHash } : {}),
     ...(params.evidenceQuery ? { evidenceQuery: params.evidenceQuery } : {}),
     ...(params.evidenceSourceIds && params.evidenceSourceIds.length > 0 ? { evidenceSourceIds: params.evidenceSourceIds } : {}),
+    ...(params.originalityLineage ? { originalityLineage: params.originalityLineage } : {}),
+    ...(params.originalityAssessmentId ? { originalityAssessmentId: params.originalityAssessmentId } : {}),
+    ...(params.definitionOrigin ? { definitionOrigin: params.definitionOrigin } : {}),
+    ...(params.manualConfirmedAt ? { manualConfirmedAt: params.manualConfirmedAt } : {}),
   };
 }
