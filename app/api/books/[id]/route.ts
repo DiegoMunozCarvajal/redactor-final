@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { bookTemplates, chapters, projects, templatePipelineRuns, templateRunArtifacts } from "@/lib/db/schema";
+import {
+  bookTemplates,
+  chapters,
+  projects,
+  templatePipelineRuns,
+  templateRunArtifacts,
+  originalityAssessments,
+  pipelineMaintenanceOperations,
+} from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { UUID_RE } from "@/lib/constants";
@@ -78,7 +86,68 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  return NextResponse.json({ ...book, pipelineRun });
+  // ---- Safety classification ----
+  let classification: "legacy_unverified" | "suspect" | "contaminated" | "clean_v2" = "legacy_unverified";
+  let replacementTemplateId: string | undefined;
+
+  // 1. Check templatePipelineRuns for a clean run with valid compilerVersion
+  const [cleanRun] = await db
+    .select({ id: templatePipelineRuns.id })
+    .from(templatePipelineRuns)
+    .where(
+      and(
+        eq(templatePipelineRuns.bookTemplateId, id),
+        eq(templatePipelineRuns.status, "clean"),
+        isNotNull(templatePipelineRuns.compilerVersion),
+      ),
+    )
+    .orderBy(desc(templatePipelineRuns.createdAt))
+    .limit(1);
+
+  if (cleanRun) {
+    classification = "clean_v2";
+  } else {
+    // 2. Check originalityAssessments for contaminated/suspect decisions
+    const [assessment] = await db
+      .select({ decision: originalityAssessments.decision })
+      .from(originalityAssessments)
+      .innerJoin(projects, eq(originalityAssessments.projectId, projects.id))
+      .where(eq(projects.bookTemplateId, id))
+      .orderBy(desc(originalityAssessments.createdAt))
+      .limit(1);
+
+    if (assessment) {
+      if (assessment.decision === "contaminated") {
+        classification = "contaminated";
+      } else if (assessment.decision === "suspect") {
+        classification = "suspect";
+      }
+    }
+  }
+
+  // 3. Check pipelineMaintenanceOperations for a replacement template
+  const [replacementOp] = await db
+    .select({ resultTemplateId: pipelineMaintenanceOperations.resultTemplateId })
+    .from(pipelineMaintenanceOperations)
+    .where(
+      and(
+        eq(pipelineMaintenanceOperations.kind, "template_regeneration"),
+        eq(pipelineMaintenanceOperations.status, "completed"),
+        sql`${pipelineMaintenanceOperations.report}->>'legacyTemplateId' = ${id}`,
+      ),
+    )
+    .limit(1);
+
+  if (replacementOp?.resultTemplateId) {
+    replacementTemplateId = replacementOp.resultTemplateId;
+  }
+
+  const safety = {
+    classification,
+    ...(replacementTemplateId && { replacementTemplateId }),
+  };
+
+  return NextResponse.json({ ...book, pipelineRun, safety });
 }
 
 // NOTE: Uses PUT for partial update (PATCH semantics).

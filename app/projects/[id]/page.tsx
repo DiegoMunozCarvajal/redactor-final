@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { SourcesManager } from "@/components/projects/sources-manager";
 import { EditorialBriefPanel } from "@/components/projects/editorial-brief-panel";
 import { PromptBindingsCard } from "@/components/projects/prompt-bindings-card";
+import { ProjectSafetyBanner } from "@/components/projects/project-safety-banner";
+import type { ProjectSafety } from "@/components/projects/project-safety-banner";
 import { toast } from "sonner";
 
 interface GenerationData {
@@ -39,6 +41,7 @@ interface ProjectData {
   subtitle: string | null;
   chapters: ChapterData[];
   activeBrief?: { id: string; version: number; hash: string } | null;
+  safety?: ProjectSafety;
 }export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<ProjectData | null>(null);

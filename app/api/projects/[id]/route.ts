@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterGenerations, chapterPlaceholders } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
+import { eq, asc, desc, and, inArray, isNotNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
@@ -91,10 +91,54 @@ export async function GET(
     ? { id: activeBundle.id, version: activeBundle.version, hash: activeBundle.hash }
     : null;
 
+  // ---- Safety classification ----
+  // Check if another project supersedes this one
+  let safetyState: "source_free" | "clean_v2" | "legacy_read_only" = "legacy_read_only";
+  let replacementProjectId: string | undefined;
+
+  const [supersedingProject] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.supersedesProjectId, id))
+    .limit(1);
+
+  if (supersedingProject) {
+    safetyState = "legacy_read_only";
+    replacementProjectId = supersedingProject.id;
+  } else {
+    // Check latest generation metadata for templateAuthorization
+    const [genWithAuth] = await db
+      .select({ generationMetadata: chapterGenerations.generationMetadata })
+      .from(chapterGenerations)
+      .where(
+        and(
+          eq(chapterGenerations.projectId, project.id),
+          sql`${chapterGenerations.generationMetadata}->'templateAuthorization' IS NOT NULL`,
+        ),
+      )
+      .orderBy(desc(chapterGenerations.createdAt))
+      .limit(1);
+
+    if (genWithAuth?.generationMetadata) {
+      const auth = genWithAuth.generationMetadata.templateAuthorization;
+      if (auth?.scope === "template" && auth?.pipelineRunId) {
+        safetyState = "clean_v2";
+      } else if (auth?.scope === "source-free") {
+        safetyState = "source_free";
+      }
+    }
+  }
+
+  const safety = {
+    state: safetyState,
+    ...(replacementProjectId && { replacementProjectId }),
+  };
+
   return NextResponse.json({
     ...project,
     chapters: chaptersWithGenerations,
     activeBrief,
+    safety,
   });
 }
 

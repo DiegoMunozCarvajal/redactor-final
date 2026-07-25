@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, sql, inArray, isNotNull, ne } from "drizzle-orm";
+import type { ProjectSafety } from "@/components/projects/project-safety-banner";
 import { csrfCheck } from "@/lib/api/csrf";
 import { z } from "zod";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
@@ -154,6 +155,40 @@ export async function GET(
     ? { id: activeBundle.id, version: activeBundle.version, hash: activeBundle.hash }
     : null;
 
+  // ---- Project safety classification ----
+  let safetyState: "source_free" | "clean_v2" | "legacy_read_only" = "legacy_read_only";
+
+  const [supersedingProject] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.supersedesProjectId, projectId))
+    .limit(1);
+
+  if (!supersedingProject) {
+    const [genWithAuth] = await db
+      .select({ generationMetadata: chapterGenerations.generationMetadata })
+      .from(chapterGenerations)
+      .where(
+        and(
+          eq(chapterGenerations.projectId, projectId),
+          sql`${chapterGenerations.generationMetadata}->'templateAuthorization' IS NOT NULL`,
+        ),
+      )
+      .orderBy(desc(chapterGenerations.createdAt))
+      .limit(1);
+
+    if (genWithAuth?.generationMetadata) {
+      const auth = genWithAuth.generationMetadata.templateAuthorization;
+      if (auth?.scope === "template" && auth?.pipelineRunId) {
+        safetyState = "clean_v2";
+      } else if (auth?.scope === "source-free") {
+        safetyState = "source_free";
+      }
+    }
+  }
+
+  const projectSafety: ProjectSafety = { state: safetyState };
+
   return NextResponse.json({
     projectName: project.title ?? project.name,
     projectTopic: project.topic,
@@ -165,6 +200,7 @@ export async function GET(
     },
     generations: generationsWithFragments,
     activeBrief,
+    projectSafety,
   });
 }
 
