@@ -19,6 +19,7 @@ import { saveRunArtifact } from "@/lib/template-pipeline/artifacts";
 import { finalizeTemplateRun } from "@/lib/template-pipeline/artifacts";
 import { normalizeText, computeWordShingles, OriginalityError } from "@/lib/ai/originality-check";
 import { sha256Text } from "@/lib/template-pipeline/hash";
+import { completeMaintenanceOperation, failMaintenanceOperation } from "@/lib/remediation/operations";
 import type { TraceIr } from "@/lib/template-pipeline/trace-ir";
 import type { CompiledBlock } from "@/lib/template-pipeline/compiler";
 
@@ -153,6 +154,9 @@ export const generateTemplate = task({
       if (succeededCount === chapters.length) {
         // All chapters succeeded — finalize atomically
         await finalizeTemplateRun(pipelineRunId);
+
+        // Complete any linked maintenance operation (regeneration)
+        await completeOperationIfLinked(pipelineRunId, templateId, chapters.length);
       } else {
         // Some chapters failed — mark run and template failed
         await db
@@ -164,6 +168,8 @@ export const generateTemplate = task({
           .update(templatePipelineRuns)
           .set({ status: "failed", completedAt: new Date() })
           .where(eq(templatePipelineRuns.id, pipelineRunId));
+
+        await failOperationIfLinked(pipelineRunId, "partial_failure");
       }
     } catch (err) {
       // Mark failed on unhandled errors
@@ -178,6 +184,8 @@ export const generateTemplate = task({
         .set({ status: "failed", completedAt: new Date() })
         .where(eq(templatePipelineRuns.id, pipelineRunId))
         .catch(() => {});
+
+      await failOperationIfLinked(pipelineRunId, "error").catch(() => {});
 
       throw err;
     }
@@ -361,5 +369,62 @@ function assertCompiledTemplateClean(
         );
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance operation completion (best-effort)
+// ---------------------------------------------------------------------------
+
+async function completeOperationIfLinked(
+  pipelineRunId: string,
+  templateId: string,
+  chapterCount: number,
+): Promise<void> {
+  try {
+    const [run] = await db
+      .select({ report: templatePipelineRuns.report })
+      .from(templatePipelineRuns)
+      .where(eq(templatePipelineRuns.id, pipelineRunId))
+      .limit(1);
+
+    const report = run?.report as Record<string, unknown> | undefined;
+    if (report?.operationId && report?.legacyTemplateId) {
+      await completeMaintenanceOperation({
+        operationId: report.operationId as string,
+        resultTemplateId: templateId,
+        report: {
+          legacyTemplateId: report.legacyTemplateId,
+          pipelineRunId,
+          chapterCount,
+          status: "completed",
+        },
+      });
+    }
+  } catch {
+    // best-effort — never fail template generation for operation bookkeeping
+  }
+}
+
+async function failOperationIfLinked(
+  pipelineRunId: string,
+  code: string,
+): Promise<void> {
+  try {
+    const [run] = await db
+      .select({ report: templatePipelineRuns.report })
+      .from(templatePipelineRuns)
+      .where(eq(templatePipelineRuns.id, pipelineRunId))
+      .limit(1);
+
+    const report = run?.report as Record<string, unknown> | undefined;
+    if (report?.operationId) {
+      await failMaintenanceOperation({
+        operationId: report.operationId as string,
+        report: { code },
+      });
+    }
+  } catch {
+    // best-effort
   }
 }
