@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { bookTemplates, chapters, projects } from "@/lib/db/schema";
+import { bookTemplates, chapters, projects, templatePipelineRuns, templateRunArtifacts } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -24,13 +24,61 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const [book] = await db
-    .select()
+    .select({
+      id: bookTemplates.id,
+      name: bookTemplates.name,
+      description: bookTemplates.description,
+      status: bookTemplates.status,
+      activePipelineRunId: bookTemplates.activePipelineRunId,
+      createdAt: bookTemplates.createdAt,
+    })
     .from(bookTemplates)
     .where(eq(bookTemplates.id, id))
     .limit(1);
 
   if (!book) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json(book);
+
+  // Attach pipeline run info when available (never expose report/profiles)
+  let pipelineRun: Record<string, unknown> | null = null;
+  if (book.activePipelineRunId) {
+    const [run] = await db
+      .select({
+        id: templatePipelineRuns.id,
+        status: templatePipelineRuns.status,
+        pipelineVersion: templatePipelineRuns.pipelineVersion,
+        compilerHash: templatePipelineRuns.compilerHash,
+        failureStage: templatePipelineRuns.failureStage,
+        completedAt: templatePipelineRuns.completedAt,
+        originalityPolicyVersion: templatePipelineRuns.originalityPolicyVersion,
+      })
+      .from(templatePipelineRuns)
+      .where(eq(templatePipelineRuns.id, book.activePipelineRunId))
+      .limit(1);
+
+    if (run) {
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(templateRunArtifacts)
+        .where(eq(templateRunArtifacts.pipelineRunId, run.id));
+
+      const [{ totalChapters }] = await db
+        .select({ totalChapters: sql<number>`count(*)::int` })
+        .from(chapters)
+        .where(and(eq(chapters.bookTemplateId, id), isNull(chapters.projectId)));
+
+      pipelineRun = {
+        id: run.id,
+        status: run.status,
+        completedArtifacts: count,
+        totalChapters,
+        failureStage: run.failureStage,
+        compilerHash: run.compilerHash,
+        originalityPolicyVersion: run.originalityPolicyVersion,
+      };
+    }
+  }
+
+  return NextResponse.json({ ...book, pipelineRun });
 }
 
 // NOTE: Uses PUT for partial update (PATCH semantics).

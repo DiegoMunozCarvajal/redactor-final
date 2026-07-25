@@ -40,13 +40,13 @@ interface ChapterFile {
 export default function CreateTemplatePage() {
   const router = useRouter();
   const [rhetoricTraceDefinitions, setRhetoricTraceDefinitions] = useState<PromptDefinition[]>([]);
-  const [templateGeneratorDefinitions, setTemplateGeneratorDefinitions] = useState<PromptDefinition[]>([]);
+  const [sourceProfilerDefinitions, setSourceProfilerDefinitions] = useState<PromptDefinition[]>([]);
   const [loadingRhetoricTrace, setLoadingRhetoricTrace] = useState(true);
-  const [loadingTemplateGenerator, setLoadingTemplateGenerator] = useState(true);
+  const [loadingSourceProfiler, setLoadingSourceProfiler] = useState(true);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   const [selectedRhetoricTraceRevisionId, setSelectedRhetoricTraceRevisionId] = useState("");
-  const [selectedTemplateGeneratorRevisionId, setSelectedTemplateGeneratorRevisionId] = useState("");
+  const [selectedSourceProfilerRevisionId, setSelectedSourceProfilerRevisionId] = useState("");
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
   const [chapters, setChapters] = useState<ChapterFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -56,6 +56,7 @@ export default function CreateTemplatePage() {
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
+          // Only show revisions with trace-ir-v2 contract
           setRhetoricTraceDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
         }
       })
@@ -64,15 +65,15 @@ export default function CreateTemplatePage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/prompt-definitions?kind=template-generator")
+    fetch("/api/prompt-definitions?kind=source-risk-profiler")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setTemplateGeneratorDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
+          setSourceProfilerDefinitions(data.filter((d: PromptDefinition) => d.latestRevision !== null));
         }
       })
-      .catch(() => toast.error("Failed to load template-generator prompts"))
-      .finally(() => setLoadingTemplateGenerator(false));
+      .catch(() => toast.error("Failed to load source profiler prompts"))
+      .finally(() => setLoadingSourceProfiler(false));
   }, []);
 
   const MAX_FILE_READ_SIZE = 10 * 1024 * 1024; // 10MB — browser FileReader limit
@@ -112,7 +113,7 @@ export default function CreateTemplatePage() {
   }
 
   async function handleSubmit() {
-    if (!templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedTemplateGeneratorRevisionId || chapters.length === 0) {
+    if (!templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedSourceProfilerRevisionId || chapters.length === 0) {
       toast.error("Name, both revision selectors, and at least one chapter are required");
       return;
     }
@@ -126,7 +127,7 @@ export default function CreateTemplatePage() {
           name: templateName.trim(),
           description: templateDescription.trim() || null,
           rhetoricTraceRevisionId: selectedRhetoricTraceRevisionId,
-          templateGeneratorRevisionId: selectedTemplateGeneratorRevisionId,
+          sourceProfilerRevisionId: selectedSourceProfilerRevisionId,
           chapters,
           model,
           effort: "max",
@@ -161,7 +162,7 @@ export default function CreateTemplatePage() {
           </Link>
           <h1 className="text-2xl font-bold">Generate Template from Source Chapters</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Upload source chapters in Markdown. The rhetoric trace will analyze each chapter&rsquo;s architecture, then the template generator will produce content-creating prompts.
+            Upload source chapters in Markdown. A private source profile classifies distinctive elements without storing source text. The rhetoric trace extracts a closed structural IR. A deterministic compiler produces content-creating prompts — no creative LLM pass.
           </p>
         </div>
 
@@ -206,26 +207,26 @@ export default function CreateTemplatePage() {
           )}
         </div>
 
-        {/* Template Generator revision selector */}
+        {/* Source Profiler revision selector */}
         <div className="space-y-2">
-          <Label htmlFor="templateGenerator">Template Generator Revision</Label>
-          {loadingTemplateGenerator ? (
+          <Label htmlFor="sourceProfiler">Source Profiler Revision</Label>
+          {loadingSourceProfiler ? (
             <div className="h-10 bg-muted animate-pulse rounded-md" />
-          ) : templateGeneratorDefinitions.length === 0 ? (
+          ) : sourceProfilerDefinitions.length === 0 ? (
             <div className="text-sm text-muted-foreground">
-              No template-generator prompts available.{" "}
-              <Link href="/admin/prompt-definitions?kind=template-generator" className="text-primary hover:underline">Create one first</Link>.
+              No source-risk-profiler prompts available.{" "}
+              <Link href="/admin/prompt-definitions?kind=source-risk-profiler" className="text-primary hover:underline">Create one first</Link>.
             </div>
           ) : (
             <Select
-              value={selectedTemplateGeneratorRevisionId}
-              onValueChange={(v) => setSelectedTemplateGeneratorRevisionId(v)}
+              value={selectedSourceProfilerRevisionId}
+              onValueChange={(v) => setSelectedSourceProfilerRevisionId(v)}
             >
-              <SelectTrigger id="templateGenerator">
-                <SelectValue placeholder="Select a template-generator revision..." />
+              <SelectTrigger id="sourceProfiler">
+                <SelectValue placeholder="Select a source-risk-profiler revision..." />
               </SelectTrigger>
               <SelectContent>
-                {templateGeneratorDefinitions.map((def) => (
+                {sourceProfilerDefinitions.map((def) => (
                   <SelectItem key={def.id} value={def.latestRevision!.id}>
                     {def.name} ({def.latestRevision!.versionLabel})
                   </SelectItem>
@@ -234,6 +235,13 @@ export default function CreateTemplatePage() {
             </Select>
           )}
         </div>
+
+        {/* Pipeline metadata */}
+        <Card className="p-4 space-y-1 text-xs text-muted-foreground">
+          <p><strong className="text-foreground">Compiler:</strong> template-compiler-v1</p>
+          <p><strong className="text-foreground">Policy:</strong> originality-policy-v2</p>
+          <p><strong className="text-foreground">Source profile:</strong> source-profile-v1</p>
+        </Card>
 
         {/* Model */}
         <div className="space-y-2">
@@ -301,7 +309,7 @@ export default function CreateTemplatePage() {
 
         <Button
           onClick={handleSubmit}
-          disabled={submitting || !templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedTemplateGeneratorRevisionId || chapters.length === 0}
+          disabled={submitting || !templateName.trim() || !selectedRhetoricTraceRevisionId || !selectedSourceProfilerRevisionId || chapters.length === 0}
           className="w-full"
         >
           {submitting ? (
