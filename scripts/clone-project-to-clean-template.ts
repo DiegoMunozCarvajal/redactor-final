@@ -12,6 +12,12 @@
  *
  * All UUIDs and hashes are required.  --dry-run validates without writing.
  * Exits 0 on success, 1 on error.
+ *
+ * NOTE: --legacy-project-state-hash and --clean-template-artifact-set-hash
+ * are recorded in the operation for idempotency (same invocation = same
+ * result). They are not validated against the current DB state because the
+ * CLI invocation is the trust boundary — the caller is responsible for
+ * ensuring state hasn't changed since computing the hashes.
  */
 
 import { executeProjectClone, CloneValidationError } from "@/lib/remediation/clone-project";

@@ -14,6 +14,7 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
+import { COMPILER_VERSION } from "@/lib/template-pipeline/compiler";
 import { UUID_RE } from "@/lib/constants";
 
 // GET is open to all authenticated users — templates must be
@@ -98,7 +99,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       and(
         eq(templatePipelineRuns.bookTemplateId, id),
         eq(templatePipelineRuns.status, "clean"),
-        isNotNull(templatePipelineRuns.compilerVersion),
+        eq(templatePipelineRuns.compilerVersion, COMPILER_VERSION),
       ),
     )
     .orderBy(desc(templatePipelineRuns.createdAt))

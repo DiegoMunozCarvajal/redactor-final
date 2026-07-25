@@ -40,6 +40,7 @@ export interface ClonePlan {
   legacyProjectId: string;
   legacyProjectName: string;
   legacyUserId: string;
+  legacyProjectTopic: string | null;
   legacyTemplateId: string;
   cleanTemplateId: string;
   cleanTemplateName: string;
@@ -55,7 +56,6 @@ export interface ClonePlan {
   }>;
   sourceMappings: Array<{
     legacySourceId: string;
-    newSourceId: string;
   }>;
 }
 
@@ -225,6 +225,7 @@ export async function planProjectClone(
     cleanTemplateId: input.cleanTemplateId,
     cleanTemplateName: cleanTemplate.name,
     chapterCount: cleanChapters.length,
+    legacyProjectTopic: legacyProject.topic,
     sourceCount: legacySources.length,
     hasApprovedBrief: !!approvedBrief,
     dryRun: input.dryRun,
@@ -236,7 +237,6 @@ export async function planProjectClone(
     })),
     sourceMappings: legacySources.map((s) => ({
       legacySourceId: s.id,
-      newSourceId: randomUUID(),
     })),
   };
 }
@@ -295,7 +295,7 @@ export async function executeProjectClone(
       .values({
         userId: plan.legacyUserId,
         name: `${plan.legacyProjectName} (clean)`,
-        topic: null,
+        topic: plan.legacyProjectTopic,
         bookTemplateId: input.cleanTemplateId,
         supersedesProjectId: input.legacyProjectId,
       })
@@ -412,7 +412,7 @@ export async function executeProjectClone(
           version: approvedBrief.version,
           content: approvedBrief.content as EditorialBriefContent,
           contracts: briefContracts.map(
-            (c) => c.content as unknown as ChapterEditorialContract,
+            (c) => c.content as ChapterEditorialContract,
           ),
           evidenceSourceIds: briefSources.map((bs) => bs.sourceId),
           hash: approvedBrief.contentHash,

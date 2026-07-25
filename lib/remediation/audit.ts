@@ -158,5 +158,14 @@ export async function auditAllTemplates(): Promise<SafeAuditReport[]> {
     .select({ id: bookTemplates.id })
     .from(bookTemplates);
 
-  return Promise.all(templates.map((t) => auditTemplate(t.id)));
+  const BATCH_SIZE = 10;
+  const results: SafeAuditReport[] = [];
+  for (let i = 0; i < templates.length; i += BATCH_SIZE) {
+    const batch = templates.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((t) => auditTemplate(t.id)),
+    );
+    results.push(...batchResults);
+  }
+  return results;
 }

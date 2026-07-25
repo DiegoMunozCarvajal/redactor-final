@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
-import { bookTemplates, chapters, templatePipelineRuns } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { bookTemplates, chapters, templatePipelineRuns, templateRunArtifacts } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { beginRegeneration } from "./operations";
-import { COMPILER_HASH } from "@/lib/template-pipeline/compiler";
+import { COMPILER_HASH, COMPILER_VERSION } from "@/lib/template-pipeline/compiler";
 import { SAFE_PIPELINE_VERSION, ORIGINALITY_POLICY_VERSION } from "@/lib/template-pipeline/contracts";
 import { sha256Text } from "@/lib/template-pipeline/hash";
 import { generateTemplate } from "@/trigger/generate-template";
@@ -129,8 +129,14 @@ async function readSourceFiles(sourceDir: string): Promise<SourceFileEntry[]> {
   }
 
   const results: SourceFileEntry[] = [];
+  const MAX_SOURCE_FILE_BYTES = 5 * 1024 * 1024;
   for (const file of files) {
     const content = await readFile(path.join(sourceDir, file), "utf-8");
+    if (Buffer.byteLength(content, "utf-8") > MAX_SOURCE_FILE_BYTES) {
+      throw new TemplateValidationError(
+        `Source file ${file} exceeds ${MAX_SOURCE_FILE_BYTES} byte limit`,
+      );
+    }
     const hash = sha256Text(content);
     results.push({ content, hash });
   }
@@ -211,11 +217,45 @@ export async function planTemplateRegeneration(
     sourceHashes = sourceFiles.map((f) => f.hash);
     chapterContents = sourceFiles.map((f) => f.content);
   } else {
-    // allowExecutionSource: derive hashes from chapter metadata
-    sourceHashes = templateChapters.map((ch) =>
-      sha256Text(`${ch.id}:${ch.title}`),
+    // allowExecutionSource: derive hashes from actual compiled artifacts
+    const [legacyRun] = await db
+      .select({ id: templatePipelineRuns.id })
+      .from(templatePipelineRuns)
+      .where(eq(templatePipelineRuns.bookTemplateId, input.legacyTemplateId))
+      .orderBy(desc(templatePipelineRuns.createdAt))
+      .limit(1);
+
+    if (!legacyRun) {
+      throw new TemplateValidationError(
+        "execution source unavailable — no pipeline runs found for legacy template. Use --source-dir instead.",
+      );
+    }
+
+    const artifacts = await db
+      .select()
+      .from(templateRunArtifacts)
+      .where(eq(templateRunArtifacts.pipelineRunId, legacyRun.id));
+
+    const artifactMap = new Map(
+      artifacts.map((a) => [a.chapterId, a]),
     );
-    chapterContents = templateChapters.map(() => "");
+
+    sourceHashes = [];
+    chapterContents = [];
+
+    for (const ch of templateChapters) {
+      const artifact = artifactMap.get(ch.id);
+      if (!artifact) {
+        throw new TemplateValidationError(
+          `execution source unavailable for chapter "${ch.title}" — no artifact found. Use --source-dir instead.`,
+        );
+      }
+
+      const blocks = artifact.compiledTemplate as Array<{ content: string; userPrompt?: string }>;
+      const combinedContent = blocks.map((b) => b.content).join("\n");
+      sourceHashes.push(sha256Text(combinedContent));
+      chapterContents.push(combinedContent);
+    }
   }
 
   // 6. Build chapter payloads
@@ -346,6 +386,7 @@ export async function executeTemplateRegeneration(
         bookTemplateId: newTemplate.id,
         status: "running",
         pipelineVersion: SAFE_PIPELINE_VERSION,
+        compilerVersion: COMPILER_VERSION,
         rhetoricTraceRevisionId: input.rhetoricTraceRevisionId,
         originalityPolicyVersion: ORIGINALITY_POLICY_VERSION,
         report: {

@@ -98,8 +98,13 @@ async function _beginMaintenanceOperation(
     // Failed — atomically restart
     const [restarted] = await db
       .update(pipelineMaintenanceOperations)
-      .set({ status: "running" })
-      .where(eq(pipelineMaintenanceOperations.id, input.operationId))
+      .set({ status: "running", completedAt: null })
+      .where(
+        and(
+          eq(pipelineMaintenanceOperations.id, input.operationId),
+          eq(pipelineMaintenanceOperations.status, "failed"),
+        ),
+      )
       .returning();
 
     return {

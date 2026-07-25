@@ -122,6 +122,16 @@ function parseArgs(): PlanRegenerationInput & { _showHelp?: boolean } {
     process.exit(1);
   }
 
+  // Validate required revision IDs
+  if (!rhetoricTraceRevisionId) {
+    console.error("Error: --rhetoric-trace-revision is required");
+    process.exit(1);
+  }
+  if (!sourceProfilerRevisionId) {
+    console.error("Error: --source-profiler-revision is required");
+    process.exit(1);
+  }
+
   // Validate UUIDs
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const checkUuid = (val: string, label: string): void => {

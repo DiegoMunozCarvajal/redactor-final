@@ -401,8 +401,11 @@ async function completeOperationIfLinked(
         },
       });
     }
-  } catch {
-    // best-effort — never fail template generation for operation bookkeeping
+  } catch (err) {
+    console.error(
+      "[generate-template] Failed to complete maintenance operation:",
+      err,
+    );
   }
 }
 
@@ -424,7 +427,10 @@ async function failOperationIfLinked(
         report: { code },
       });
     }
-  } catch {
-    // best-effort
+  } catch (err) {
+    console.error(
+      "[generate-template] Failed to fail maintenance operation:",
+      err,
+    );
   }
 }

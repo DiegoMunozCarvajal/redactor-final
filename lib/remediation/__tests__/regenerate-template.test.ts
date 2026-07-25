@@ -70,11 +70,14 @@ import { OperationInputConflictError } from "../contracts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Drizzle select chain: .from().where().orderBy() */
+/** Drizzle select chain: .from().where().orderBy().limit() */
 function selectChain(data: unknown) {
   const result = Promise.resolve(data);
+  const limitableResult = Object.assign(Promise.resolve(data), {
+    limit: vi.fn(() => result),
+  });
   const whereResult = Object.assign(Promise.resolve(data), {
-    orderBy: vi.fn(() => result),
+    orderBy: vi.fn(() => limitableResult),
   });
   const fromResult = Object.assign(Promise.resolve(data), {
     where: vi.fn(() => whereResult),
@@ -359,9 +362,31 @@ describe("planTemplateRegeneration", () => {
     mockResolvePromptRevision
       .mockResolvedValueOnce({ configuration: { pipelineContract: "trace-ir-v2" } })
       .mockResolvedValueOnce({ configuration: { pipelineContract: "source-profile-v1" } });
+    // bookTemplates → chapters → templatePipelineRuns → templateRunArtifacts (allowExecutionSource path)
     mockDbSelect
       .mockReturnValueOnce(selectChain([templateFixture()]))
-      .mockReturnValueOnce(selectChain([chapterFixture(UUID.CH_1, 0, "Capítulo 1")]));
+      .mockReturnValueOnce(selectChain([chapterFixture(UUID.CH_1, 0, "Capítulo 1")]))
+      .mockReturnValueOnce(selectChain([{ id: "legacy-run-id" }]))
+      .mockReturnValueOnce(
+        selectChain([
+          {
+            id: "artifact-1",
+            pipelineRunId: "legacy-run-id",
+            chapterId: UUID.CH_1,
+            compiledTemplate: [
+              {
+                name: "content_prompt",
+                content: "Contenido histórico del capítulo",
+                userPrompt: null,
+                function: "content",
+                sourceContext: null,
+                notes: null,
+                placeholders: [],
+              },
+            ],
+          },
+        ]),
+      );
 
     const plan = await planTemplateRegeneration(
       validInput({
