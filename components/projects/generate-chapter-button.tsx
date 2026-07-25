@@ -14,19 +14,32 @@ import { toast } from "sonner";
 
 import { MODEL_OPTIONS, DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 
+const WARNING_MESSAGES: Record<string, string> = {
+  quarantined:
+    "Contenido en cuarentena. No se guardó ni reutilizó.",
+  unavailable:
+    "Generación bloqueada porque verificación no estuvo disponible.",
+};
+
 export function GenerateChapterButton({
   projectId,
   chapterId,
   hasGeneration,
   onGenerationStarted,
+  originalityStatus = "clean",
 }: {
   projectId: string;
   chapterId: string;
   hasGeneration: boolean;
   onGenerationStarted: () => void;
+  originalityStatus?: "clean" | "quarantined" | "unavailable";
 }) {
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(DEFAULT_GENERATION_MODEL);
+
+  const isBlocked =
+    originalityStatus === "quarantined" || originalityStatus === "unavailable";
+  const warningMessage = WARNING_MESSAGES[originalityStatus] ?? null;
 
   async function handleGenerate() {
     setLoading(true);
@@ -53,34 +66,39 @@ export function GenerateChapterButton({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Select value={model} onValueChange={setModel}>
-        <SelectTrigger className="w-[170px] h-8 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {MODEL_OPTIONS.map((m) => (
-            <SelectItem key={m.id} value={m.id} className="text-xs">
-              {m.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        onClick={handleGenerate}
-        disabled={loading}
-        variant={hasGeneration ? "outline" : "default"}
-        size="sm"
-      >
-        {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin mr-1" />
-        ) : hasGeneration ? (
-          <RotateCcw className="h-4 w-4 mr-1" />
-        ) : (
-          <Play className="h-4 w-4 mr-1" />
-        )}
-        {hasGeneration ? "Regenerate" : "Generate"}
-      </Button>
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <Select value={model} onValueChange={setModel} disabled={isBlocked}>
+          <SelectTrigger className="w-[170px] h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MODEL_OPTIONS.map((m) => (
+              <SelectItem key={m.id} value={m.id} className="text-xs">
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          onClick={handleGenerate}
+          disabled={loading || isBlocked}
+          variant={hasGeneration ? "outline" : "default"}
+          size="sm"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+          ) : hasGeneration ? (
+            <RotateCcw className="h-4 w-4 mr-1" />
+          ) : (
+            <Play className="h-4 w-4 mr-1" />
+          )}
+          {hasGeneration ? "Regenerate" : "Generate"}
+        </Button>
+      </div>
+      {warningMessage && (
+        <p className="text-xs text-muted-foreground">{warningMessage}</p>
+      )}
     </div>
   );
 }

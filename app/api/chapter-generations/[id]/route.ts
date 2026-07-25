@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { chapterGenerations, fragments, projects } from "@/lib/db/schema";
+import {
+  chapterGenerations,
+  fragments,
+  projects,
+  originalityAssessments,
+} from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, asc, and, inArray } from "drizzle-orm";
+import { eq, asc, and, inArray, desc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 
 export async function GET(
@@ -42,7 +47,19 @@ export async function GET(
     .where(eq(fragments.chapterGenerationId, id))
     .orderBy(asc(fragments.position));
 
-  return NextResponse.json({ ...gen, fragments: frags });
+  // Resolve originality safety status (exposes no risk labels or source hashes)
+  let originalityStatus: "clean" | "quarantined" | "unavailable" = "clean";
+
+  if (gen.status === "quarantined") {
+    originalityStatus = "quarantined";
+  } else if (gen.status === "failed") {
+    const errText = gen.error ?? (gen.generationMetadata as Record<string, unknown>)?.error ?? "";
+    if (typeof errText === "string" && errText.includes("OriginalityDetectorUnavailable")) {
+      originalityStatus = "unavailable";
+    }
+  }
+
+  return NextResponse.json({ ...gen, fragments: frags, originalityStatus });
 }
 
 export async function PATCH(
