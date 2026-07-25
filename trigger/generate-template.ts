@@ -1,54 +1,25 @@
 import { task } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { db } from "@/lib/db";
-import { prompts, chapterPlaceholders, bookTemplates, templatePipelineRuns } from "@/lib/db/schema";
+import {
+  bookTemplates,
+  templatePipelineRuns,
+} from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { executeVersionedPrompt } from "@/lib/prompts/executor";
-import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
-import { serializePromptText } from "@/lib/prompts/placeholder-transform";
+import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
-import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { assertOriginalEnough } from "@/lib/ai/originality-check";
-import { SOURCECONTEXT_MAX_LENGTH } from "@/lib/template-pipeline/contracts";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-// Pass 1: rhetoric trace
-const traceEntrySchema = z.object({
-  operation: z.string(),
-  position: z.number(),
-  description: z.string(),
-  effectOnReader: z.string(),
-});
-
-const rhetoricTraceOutputSchema = z.object({
-  trace: z.array(traceEntrySchema),
-  assemblyNotes: z.string(),
-});
-
-// Pass 2: template blocks (extended — userPrompt is mandatory)
-const placeholderSchema = z.object({
-  name: z.string(),
-  function: z.string(),
-});
-
-const templateBlockSchema = z.object({
-  name: z.string(),
-  function: z.string().optional(),
-  content: z.string(),
-  userPrompt: z.string(),
-  sourceContext: z.string().optional(),
-  placeholders: z.array(placeholderSchema),
-  notes: z.string().optional(),
-});
-
-const templateGeneratorOutputSchema = z.object({
-  templates: z.array(templateBlockSchema),
-});
+import { collectTemplateFields, assertTemplateFieldsClean } from "@/lib/template-pipeline/template-field-scan";
+import { buildSourceProfile } from "@/lib/template-pipeline/source-profile";
+import { executeVersionedPrompt } from "@/lib/prompts/executor";
+import { traceIrSchema, validateTraceIr } from "@/lib/template-pipeline/trace-ir";
+import { TEMPLATE_RECIPE_REGISTRY } from "@/lib/template-pipeline/recipes";
+import { compileTrace } from "@/lib/template-pipeline/compiler";
+import { saveRunArtifact } from "@/lib/template-pipeline/artifacts";
+import { finalizeTemplateRun } from "@/lib/template-pipeline/artifacts";
+import { normalizeText, computeWordShingles, OriginalityError } from "@/lib/ai/originality-check";
+import type { TraceIr } from "@/lib/template-pipeline/trace-ir";
+import type { CompiledBlock } from "@/lib/template-pipeline/compiler";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,9 +32,25 @@ interface ChapterPayload {
   position: number;
 }
 
+interface ChapterBuildInput {
+  pipelineRunId: string;
+  bookTemplateId: string;
+  chapterId: string;
+  title: string;
+  contentMd: string;
+  profilerRevisionId: string;
+  rhetoricRevisionId: string;
+  model: string;
+  effort?: ReasoningEffort;
+}
+
+// ---------------------------------------------------------------------------
+// Task
+// ---------------------------------------------------------------------------
+
 export const generateTemplate = task({
   id: "generate-template",
-  maxDuration: 1800, // 30 minutes — two 10-min LLM calls per chapter + retry headroom
+  maxDuration: 1800, // 30 minutes
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -74,175 +61,58 @@ export const generateTemplate = task({
     templateId: string;
     pipelineRunId: string;
     rhetoricTraceRevisionId: string;
-    templateGeneratorRevisionId: string;
+    sourceProfilerRevisionId: string;
     chapters: ChapterPayload[];
     model?: string;
     effort?: ReasoningEffort;
   }) => {
-    const { templateId, pipelineRunId, rhetoricTraceRevisionId, templateGeneratorRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
+    const {
+      templateId,
+      pipelineRunId,
+      rhetoricTraceRevisionId,
+      sourceProfilerRevisionId,
+      chapters,
+      model = DEFAULT_GENERATION_MODEL,
+      effort,
+    } = payload;
 
-    // Idempotency guard: if the template already completed successfully,
-    // don't reprocess. "failed" is NOT terminal — retries recover from
-    // transient LLM errors. Blocking on "failed" would defeat Trigger.dev
-    // retries entirely (catch sets failed → next retry sees failed → returns).
+    // Idempotency guard
     const [current] = await db
       .select({ status: bookTemplates.status })
       .from(bookTemplates)
       .where(eq(bookTemplates.id, templateId))
       .limit(1);
 
-    if (current?.status === "ready") {
-      return;
-    }
+    if (current?.status === "ready") return;
 
-    // Reset status to generating on each attempt (retry-safe).
-    // On the final failed attempt, the catch block leaves it as "failed".
+    // Reset to generating
     await db
       .update(bookTemplates)
       .set({ status: "generating" })
       .where(eq(bookTemplates.id, templateId));
 
     try {
-      // Serialize output schemas for marker injection. The two passes use
-      // different schemas, so compute both JSON strings before the loop.
-      const rhetoricTraceSchemaStr = JSON.stringify(
-        zodToJsonSchema(rhetoricTraceOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
-        null,
-        2,
-      );
-      const templateGeneratorSchemaStr = JSON.stringify(
-        zodToJsonSchema(templateGeneratorOutputSchema, { target: 'openApi3', $refStrategy: 'none' }),
-        null,
-        2,
-      );
-
-      // Process chapters concurrently (3 at a time) to avoid sequential timeout.
-      // Each chapter runs two LLM calls in sequence: trace extraction → template generation.
       const TEMPLATE_CONCURRENCY = 3;
+
       const results = await runSettledWithConcurrency(
         chapters,
         TEMPLATE_CONCURRENCY,
         async (chapter) => {
-          const capituloFuente = serializePromptText(`# ${chapter.title}\n\n${chapter.contentMd}`);
-
-          // ---- Pass 1: Extract rhetoric trace ----
-          const { result: traceResult } = await executeVersionedPrompt({
-            stage: 'template-generation',
-            kind: 'rhetoric-trace',
-            revisionId: rhetoricTraceRevisionId,
+          return buildChapterArtifact({
+            pipelineRunId,
             bookTemplateId: templateId,
             chapterId: chapter.chapterId,
-            markerValues: {
-              '{{CAPITULO_FUENTE}}': capituloFuente,
-              '{{OUTPUT_SCHEMA}}': rhetoricTraceSchemaStr,
-            },
+            title: chapter.title,
+            contentMd: chapter.contentMd,
+            profilerRevisionId: sourceProfilerRevisionId,
+            rhetoricRevisionId: rhetoricTraceRevisionId,
             model,
-            schema: rhetoricTraceOutputSchema,
-            ...(effort ? { effort } : {}),
-          });
-
-          // ---- Pass 2: Generate template blocks from trace ----
-          const { result: templateResult } = await executeVersionedPrompt({
-            stage: 'template-generation',
-            kind: 'template-generator',
-            revisionId: templateGeneratorRevisionId,
-            bookTemplateId: templateId,
-            chapterId: chapter.chapterId,
-            markerValues: {
-              '{{RHETORIC_TRACE}}': JSON.stringify(traceResult.data),
-              '{{CAPITULO_FUENTE}}': capituloFuente,
-              '{{OUTPUT_SCHEMA}}': templateGeneratorSchemaStr,
-            },
-            model,
-            schema: templateGeneratorOutputSchema,
-            ...(effort ? { effort } : {}),
-          });
-
-          const blocks = templateResult.data.templates;
-
-          if (!blocks || blocks.length === 0) {
-            throw new Error(
-              `Chapter "${chapter.title}" generated 0 template blocks. The template-generator prompt may use an unrecognized chapter-content placeholder. Expected a {CAPITULO_*} variant.`,
-            );
-          }
-
-          // Originality check — advisory only for template generation.
-          // Templates are structural: they describe narrative patterns, not
-          // final content. Downstream stages (fragment, assembly) enforce
-          // strict originality with shingle/LCS checks.
-          // Blocklist hits are logged as warnings but don't reject blocks.
-          let contaminatedBlocks = 0;
-          for (const block of blocks) {
-            const result = assertOriginalEnough(block.content, {
-              stage: "metaprompt-block",
-              throwOnFail: false,
-            });
-            if (result.flagged) {
-              contaminatedBlocks++;
-            }
-          }
-          if (contaminatedBlocks > 0) {
-            console.warn(
-              `[generate-template] ⚠️  Chapter "${chapter.title}": ${contaminatedBlocks}/${blocks.length} blocks flagged by originality check (advisory — proceeding).`,
-            );
-          }
-
-          // Deduplicate placeholders across all blocks in this chapter
-          const placeholderMap = new Map<string, { function: string }>();
-
-          // Rebuild chapter prompts atomically. Delete stale prompts then insert
-          // new ones in one transaction — prevents mixed old/new prompt set on
-          // retry if inserts fail partway (which onConflictDoNothing couldn't fix).
-          await db.transaction(async (tx) => {
-            await tx.delete(prompts).where(eq(prompts.chapterId, chapter.chapterId));
-            // Clean up stale placeholders from previous generation attempts
-            await tx.delete(chapterPlaceholders).where(eq(chapterPlaceholders.chapterId, chapter.chapterId));
-
-            for (let i = 0; i < blocks.length; i++) {
-              const block = blocks[i];
-
-              const [inserted] = await tx.insert(prompts).values({
-                chapterId: chapter.chapterId,
-                position: i,
-                isAssembly: false,
-                title: block.name,
-                content: block.content,
-                userPrompt: block.userPrompt,
-                function: block.function ?? null,
-                notes: block.notes ?? null,
-                sourceContext: (block.sourceContext?.slice(0, SOURCECONTEXT_MAX_LENGTH) || null) as string | null,
-              }).returning({ id: prompts.id });
-
-              // Create immutable revision so currentRevisionId is never null
-              await writeCurrentChapterPromptRevision(inserted.id, null, tx);
-
-              // Collect placeholders (first seen wins for function)
-              for (const ph of block.placeholders) {
-                if (!placeholderMap.has(ph.name)) {
-                  placeholderMap.set(ph.name, { function: ph.function });
-                }
-              }
-            }
-
-            // Upsert placeholders — refresh function on regeneration
-            for (const [name, { function: fn }] of placeholderMap) {
-              await tx
-                .insert(chapterPlaceholders)
-                .values({
-                  chapterId: chapter.chapterId,
-                  name,
-                  function: fn,
-                })
-                .onConflictDoUpdate({
-                  target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
-                  set: { function: fn },
-                });
-            }
+            effort,
           });
         },
       );
 
-      // Report failures with error details for debugging
+      // Report failures
       const failed = results
         .map((r, i) =>
           r.status === "rejected"
@@ -250,14 +120,14 @@ export const generateTemplate = task({
             : null,
         )
         .filter((s): s is string => s !== null);
+
       if (failed.length > 0) {
         console.error(
           `Template generation: ${failed.length}/${chapters.length} chapters failed:\n  ${failed.join("\n  ")}`,
         );
       }
 
-      // If ALL failures are transient (timeout or network abort), throw so
-      // the platform retries instead of leaving the template permanently "failed".
+      // Classify errors: transient → retry, others → mark accordingly
       const rejected = results.filter((r) => r.status === "rejected");
       const isTransient = (reason: unknown) => {
         const err = reason as Error;
@@ -272,41 +142,223 @@ export const generateTemplate = task({
           name === "APIUserAbortError"
         );
       };
+
       if (rejected.length > 0 && rejected.every((r) => isTransient(r.reason))) {
-        throw new Error(
-          `Transient error on ${rejected.length}/${chapters.length} chapters — retrying`,
-        );
+        throw new Error(`Transient error on ${rejected.length}/${chapters.length} chapters — retrying`);
       }
 
-      // Update template status: ready only if ALL chapters succeeded, failed otherwise.
       const succeededCount = results.filter((r) => r.status === "fulfilled").length;
-      const newStatus = succeededCount === chapters.length ? "ready" : "failed";
-      await db
-        .update(bookTemplates)
-        .set({ status: newStatus })
-        .where(eq(bookTemplates.id, templateId));
 
-      // Update pipeline run status — legacy v1 runs never set
-      // active_pipeline_run_id, so the template stays ineligible.
-      if (newStatus === "ready") {
+      if (succeededCount === chapters.length) {
+        // All chapters succeeded — finalize atomically
+        await finalizeTemplateRun(pipelineRunId);
+      } else {
+        // Some chapters failed — mark run and template failed
+        await db
+          .update(bookTemplates)
+          .set({ status: "failed" })
+          .where(eq(bookTemplates.id, templateId));
+
         await db
           .update(templatePipelineRuns)
-          .set({ status: "clean", completedAt: new Date() })
+          .set({ status: "failed", completedAt: new Date() })
           .where(eq(templatePipelineRuns.id, pipelineRunId));
       }
     } catch (err) {
-      // Mark template and run as failed so neither stays running forever.
+      // Mark failed on unhandled errors
       await db
         .update(bookTemplates)
         .set({ status: "failed" })
         .where(eq(bookTemplates.id, templateId))
         .catch(() => {});
+
       await db
         .update(templatePipelineRuns)
         .set({ status: "failed", completedAt: new Date() })
         .where(eq(templatePipelineRuns.id, pipelineRunId))
         .catch(() => {});
+
       throw err;
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Chapter artifact builder
+// ---------------------------------------------------------------------------
+
+async function buildChapterArtifact(input: ChapterBuildInput) {
+  // 1. Build source profile (private, no raw text stored)
+  const profile = await buildSourceProfile({
+    pipelineRunId: input.pipelineRunId,
+    chapterId: input.chapterId,
+    bookTemplateId: input.bookTemplateId,
+    title: input.title,
+    contentMd: input.contentMd,
+    profilerRevisionId: input.profilerRevisionId,
+    model: input.model,
+  });
+
+  // 2. Classify rhetoric trace with one validation retry
+  const trace = await classifyTraceWithOneValidationRetry({
+    ...input,
+    rhetoricRevisionId: input.rhetoricRevisionId,
+  });
+
+  // 3. Validate trace against recipe registry
+  const validated = validateTraceIr(trace, TEMPLATE_RECIPE_REGISTRY);
+
+  // 4. Compile deterministically
+  const compiled = compileTrace(validated);
+
+  // 5. Check compiled template cleanliness against source profile
+  assertCompiledTemplateClean(compiled.blocks, profile.chunks.map(c => ({
+    shingles5: new Set(c.lexicalFingerprint.shingles5),
+    shingles8: new Set(c.lexicalFingerprint.shingles8),
+    text: "", // profile chunks don't store raw text
+  })));
+
+  // 6. Save artifact (idempotent upsert)
+  return saveRunArtifact({
+    pipelineRunId: input.pipelineRunId,
+    chapterId: input.chapterId,
+    traceIr: validated,
+    compiledTemplate: compiled.blocks,
+    artifactHash: compiled.artifactHash,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Trace classifier with one validation retry
+// ---------------------------------------------------------------------------
+
+interface TraceClassifierInput {
+  chapterId: string;
+  title: string;
+  contentMd: string;
+  bookTemplateId: string;
+  rhetoricRevisionId: string;
+  model: string;
+  effort?: ReasoningEffort;
+}
+
+function isTraceOutputError(err: unknown): boolean {
+  return err instanceof z.ZodError || (err instanceof Error && err.name === "TraceValidationError");
+}
+
+async function classifyTraceWithOneValidationRetry(
+  input: TraceClassifierInput,
+): Promise<TraceIr> {
+  let firstError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await executeTraceClassifier(input);
+      return validateTraceIr(result, TEMPLATE_RECIPE_REGISTRY);
+    } catch (error) {
+      firstError ??= error;
+      if (!isTraceOutputError(error) || attempt === 1) throw error;
+    }
+  }
+  throw firstError;
+}
+
+async function executeTraceClassifier(
+  input: TraceClassifierInput,
+): Promise<TraceIr> {
+  const capituloFuente = `# ${input.title}\n\n${input.contentMd}`;
+  const schemaStr = JSON.stringify(
+    { type: "object", properties: { moves: { type: "array" } }, required: ["moves"] },
+  );
+
+  const { result } = await executeVersionedPrompt({
+    stage: "template-generation",
+    kind: "rhetoric-trace",
+    revisionId: input.rhetoricRevisionId,
+    bookTemplateId: input.bookTemplateId,
+    chapterId: input.chapterId,
+    markerValues: {
+      "{{CAPITULO_FUENTE}}": capituloFuente,
+      "{{OUTPUT_SCHEMA}}": schemaStr,
+    },
+    messagePersistence: {
+      mode: "redact-sensitive-markers",
+      sensitiveMarkers: ["{{CAPITULO_FUENTE}}"],
+    },
+    model: input.model,
+    schema: traceIrSchema,
+    ...(input.effort ? { effort: input.effort } : {}),
+  });
+
+  return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// Stage B compiled template cleanliness check (baseline — expanded in Stage C)
+// ---------------------------------------------------------------------------
+
+function assertCompiledTemplateClean(
+  blocks: CompiledBlock[],
+  profileDocs: Array<{
+    shingles5: Set<string>;
+    shingles8: Set<string>;
+    text: string;
+  }>,
+): void {
+  // 1. Run fail-closed blocklist on every compiled field
+  const fields = collectTemplateFields(blocks.map(b => ({
+    name: b.name,
+    content: b.content,
+    userPrompt: b.userPrompt,
+    function: b.function,
+    sourceContext: b.sourceContext,
+    notes: b.notes,
+    placeholders: b.placeholders.map(p => ({ name: p.name, function: p.function })),
+  })));
+
+  assertTemplateFieldsClean(blocks.map(b => ({
+    name: b.name,
+    content: b.content,
+    userPrompt: b.userPrompt,
+    function: b.function,
+    sourceContext: b.sourceContext,
+    notes: b.notes,
+    placeholders: b.placeholders.map(p => ({ name: p.name, function: p.function })),
+  })));
+
+  // 2. Hash each field's 5/8-grams and compare against chapter profile
+  const THRESHOLD = 0.15;
+  for (const field of fields) {
+    const normalized = normalizeText(field.value);
+    const shingles5 = computeWordShingles(normalized, 5);
+    const shingles8 = computeWordShingles(normalized, 8);
+
+    for (const doc of profileDocs) {
+      let intersection5 = 0;
+      for (const s of shingles5) {
+        if (doc.shingles5.has(s)) intersection5++;
+      }
+      const score5 = shingles5.size > 0 ? intersection5 / shingles5.size : 0;
+
+      let intersection8 = 0;
+      for (const s of shingles8) {
+        if (doc.shingles8.has(s)) intersection8++;
+      }
+      const score8 = shingles8.size > 0 ? intersection8 / shingles8.size : 0;
+
+      const maxScore = Math.max(score5, score8);
+      if (maxScore > THRESHOLD) {
+        throw new OriginalityError(
+          {
+            passed: false,
+            blocklistHits: [],
+            shingleSimilarity: maxScore,
+            lcsMatch: null,
+            flagged: true,
+            mode: "full",
+          },
+          "metaprompt-block",
+        );
+      }
+    }
+  }
+}

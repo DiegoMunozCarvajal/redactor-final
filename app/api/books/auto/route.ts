@@ -9,6 +9,7 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { eq } from "drizzle-orm";
 import { LEGACY_CONTAINMENT_PIPELINE_VERSION, ORIGINALITY_POLICY_VERSION } from "@/lib/template-pipeline/contracts";
+import { resolvePromptRevision } from "@/lib/prompts/repository";
 
 export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!admin.authorized) return admin.response;
 
   const body = await req.json().catch(() => ({}));
-  const { name, description, rhetoricTraceRevisionId, templateGeneratorRevisionId, chapters: chapterList, model, effort } = body;
+  const { name, description, rhetoricTraceRevisionId, sourceProfilerRevisionId, templateGeneratorRevisionId, chapters: chapterList, model, effort } = body;
 
   if (!name || typeof name !== "string" || name.length < 1 || name.length > 200) {
     return NextResponse.json({ error: "name must be 1-200 characters" }, { status: 400 });
@@ -26,8 +27,14 @@ export async function POST(req: NextRequest) {
   if (!rhetoricTraceRevisionId || typeof rhetoricTraceRevisionId !== "string") {
     return NextResponse.json({ error: "rhetoricTraceRevisionId is required" }, { status: 400 });
   }
-  if (!templateGeneratorRevisionId || typeof templateGeneratorRevisionId !== "string") {
-    return NextResponse.json({ error: "templateGeneratorRevisionId is required" }, { status: 400 });
+  if (!sourceProfilerRevisionId || typeof sourceProfilerRevisionId !== "string") {
+    return NextResponse.json({ error: "sourceProfilerRevisionId is required" }, { status: 400 });
+  }
+  if (templateGeneratorRevisionId !== undefined) {
+    return NextResponse.json(
+      { error: "templateGeneratorRevisionId is deprecated. Use sourceProfilerRevisionId instead." },
+      { status: 400 },
+    );
   }
   if (!Array.isArray(chapterList) || chapterList.length === 0) {
     return NextResponse.json({ error: "chapters must be a non-empty array" }, { status: 400 });
@@ -41,6 +48,36 @@ export async function POST(req: NextRequest) {
     if (ch.contentMd.length > 500_000) {
       return NextResponse.json({ error: `chapters[${i}].contentMd exceeds 500KB limit` }, { status: 400 });
     }
+  }
+
+  // Validate revision contracts before creating template
+  try {
+    const rhetoricRevision = await resolvePromptRevision({
+      kind: "rhetoric-trace",
+      runRevisionId: rhetoricTraceRevisionId,
+    });
+    const rhetoricContract = (rhetoricRevision.configuration as Record<string, unknown>)?.pipelineContract;
+    if (rhetoricContract !== "trace-ir-v2") {
+      return NextResponse.json(
+        { error: "rhetoricTraceRevisionId must implement trace-ir-v2" },
+        { status: 400 },
+      );
+    }
+
+    const profilerRevision = await resolvePromptRevision({
+      kind: "source-risk-profiler",
+      runRevisionId: sourceProfilerRevisionId,
+    });
+    const profilerContract = (profilerRevision.configuration as Record<string, unknown>)?.pipelineContract;
+    if (profilerContract !== "source-profile-v1") {
+      return NextResponse.json(
+        { error: "sourceProfilerRevisionId must implement source-profile-v1" },
+        { status: 400 },
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid revision";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   let templateId: string | undefined;
@@ -99,7 +136,7 @@ export async function POST(req: NextRequest) {
       templateId: template.template.id,
       pipelineRunId: template.pipelineRunId,
       rhetoricTraceRevisionId,
-      templateGeneratorRevisionId,
+      sourceProfilerRevisionId,
       chapters: chapterPayloads,
       ...(model ? { model } : {}),
       ...(effort ? { effort } : {}),
@@ -113,7 +150,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         name: template.template.name,
         rhetoricTraceRevisionId,
-        templateGeneratorRevisionId,
+        sourceProfilerRevisionId,
         chapterCount: template.createdChapters.length,
       },
     });
