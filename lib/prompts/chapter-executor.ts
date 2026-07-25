@@ -42,6 +42,7 @@ export interface ExecuteChapterPromptResult {
     cacheReadTokens: number;
   };
   durationMs: number;
+  promptRevisions: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +210,14 @@ export async function executeChapterPrompt(
     // Strip placeholder wrappers from generated text
     const text = stripPlaceholderWrappers(result.data as string);
 
+    // Build prompt revision map for originality lineage
+    const promptRevisions: Record<string, string> = {
+      "chapter-content": chapterPromptRevisionId,
+    };
+    if (generationSystemRevisionId) {
+      promptRevisions["generation-system"] = generationSystemRevisionId;
+    }
+
     return {
       text,
       executionId: execution.id,
@@ -221,6 +230,7 @@ export async function executeChapterPrompt(
         cacheReadTokens: result.usage.cacheReadTokens,
       },
       durationMs,
+      promptRevisions,
     };
   } catch (error) {
     // 11. Update execution to failed and re-throw

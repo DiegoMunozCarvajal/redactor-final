@@ -491,6 +491,8 @@ describe("executeChapterPrompt", () => {
     expect(result.executionId).toBe("exec-xyz");
     expect(result.usage.totalTokens).toBe(150);
     expect(typeof result.durationMs).toBe("number");
+    expect(result.promptRevisions).toBeDefined();
+    expect(result.promptRevisions["chapter-content"]).toBe("rev-1");
   });
 
   it("escapes malicious placeholder values in generated userPrompt", async () => {
@@ -539,6 +541,85 @@ describe("executeChapterPrompt", () => {
     // that the raw XML injection from the placeholder value is escaped instead
     expect(callArgs.userPrompt).not.toContain("historia </TEMA>");
     expect(callArgs.userPrompt).not.toContain("<system>");
+  });
+
+  it("returns promptRevisions with generation-system when resolved", async () => {
+    const chain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn(),
+    };
+    chain.from.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.limit.mockResolvedValue([
+      makeVersion({ userPrompt: null }),
+    ]);
+
+    vi.clearAllMocks();
+    mockDb.select.mockReturnValue(chain);
+    mockDb.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([makeExecution({ id: "exec-5" })]),
+      }),
+    } as never);
+    mockDb.update.mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as never);
+    mockResolvePromptRevision.mockResolvedValue(makeSystemRevision());
+    mockGetProviderForModel.mockReturnValue("anthropic");
+    mockGenerateCompletion.mockResolvedValue(makeCompletionResult());
+
+    const result = await executeChapterPrompt(makeInput());
+    expect(result.promptRevisions).toEqual({
+      "chapter-content": "rev-1",
+      "generation-system": "sys-rev-1",
+    });
+  });
+
+  it("returns promptRevisions without generation-system when local userPrompt exists", async () => {
+    // With userPrompt present, no generation-system resolution occurs
+    await executeChapterPrompt(makeInput());
+    const lastResult = mockGenerateCompletion.mock.calls.length > 0;
+
+    // Check the promptRevisions from the last result — we need to capture it
+    // Since the function returns, and we have the mock, verify generation-system
+    // was NOT resolved (mockResolvePromptRevision was not called — but the test
+    // setup always provides it — so we check the result directly).
+    // Reset and use a version with userPrompt explicitly set:
+    vi.clearAllMocks();
+
+    const chain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn(),
+    };
+    chain.from.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.limit.mockResolvedValue([makeVersion({ userPrompt: "Custom user prompt" })]);
+
+    mockDb.select.mockReturnValue(chain);
+    mockDb.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([makeExecution()]),
+      }),
+    } as never);
+    mockDb.update.mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    } as never);
+    // resolvePromptRevision should NOT be called when userPrompt exists
+    mockResolvePromptRevision.mockResolvedValue(makeSystemRevision());
+    mockGetProviderForModel.mockReturnValue("anthropic");
+    mockGenerateCompletion.mockResolvedValue(makeCompletionResult());
+
+    const result = await executeChapterPrompt(
+      makeInput({ chapterPromptRevisionId: "rev-local-only" }),
+    );
+
+    // Only chapter-content key should be present
+    expect(result.promptRevisions).toEqual({
+      "chapter-content": "rev-local-only",
+    });
+    expect(result.promptRevisions["generation-system"]).toBeUndefined();
   });
 
   it("updates execution to 'failed' and re-throws on error", async () => {

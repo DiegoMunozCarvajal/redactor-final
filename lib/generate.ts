@@ -52,6 +52,7 @@ export interface GenerateResult {
     cacheReadTokens?: number;
   };
   executionId?: string;
+  promptRevisions?: Record<string, string>;
 }
 
 /** Assembly algorithm type — kept for backward compat in the assemble route. */
@@ -105,6 +106,7 @@ export async function generatePromptContent(
         cacheReadTokens: result.usage.cacheReadTokens,
       },
       executionId: result.executionId,
+      promptRevisions: result.promptRevisions,
     };
   }
 

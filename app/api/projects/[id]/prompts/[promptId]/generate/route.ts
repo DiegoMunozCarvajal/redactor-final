@@ -14,6 +14,11 @@ import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEd
 import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
 import { generationBlockedResponse } from "@/lib/template-pipeline/http";
 import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
+import { runOriginalityGate } from "@/lib/originality/gate";
+import {
+  OriginalityContaminationError,
+  OriginalityDetectorUnavailableError,
+} from "@/lib/originality/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -177,58 +182,84 @@ export async function POST(
   }, { once: true });
 
   try {
-    const result = await generatePromptContent({
-      prompt,
-      placeholders,
-      projectTopic: effectiveTopic,
-      projectId,
-      chapterId: prompt.chapterId,
-      chapterGenerationId: gen.id,
-      chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
-      editorialContext,
-      ...(model ? { model } : {}),
-      ...(effort !== undefined ? { effort } : {}),
-    });
+    let capturedFragment: { id: string } | null = null;
 
-    // Fragment insert + generation completion must be atomic.
-    // If the insert succeeds but the update fails, the fragment is
-    // orphaned and the generation stays in "generating" indefinitely.
-    const [fragment] = await db.transaction(async (tx) => {
-      const [f] = await tx
-        .insert(fragments)
-        .values({
+    const gateResult = await runOriginalityGate({
+      context: {
+        projectId: project.id,
+        chapterId: prompt.chapterId,
+        chapterGenerationId: gen.id,
+        stage: "fragment",
+        fieldPath: "fragment.content",
+        authorization,
+        templateArtifactHash: prompt.templateArtifactHash ?? undefined,
+      },
+      generate: async () => {
+        const result = await generatePromptContent({
+          prompt,
+          placeholders,
+          projectTopic: effectiveTopic,
+          projectId,
+          chapterId: prompt.chapterId,
           chapterGenerationId: gen.id,
-          projectPromptId: prompt.id,
-          promptRevisionId: prompt.currentRevisionId,
-          executionId: result.executionId ?? null,
-          position: prompt.position,
-          content: result.text,
-          modelUsed: result.model,
-          tokensUsed:
-            (result.usage?.inputTokens ?? 0) +
-            (result.usage?.outputTokens ?? 0),
-          metadata: { provider: getProviderForModel(result.model) },
-        })
-        .returning();
+          chapterPromptRevisionId: prompt.currentRevisionId ?? undefined,
+          editorialContext,
+          ...(model ? { model } : {}),
+          ...(effort !== undefined ? { effort } : {}),
+        });
 
-      await tx
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          generationMetadata: {
-            type: "prompt",
-            promptId: prompt.id,
-            promptTitle: prompt.title,
-            model: result.model,
-            provider: getProviderForModel(result.model),
-            ...(effort ? { effort } : {}),
-            ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
-          },
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, gen.id));
+        return {
+          value: result,
+          text: result.text,
+          executionId: result.executionId as string,
+          promptRevisions: result.promptRevisions ?? {},
+        };
+      },
+      persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+        const r = candidate.value;
 
-      return [f];
+        const [fragment] = await tx
+          .insert(fragments)
+          .values({
+            chapterGenerationId: gen.id,
+            projectPromptId: prompt.id,
+            promptRevisionId: prompt.currentRevisionId,
+            executionId: r.executionId ?? null,
+            position: prompt.position,
+            content: r.text,
+            modelUsed: r.model,
+            tokensUsed:
+              (r.usage?.inputTokens ?? 0) +
+              (r.usage?.outputTokens ?? 0),
+            metadata: {
+              provider: r.provider,
+              originalityLineage: lineage,
+              originalityAssessmentId: assessmentId,
+            },
+          })
+          .returning();
+
+        await tx
+          .update(chapterGenerations)
+          .set({
+            status: "completed",
+            generationMetadata: {
+              type: "prompt",
+              promptId: prompt.id,
+              promptTitle: prompt.title,
+              model: r.model,
+              provider: r.provider,
+              ...(effort ? { effort } : {}),
+              ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
+            },
+            completedAt: new Date(),
+          })
+          .where(eq(chapterGenerations.id, gen.id));
+
+        capturedFragment = fragment;
+
+        return { entityType: "fragment", entityId: fragment.id };
+      },
     });
 
     await logAudit({
@@ -239,8 +270,27 @@ export async function POST(
       metadata: { projectId, generationId: gen.id },
     });
 
-    return NextResponse.json({ generationId: gen.id, fragment });
+    return NextResponse.json({ generationId: gen.id, fragment: capturedFragment });
   } catch (err) {
+    if (err instanceof OriginalityContaminationError) {
+      return NextResponse.json(
+        { error: "Generated content flagged as contaminated", detail: err.decision },
+        { status: 422 },
+      );
+    }
+
+    if (err instanceof OriginalityDetectorUnavailableError) {
+      await db
+        .update(chapterGenerations)
+        .set({ status: "failed", error: sanitizeError(err) })
+        .where(eq(chapterGenerations.id, gen.id));
+
+      return NextResponse.json(
+        { error: "Originality check unavailable. Please try again later." },
+        { status: 503 },
+      );
+    }
+
     const message = sanitizeError(err);
     await db
       .update(chapterGenerations)
