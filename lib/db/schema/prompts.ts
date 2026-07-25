@@ -21,6 +21,10 @@ export const prompts = pgTable("prompts", {
   // FK to prompt_versions enforced via SQL migration.
   // Nullable during schema transition; P3-T2 makes all insert sites provide it.
   currentRevisionId: uuid("current_revision_id"),
+  // FK to template_pipeline_runs enforced via SQL migration.
+  // Raw UUID column avoids import cycle with template-pipeline.ts.
+  templatePipelineRunId: uuid("template_pipeline_run_id"),
+  templateArtifactHash: text("template_artifact_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("idx_prompts_chapter_position").on(table.chapterId, table.position),

@@ -113,6 +113,8 @@ describe("snapshotChapterPrompt", () => {
     notes: "Focus on actionable items",
     sourceContext: "Reference: internal docs v2",
     currentRevisionId: null,
+    templatePipelineRunId: null,
+    templateArtifactHash: null,
     createdAt: new Date("2026-01-01"),
   };
 
@@ -174,6 +176,8 @@ describe("writeCurrentChapterPromptRevision", () => {
     notes: null,
     sourceContext: null,
     currentRevisionId: null,
+    templatePipelineRunId: null,
+    templateArtifactHash: null,
     createdAt: new Date(),
   };
 
@@ -354,6 +358,8 @@ describe("snapshot integrity", () => {
       notes: null,
       sourceContext: null,
       currentRevisionId: null,
+      templatePipelineRunId: null,
+      templateArtifactHash: null,
       createdAt: new Date(),
     };
 

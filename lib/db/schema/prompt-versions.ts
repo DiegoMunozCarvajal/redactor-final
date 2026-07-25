@@ -31,6 +31,8 @@ export interface ChapterPromptSnapshot {
   notes: string | null;
   sourceContext: string | null;
   legacyIncomplete?: boolean;
+  templatePipelineRunId?: string | null;
+  templateArtifactHash?: string | null;
 }
 
 export type PromptVersion = typeof promptVersions.$inferSelect;

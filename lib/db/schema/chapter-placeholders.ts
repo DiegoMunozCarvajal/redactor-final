@@ -13,6 +13,11 @@ export const chapterPlaceholders = pgTable(
     definition: text("definition"),
     function: text("function"),
     notes: text("notes"),
+    // FK to template_pipeline_runs enforced via SQL migration.
+    // Raw UUID column avoids import cycle with template-pipeline.ts.
+    templatePipelineRunId: uuid("template_pipeline_run_id"),
+    templateArtifactHash: text("template_artifact_hash"),
+    dependencyNames: text("dependency_names").array().notNull().default([]),
     fillMetadata: jsonb("fill_metadata").$type<PlaceholderFillMetadata>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

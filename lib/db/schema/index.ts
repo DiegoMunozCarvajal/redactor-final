@@ -10,3 +10,4 @@ export * from "./prompt-versions";
 export * from "./sources";
 export * from "./editorial-briefs";
 export * from "./prompt-registry";
+export * from "./template-pipeline";
