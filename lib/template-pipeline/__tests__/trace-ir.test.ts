@@ -107,16 +107,17 @@ describe("traceIrSchema", () => {
   it("rejects unknown keys in dependencies", () => {
     const result = traceIrSchema.safeParse({
       moves: [
-        move({
+        {
+          ...move(),
           dependencies: [
             {
               fromPosition: 0,
-              relation: "supports" as const,
-              slotType: "claim" as const,
+              relation: "supports",
+              slotType: "claim",
               label: "extra",
-            },
+            } as Record<string, unknown>,
           ],
-        }),
+        },
       ],
     });
     expect(result.success).toBe(false);

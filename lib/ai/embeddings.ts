@@ -4,7 +4,7 @@ const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
 const BATCH_SIZE = 100;
 
-export { EMBEDDING_DIMENSIONS };
+export { EMBEDDING_MODEL, EMBEDDING_DIMENSIONS };
 
 export class EmbeddingError extends Error {
   constructor(message: string, public cause?: unknown) {
