@@ -73,3 +73,51 @@ export function hashEditorialBundle(bundle: EditorialBundle): string {
 
   return createHash("sha256").update(json, "utf-8").digest("hex");
 }
+
+// ---------------------------------------------------------------------------
+// Remapping for project clone
+// ---------------------------------------------------------------------------
+
+/** Input for remapping an editorial bundle's IDs. */
+export interface EditorialBundleRemapInput {
+  bundle: EditorialBundle;
+  /** Legacy chapter ID (in contracts) -> new chapter ID */
+  chapterIdMap: ReadonlyMap<string, string>;
+  /** Legacy source ID (in evidenceSourceIds) -> new source ID */
+  sourceIdMap: ReadonlyMap<string, string>;
+}
+
+/**
+ * Remap chapter and source IDs in an EditorialBundle and recompute its hash.
+ *
+ * Used during project cloning to assign the editorial brief to a new project's
+ * chapter and source IDs without modifying the brief content.  The returned
+ * bundle has the same `id` and `version` as the input — the caller is expected
+ * to create a fresh brief row for the new project.
+ */
+export function remapEditorialBundle(
+  input: EditorialBundleRemapInput,
+): EditorialBundle {
+  const { bundle, chapterIdMap, sourceIdMap } = input;
+
+  const remappedContracts = bundle.contracts.map((contract) => ({
+    ...contract,
+    chapterId: chapterIdMap.get(contract.chapterId) ?? contract.chapterId,
+  }));
+
+  const remappedEvidenceSourceIds = bundle.evidenceSourceIds.map(
+    (id) => sourceIdMap.get(id) ?? id,
+  );
+
+  const newBundle: EditorialBundle = {
+    ...bundle,
+    contracts: remappedContracts,
+    evidenceSourceIds: remappedEvidenceSourceIds,
+    hash: "", // recompute below
+  };
+
+  newBundle.hash = hashEditorialBundle(newBundle);
+
+  return newBundle;
+}
+

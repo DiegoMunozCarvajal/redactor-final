@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "audit:template-contamination": "tsx scripts/audit-contamination.ts",
     "regenerate:template": "tsx scripts/regenerate-template.ts",
+    "clone:project-to-clean-template": "tsx scripts/clone-project-to-clean-template.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/apply-supabase-migrations.ts",
     "db:migrate:local": "tsx scripts/sync-local-migrations.ts && tsx scripts/apply-supabase-migrations.ts --local",
