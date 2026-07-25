@@ -8,10 +8,16 @@ import { composePrompt } from './composer';
 import { llmPromptExecutions } from '@/lib/db/schema/prompt-registry';
 import type { PromptKind } from '@/lib/db/schema/prompt-registry';
 import { sanitizeError } from '@/lib/sanitize-error';
+import { sha256Text } from '@/lib/template-pipeline/hash';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface MessagePersistenceConfig {
+  mode: "full" | "redact-sensitive-markers";
+  sensitiveMarkers?: string[];
+}
 
 export interface ExecuteVersionedPromptInput<T extends z.ZodTypeAny | undefined = undefined> {
   stage: string;
@@ -35,6 +41,7 @@ export interface ExecuteVersionedPromptInput<T extends z.ZodTypeAny | undefined 
   signal?: AbortSignal;
   /** Per-call timeout in ms. Passed through to generateCompletion. */
   timeoutMs?: number;
+  messagePersistence?: MessagePersistenceConfig;
 }
 
 type CompletionResult<T> = {
@@ -96,10 +103,53 @@ export async function executeVersionedPrompt(
   }
 
   // 5. Insert execution with status "started"
-  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+  const persistenceConfig = input.messagePersistence;
+  const sensitiveMarkers = persistenceConfig?.mode === "redact-sensitive-markers"
+    ? new Set(persistenceConfig.sensitiveMarkers ?? [])
+    : null;
+
+  // Validate sensitive markers against required markers
+  if (sensitiveMarkers) {
+    for (const marker of sensitiveMarkers) {
+      if (!revision.requiredMarkers.includes(marker)) {
+        throw new Error(
+          `Sensitive marker ${marker} not in required markers for ${input.kind}`,
+        );
+      }
+    }
+  }
+
+  // Build provider messages from real composition
+  const providerMessages: Array<{ role: 'system' | 'user'; content: string }> = [
     { role: 'system' as const, content: composed.systemMessage },
     { role: 'user' as const, content: composed.userMessage },
   ];
+
+  // Build stored messages: redact sensitive markers if configured
+  let storedMessages: Array<{ role: 'system' | 'user'; content: string }>;
+  if (sensitiveMarkers && sensitiveMarkers.size > 0) {
+    const redactedMarkerValues: Record<string, string> = { ...input.markerValues };
+    for (const marker of sensitiveMarkers) {
+      const value = redactedMarkerValues[marker];
+      if (value !== undefined) {
+        redactedMarkerValues[marker] = redactedMarker(value);
+      }
+    }
+    const redactedComposed = composePrompt(
+      {
+        systemTemplate: revision.systemTemplate,
+        userTemplate: revision.userTemplate,
+        requiredMarkers: revision.requiredMarkers,
+      },
+      redactedMarkerValues,
+    );
+    storedMessages = [
+      { role: 'system' as const, content: redactedComposed.systemMessage },
+      { role: 'user' as const, content: redactedComposed.userMessage },
+    ];
+  } else {
+    storedMessages = providerMessages;
+  }
 
   const [execution] = await db
     .insert(llmPromptExecutions)
@@ -112,7 +162,7 @@ export async function executeVersionedPrompt(
       promptRevisionId: revision.id,
       model: input.model,
       provider,
-      messages: messages as unknown[],
+      messages: storedMessages as unknown[],
       dataManifest,
       outputContract: revision.outputContract,
       technicalPolicies: (input.technicalPolicies ?? []) as unknown as string[],
@@ -180,6 +230,10 @@ export async function executeVersionedPrompt(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function redactedMarker(value: string): string {
+  return `[REDACTED sha256=${sha256Text(value)} chars=${value.length}]`;
+}
 
 function buildDataManifest(
   composerManifest: Record<string, { sha256: string; chars: number }>,

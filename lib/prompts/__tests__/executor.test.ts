@@ -245,4 +245,90 @@ describe('executeVersionedPrompt', () => {
       }),
     ).rejects.toThrow('Unknown marker in dataLineage');
   });
+
+  it('sends real source but persists a hash-only redaction', async () => {
+    const profilerRevision = {
+      id: 'rev-profiler-1',
+      definitionId: 'def-profiler-1',
+      kind: 'source-risk-profiler' as const,
+      name: 'Source Profiler v1',
+      revisionNumber: 1,
+      versionLabel: '1.0',
+      systemTemplate: 'SYS classifies source.',
+      userTemplate: 'SOURCE:\n{{CAPITULO_FUENTE}}\n\nSCHEMA:\n{{OUTPUT_SCHEMA}}',
+      requiredMarkers: ['{{CAPITULO_FUENTE}}', '{{OUTPUT_SCHEMA}}'],
+      outputContract: 'source-profile-v1',
+      configuration: {
+        pipelineContract: 'source-profile-v1',
+        sensitiveMarkers: ['{{CAPITULO_FUENTE}}'],
+      },
+    };
+
+    mockResolvePromptRevision.mockResolvedValue(profilerRevision as unknown as typeof revision);
+    mockGetProviderForModel.mockReturnValue('test-provider');
+
+    let insertedValues: Record<string, unknown> | undefined;
+    const insertChain = {
+      values: vi.fn((v: unknown) => {
+        insertedValues = v as Record<string, unknown>;
+        return {
+          returning: vi.fn(() => Promise.resolve([{ ...insertedExecution, promptRevisionId: 'rev-profiler-1' }])),
+        };
+      }),
+    };
+    mockDb.insert.mockReturnValue(insertChain);
+    mockDb.update.mockReturnValue(makeChain());
+    mockGenerateCompletion.mockResolvedValue({
+      data: { elements: [] },
+      usage: { promptTokens: 50, completionTokens: 30, totalTokens: 80, costUsd: 0.002, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      durationMs: 800,
+    });
+
+    await executeVersionedPrompt({
+      stage: 'source-profile',
+      kind: 'source-risk-profiler',
+      markerValues: {
+        '{{CAPITULO_FUENTE}}': 'secret source chapter',
+        '{{OUTPUT_SCHEMA}}': '{}',
+      },
+      messagePersistence: {
+        mode: 'redact-sensitive-markers',
+        sensitiveMarkers: ['{{CAPITULO_FUENTE}}'],
+      },
+      model: 'test-model',
+    });
+
+    // LLM received real source
+    expect(mockGenerateCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      userPrompt: expect.stringContaining('secret source chapter'),
+    }));
+
+    // DB contains redacted messages
+    expect(insertedValues).toBeDefined();
+    const storedMsg = insertedValues!.messages as Array<{ role: string; content: string }>;
+    expect(storedMsg).not.toContainEqual(
+      expect.objectContaining({ content: expect.stringContaining('secret source chapter') }),
+    );
+    const userMsg = storedMsg.find(m => m.role === 'user')!;
+    expect(userMsg.content).toMatch(/\[REDACTED sha256=[a-f0-9]{64} chars=21\]/);
+
+    // Data manifest keeps real metadata
+    const manifest = insertedValues!.dataManifest as Record<string, { chars: number }>;
+    expect(manifest['{{CAPITULO_FUENTE}}'].chars).toBe(21);
+  });
+
+  it('rejects a sensitive marker not in required markers', async () => {
+    await expect(
+      executeVersionedPrompt({
+        stage: 'source-profile',
+        kind: 'assembly',
+        markerValues,
+        model: 'test-model',
+        messagePersistence: {
+          mode: 'redact-sensitive-markers',
+          sensitiveMarkers: ['{{CAPITULO_FUENTE}}'],
+        },
+      }),
+    ).rejects.toThrow('not in required markers');
+  });
 });

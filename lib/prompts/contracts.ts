@@ -25,6 +25,10 @@ export const requiredMarkersByKind: Record<PromptKind, readonly string[]> = {
     '{{RESEARCH_DOCUMENT}}',
     '{{OUTPUT_SCHEMA}}',
   ],
+  'source-risk-profiler': [
+    '{{CAPITULO_FUENTE}}',
+    '{{OUTPUT_SCHEMA}}',
+  ],
 };
 
 export const promptRevisionInputSchema = z.object({

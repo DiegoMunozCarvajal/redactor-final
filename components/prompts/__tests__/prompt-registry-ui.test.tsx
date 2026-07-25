@@ -27,6 +27,7 @@ describe('KIND_LABELS', () => {
     expect(KIND_LABELS['editorial-brief-extractor']).toBe('Extractor editorial');
     expect(KIND_LABELS['rhetoric-trace']).toBe('Traza retórica');
     expect(KIND_LABELS['template-generator']).toBe('Generador de templates');
+    expect(KIND_LABELS['source-risk-profiler']).toBe('Perfil de riesgo de fuente');
   });
 });
 
@@ -45,11 +46,12 @@ describe('PromptRevisionEditor component exports', () => {
 });
 
 describe('prompt kind grouping', () => {
-  it('lists all ten kinds in pipeline order without utility split', () => {
+  it('lists all kinds in pipeline order without utility split', () => {
     expect(CORE_PROMPT_KINDS).toEqual([
       'editorial-brief-extractor',
       'rhetoric-trace',
       'template-generator',
+      'source-risk-profiler',
       'placeholder-fill',
       'generation-system',
       'assembly-planner',
