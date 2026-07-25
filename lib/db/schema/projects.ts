@@ -22,6 +22,11 @@ export const projects = pgTable(
     subtitle: text("subtitle"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+    supersedesProjectId: uuid("supersedes_project_id").references(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (): any => projects,
+      { onDelete: "restrict" },
+    ),
   },
   (table) => [index("idx_projects_user").on(table.userId)],
 );

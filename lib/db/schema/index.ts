@@ -12,3 +12,4 @@ export * from "./editorial-briefs";
 export * from "./prompt-registry";
 export * from "./template-pipeline";
 export * from "./originality-assessments";
+export * from "./pipeline-maintenance";
