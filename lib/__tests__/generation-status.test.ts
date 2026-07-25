@@ -47,6 +47,19 @@ describe("generation status helpers", () => {
     expect(active?.id).toBe("current-assembly");
   });
 
+  it("treats quarantined as terminal (not in-flight)", () => {
+    expect(
+      isInFlightGeneration(
+        {
+          id: "quarantined-1",
+          status: "quarantined",
+          createdAt: "2026-05-30T11:59:00.000Z",
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
   it("maps active prompt generation by prompt id", () => {
     const activeByPrompt = getActivePromptGenerationByPromptId(
       [

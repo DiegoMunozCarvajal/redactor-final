@@ -10,6 +10,7 @@ export const generationStatusEnum = pgEnum("generation_status", [
   "completed",
   "failed",
   "awaiting_assembly",
+  "quarantined",
 ]);
 
 export const chapterGenerations = pgTable(

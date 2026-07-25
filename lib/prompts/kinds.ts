@@ -5,6 +5,7 @@ export const CORE_PROMPT_KINDS = [
   "rhetoric-trace",
   "template-generator",
   "source-risk-profiler",
+  "source-leakage-review",
   "placeholder-fill",
   "generation-system",
   "assembly-planner",
@@ -28,6 +29,7 @@ export const KIND_LABELS: Record<PromptKind, string> = {
   "placeholder-fill": "Placeholders",
   "editorial-brief-extractor": "Extractor editorial",
   "source-risk-profiler": "Perfil de riesgo de fuente",
+  "source-leakage-review": "Revisor de fuga de fuente",
 };
 
 export const ALL_PROMPT_KINDS = [

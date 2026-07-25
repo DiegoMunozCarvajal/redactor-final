@@ -29,6 +29,12 @@ export const requiredMarkersByKind: Record<PromptKind, readonly string[]> = {
     '{{CAPITULO_FUENTE}}',
     '{{OUTPUT_SCHEMA}}',
   ],
+  'source-leakage-review': [
+    '{{CANDIDATE_OUTPUT}}',
+    '{{MATCHED_RISK_LABELS}}',
+    '{{SIGNAL_REPORT}}',
+    '{{OUTPUT_SCHEMA}}',
+  ],
 };
 
 export const promptRevisionInputSchema = z.object({

@@ -52,6 +52,7 @@ describe('prompt kind grouping', () => {
       'rhetoric-trace',
       'template-generator',
       'source-risk-profiler',
+      'source-leakage-review',
       'placeholder-fill',
       'generation-system',
       'assembly-planner',

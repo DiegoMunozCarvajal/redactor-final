@@ -20,7 +20,7 @@ export async function cleanupStaleGenerations(
   type: string,
   opts?: {
     chapterId?: string;
-    statuses?: Array<"pending" | "generating" | "planning" | "assembling" | "completed" | "failed" | "awaiting_assembly">;
+    statuses?: Array<"pending" | "generating" | "planning" | "assembling" | "completed" | "failed" | "awaiting_assembly" | "quarantined">;
     errorMessage?: string;
   },
 ): Promise<void> {

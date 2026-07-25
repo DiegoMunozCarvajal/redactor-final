@@ -17,6 +17,7 @@ export const promptKindValues = [
   "rhetoric-trace",
   "template-generator",
   "source-risk-profiler",
+  "source-leakage-review",
 ] as const;
 
 export type PromptKind = (typeof promptKindValues)[number];

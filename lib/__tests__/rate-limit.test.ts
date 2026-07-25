@@ -73,6 +73,16 @@ describe("checkProjectRateLimit", () => {
     expect(result.retryAfter).toBe(15);
   });
 
+  it("excludes quarantined from active generation count", async () => {
+    // quarantined is terminal — not counted toward in-flight limit
+    const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+    mockDbSelect.mockReturnValue({ from: () => ({ where: mockWhere }) });
+
+    const result = await checkProjectRateLimit("proj-quarantined");
+    expect(result.allowed).toBe(true);
+    expect(result.retryAfter).toBeUndefined();
+  });
+
   it("handles empty result (no rows returned)", async () => {
     const mockWhere = vi.fn().mockResolvedValue([]);
     mockDbSelect.mockReturnValue({ from: () => ({ where: mockWhere }) });
