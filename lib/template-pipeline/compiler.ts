@@ -53,8 +53,8 @@ export interface RecipeRenderResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const COMPILER_VERSION = "template-compiler-v1";
-const COMPILER_HASH = sha256Canonical({ version: COMPILER_VERSION });
+export const COMPILER_VERSION = "template-compiler-v1";
+export const COMPILER_HASH = sha256Canonical({ version: COMPILER_VERSION });
 
 // ---------------------------------------------------------------------------
 // Canonical slot prefix mapping

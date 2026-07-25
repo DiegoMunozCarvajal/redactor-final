@@ -8,7 +8,7 @@ import { generateTemplate } from "@/trigger/generate-template";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { eq } from "drizzle-orm";
-import { LEGACY_CONTAINMENT_PIPELINE_VERSION, ORIGINALITY_POLICY_VERSION } from "@/lib/template-pipeline/contracts";
+import { SAFE_PIPELINE_VERSION, ORIGINALITY_POLICY_VERSION } from "@/lib/template-pipeline/contracts";
 import { resolvePromptRevision } from "@/lib/prompts/repository";
 
 export async function POST(req: NextRequest) {
@@ -104,15 +104,15 @@ export async function POST(req: NextRequest) {
         createdChapters.push({ id: ch.id, title, position: i });
       }
 
-      // Create transitional pipeline run in the same transaction.
-      // Legacy v1 runs track provenance but never make the template
-      // eligible for project creation (active_pipeline_run_id stays null).
+      // Create pipeline run in the same transaction.
+      // v2 runs are eligible for project creation once finalized
+      // (active_pipeline_run_id is set by finalizeTemplateRun).
       const [run] = await tx
         .insert(templatePipelineRuns)
         .values({
           bookTemplateId: tpl.id,
           status: "running",
-          pipelineVersion: LEGACY_CONTAINMENT_PIPELINE_VERSION,
+          pipelineVersion: SAFE_PIPELINE_VERSION,
           rhetoricTraceRevisionId,
           originalityPolicyVersion: ORIGINALITY_POLICY_VERSION,
         })

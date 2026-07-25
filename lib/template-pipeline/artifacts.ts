@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   templateRunArtifacts,
@@ -8,6 +8,8 @@ import {
   chapterPlaceholders,
 } from "@/lib/db/schema";
 import { sha256Canonical } from "./hash";
+import { COMPILER_VERSION, COMPILER_HASH } from "./compiler";
+import { TEMPLATE_RECIPE_REGISTRY } from "./recipes";
 import type { TraceIr } from "./trace-ir";
 import type { CompiledBlock } from "./compiler";
 
@@ -15,56 +17,12 @@ import type { CompiledBlock } from "./compiler";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ArtifactIdentity {
-  pipelineRunId: string;
-  chapterId: string;
-  sourceHash: string;
-  rhetoricRevisionId: string;
-  compilerHash: string;
-}
-
 export interface SaveArtifactInput {
   pipelineRunId: string;
   chapterId: string;
   traceIr: TraceIr;
   compiledTemplate: CompiledBlock[];
   artifactHash: string;
-}
-
-// ---------------------------------------------------------------------------
-// Idempotent artifact lookup
-// ---------------------------------------------------------------------------
-
-export async function findReusableArtifact(
-  identity: ArtifactIdentity,
-): Promise<{ id: string; artifactHash: string } | null> {
-  const [existing] = await db
-    .select({ id: templateRunArtifacts.id, artifactHash: templateRunArtifacts.artifactHash })
-    .from(templateRunArtifacts)
-    .where(
-      and(
-        eq(templateRunArtifacts.pipelineRunId, identity.pipelineRunId),
-        eq(templateRunArtifacts.chapterId, identity.chapterId),
-      ),
-    )
-    .limit(1);
-
-  if (!existing) return null;
-
-  // Identity tuple must match exactly
-  const validationReport = await db
-    .select({ validationReport: templateRunArtifacts.validationReport })
-    .from(templateRunArtifacts)
-    .where(eq(templateRunArtifacts.id, existing.id))
-    .limit(1);
-
-  const storedIdentity = (validationReport[0]?.validationReport as Record<string, unknown>)?.identity as Record<string, string> | undefined;
-  const identityMatch = storedIdentity
-    && storedIdentity.sourceHash === identity.sourceHash
-    && storedIdentity.rhetoricRevisionId === identity.rhetoricRevisionId
-    && storedIdentity.compilerHash === identity.compilerHash;
-
-  return identityMatch ? existing : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,10 +165,19 @@ export async function finalizeTemplateRun(
       }
     }
 
-    // Mark run clean
+    // Mark run clean with compiler metadata
+    const recipeCatalogHash = sha256Canonical(
+      [...TEMPLATE_RECIPE_REGISTRY.entries()].map(([id]) => id),
+    );
     await tx
       .update(templatePipelineRuns)
-      .set({ status: "clean", completedAt: new Date() })
+      .set({
+        status: "clean",
+        completedAt: new Date(),
+        compilerVersion: COMPILER_VERSION,
+        compilerHash: COMPILER_HASH,
+        recipeCatalogHash,
+      })
       .where(eq(templatePipelineRuns.id, runId));
 
     // Activate template

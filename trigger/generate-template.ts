@@ -18,6 +18,7 @@ import { compileTrace } from "@/lib/template-pipeline/compiler";
 import { saveRunArtifact } from "@/lib/template-pipeline/artifacts";
 import { finalizeTemplateRun } from "@/lib/template-pipeline/artifacts";
 import { normalizeText, computeWordShingles, OriginalityError } from "@/lib/ai/originality-check";
+import { sha256Text } from "@/lib/template-pipeline/hash";
 import type { TraceIr } from "@/lib/template-pipeline/trace-ir";
 import type { CompiledBlock } from "@/lib/template-pipeline/compiler";
 
@@ -335,13 +336,13 @@ function assertCompiledTemplateClean(
     for (const doc of profileDocs) {
       let intersection5 = 0;
       for (const s of shingles5) {
-        if (doc.shingles5.has(s)) intersection5++;
+        if (doc.shingles5.has(sha256Text(s))) intersection5++;
       }
       const score5 = shingles5.size > 0 ? intersection5 / shingles5.size : 0;
 
       let intersection8 = 0;
       for (const s of shingles8) {
-        if (doc.shingles8.has(s)) intersection8++;
+        if (doc.shingles8.has(sha256Text(s))) intersection8++;
       }
       const score8 = shingles8.size > 0 ? intersection8 / shingles8.size : 0;
 
