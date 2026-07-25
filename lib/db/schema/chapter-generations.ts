@@ -39,6 +39,12 @@ export const chapterGenerations = pgTable(
       editorialBriefId?: string;
       editorialBriefVersion?: number;
       editorialBriefHash?: string;
+      templateAuthorization?: {
+        scope: string;
+        pipelineRunId: string | null;
+        sourceProfileSetHash: string;
+        originalityPolicyVersion: string;
+      };
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{

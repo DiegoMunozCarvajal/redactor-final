@@ -94,7 +94,7 @@ export async function POST(
         projectId,
         chapterId,
         status: "generating",
-        generationMetadata: { type: "fill" },
+        generationMetadata: { type: "fill", templateAuthorization: authorization },
       })
       .returning();
 

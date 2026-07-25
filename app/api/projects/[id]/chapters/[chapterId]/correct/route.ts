@@ -168,6 +168,7 @@ export async function POST(
           model: resolvedModel,
           critiqueGenerationId,
           ...(critiqueSnapshot ? metadataFromSnapshot(critiqueSnapshot) : {}),
+          templateAuthorization: authorization,
         },
       })
       .returning();

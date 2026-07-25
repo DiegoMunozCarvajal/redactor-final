@@ -166,6 +166,7 @@ export async function POST(
         status: "pending",
         generationMetadata: {
           ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
+          templateAuthorization: authorization,
         },
       })
       .returning();

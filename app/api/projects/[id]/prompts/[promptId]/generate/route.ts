@@ -141,6 +141,7 @@ export async function POST(
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
           ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
+          templateAuthorization: authorization,
         },
       })
       .returning();

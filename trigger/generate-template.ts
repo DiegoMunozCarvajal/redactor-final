@@ -11,6 +11,7 @@ import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
 import { assertOriginalEnough } from "@/lib/ai/originality-check";
+import { SOURCECONTEXT_MAX_LENGTH } from "@/lib/template-pipeline/contracts";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -209,7 +210,7 @@ export const generateTemplate = task({
                 userPrompt: block.userPrompt,
                 function: block.function ?? null,
                 notes: block.notes ?? null,
-                sourceContext: (block.sourceContext?.slice(0, 300) || null) as string | null,
+                sourceContext: (block.sourceContext?.slice(0, SOURCECONTEXT_MAX_LENGTH) || null) as string | null,
               }).returning({ id: prompts.id });
 
               // Create immutable revision so currentRevisionId is never null

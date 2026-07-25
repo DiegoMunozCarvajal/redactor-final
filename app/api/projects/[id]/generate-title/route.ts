@@ -107,6 +107,7 @@ export async function POST(
         generationMetadata: {
           type: "title",
           ...(briefSnapshot ? metadataFromSnapshot(briefSnapshot) : {}),
+          templateAuthorization: authorization,
         },
       })
       .returning();

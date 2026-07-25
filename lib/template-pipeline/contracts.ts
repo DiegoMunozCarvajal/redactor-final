@@ -3,6 +3,9 @@ export const SAFE_PIPELINE_VERSION = "template-pipeline-v2";
 export const ORIGINALITY_POLICY_VERSION = "originality-policy-v2";
 export const SOURCE_PROFILE_VERSION = "source-profile-v1";
 
+/** Max chars stored in prompts.sourceContext — truncate LLM output at insert. */
+export const SOURCECONTEXT_MAX_LENGTH = 300;
+
 export const SUPPORTED_GENERATION_PIPELINES = new Set([
   SAFE_PIPELINE_VERSION,
 ]);

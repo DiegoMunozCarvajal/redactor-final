@@ -135,6 +135,7 @@ export async function POST(
           critiquePromptRevisionId,
           model: resolvedModel,
           ...(snapshot ? metadataFromSnapshot(snapshot) : {}),
+          templateAuthorization: authorization,
         },
       })
       .returning();

@@ -275,6 +275,7 @@ export async function POST(
       algorithm: "planned-editorial-v1" as const,
       fragmentIds,
       ...(assemblySnapshot ? metadataFromSnapshot(assemblySnapshot) : {}),
+      templateAuthorization: authorization,
     };
     const [row] = await db
       .insert(chapterGenerations)
