@@ -2,7 +2,7 @@ import { task } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { db } from "@/lib/db";
-import { prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
+import { prompts, chapterPlaceholders, bookTemplates, templatePipelineRuns } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { writeCurrentChapterPromptRevision } from "@/lib/prompts/chapter-revisions";
@@ -71,13 +71,14 @@ export const generateTemplate = task({
   },
   run: async (payload: {
     templateId: string;
+    pipelineRunId: string;
     rhetoricTraceRevisionId: string;
     templateGeneratorRevisionId: string;
     chapters: ChapterPayload[];
     model?: string;
     effort?: ReasoningEffort;
   }) => {
-    const { templateId, rhetoricTraceRevisionId, templateGeneratorRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
+    const { templateId, pipelineRunId, rhetoricTraceRevisionId, templateGeneratorRevisionId, chapters, model = DEFAULT_GENERATION_MODEL, effort } = payload;
 
     // Idempotency guard: if the template already completed successfully,
     // don't reprocess. "failed" is NOT terminal — retries recover from
@@ -283,15 +284,27 @@ export const generateTemplate = task({
         .update(bookTemplates)
         .set({ status: newStatus })
         .where(eq(bookTemplates.id, templateId));
+
+      // Update pipeline run status — legacy v1 runs never set
+      // active_pipeline_run_id, so the template stays ineligible.
+      if (newStatus === "ready") {
+        await db
+          .update(templatePipelineRuns)
+          .set({ status: "clean", completedAt: new Date() })
+          .where(eq(templatePipelineRuns.id, pipelineRunId));
+      }
     } catch (err) {
-      // Mark as failed so the template doesn't stay "generating" forever.
-      // Trigger.dev will retry (up to 3 attempts); the next attempt resets
-      // status to "generating" at the top of this function.
+      // Mark template and run as failed so neither stays running forever.
       await db
         .update(bookTemplates)
         .set({ status: "failed" })
         .where(eq(bookTemplates.id, templateId))
-        .catch(() => {}); // best-effort — don't mask the original error
+        .catch(() => {});
+      await db
+        .update(templatePipelineRuns)
+        .set({ status: "failed", completedAt: new Date() })
+        .where(eq(templatePipelineRuns.id, pipelineRunId))
+        .catch(() => {});
       throw err;
     }
   },

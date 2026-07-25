@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { bookTemplates, chapters } from "@/lib/db/schema";
+import { bookTemplates, chapters, templatePipelineRuns } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/admin";
 import { csrfCheck } from "@/lib/api/csrf";
 import { ensureTriggerConfigured } from "@/lib/trigger/setup";
@@ -8,6 +8,7 @@ import { generateTemplate } from "@/trigger/generate-template";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { eq } from "drizzle-orm";
+import { LEGACY_CONTAINMENT_PIPELINE_VERSION, ORIGINALITY_POLICY_VERSION } from "@/lib/template-pipeline/contracts";
 
 export async function POST(req: NextRequest) {
   const csrfError = csrfCheck(req);
@@ -66,7 +67,21 @@ export async function POST(req: NextRequest) {
         createdChapters.push({ id: ch.id, title, position: i });
       }
 
-      return { template: tpl, createdChapters };
+      // Create transitional pipeline run in the same transaction.
+      // Legacy v1 runs track provenance but never make the template
+      // eligible for project creation (active_pipeline_run_id stays null).
+      const [run] = await tx
+        .insert(templatePipelineRuns)
+        .values({
+          bookTemplateId: tpl.id,
+          status: "running",
+          pipelineVersion: LEGACY_CONTAINMENT_PIPELINE_VERSION,
+          rhetoricTraceRevisionId,
+          originalityPolicyVersion: ORIGINALITY_POLICY_VERSION,
+        })
+        .returning();
+
+      return { template: tpl, createdChapters, pipelineRunId: run.id };
     });
 
     templateId = template.template.id;
@@ -82,6 +97,7 @@ export async function POST(req: NextRequest) {
     ensureTriggerConfigured();
     await generateTemplate.trigger({
       templateId: template.template.id,
+      pipelineRunId: template.pipelineRunId,
       rhetoricTraceRevisionId,
       templateGeneratorRevisionId,
       chapters: chapterPayloads,

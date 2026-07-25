@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, prompts, chapterPlaceholders, bookTemplates } from "@/lib/db/schema";
+import { projects, chapters, prompts, chapterPlaceholders, bookTemplates, templatePipelineRuns } from "@/lib/db/schema";
 import { chapterGenerations } from "@/lib/db/schema/chapter-generations";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, isNull, sql, inArray } from "drizzle-orm";
@@ -8,6 +8,7 @@ import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { extractPlaceholders } from "@/lib/placeholders";
 import { copyTemplatePromptsToChapter } from "@/lib/db/queries/copy-template-prompts";
+import { isTemplateEligible } from "@/lib/template-pipeline/eligibility";
 
 export async function GET() {
   const supabase = await createClient();
@@ -78,14 +79,34 @@ export async function POST(req: NextRequest) {
       // the TOCTOU window where an admin changes status between check and insert.
       if (bookTemplateId) {
         const [template] = await tx
-          .select({ id: bookTemplates.id, status: bookTemplates.status })
+          .select({
+            id: bookTemplates.id,
+            status: bookTemplates.status,
+            activePipelineRunId: bookTemplates.activePipelineRunId,
+            runStatus: templatePipelineRuns.status,
+            pipelineVersion: templatePipelineRuns.pipelineVersion,
+            originalityPolicyVersion: templatePipelineRuns.originalityPolicyVersion,
+          })
           .from(bookTemplates)
+          .leftJoin(
+            templatePipelineRuns,
+            and(
+              eq(bookTemplates.activePipelineRunId, templatePipelineRuns.id),
+              eq(templatePipelineRuns.bookTemplateId, bookTemplates.id),
+            ),
+          )
           .where(eq(bookTemplates.id, bookTemplateId))
           .limit(1);
         if (!template) {
           throw { status: 400, message: "template not found" };
         }
-        if (template.status !== "ready") {
+        if (!isTemplateEligible({
+          templateStatus: template.status,
+          activeRunId: template.activePipelineRunId ?? null,
+          runStatus: template.runStatus ?? null,
+          pipelineVersion: template.pipelineVersion ?? null,
+          originalityPolicyVersion: template.originalityPolicyVersion ?? null,
+        })) {
           throw { status: 400, message: "template is not available" };
         }
       }

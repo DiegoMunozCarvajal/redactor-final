@@ -29,6 +29,8 @@ export function snapshotChapterPrompt(row: Prompt): ChapterPromptSnapshot {
     notes: row.notes ?? null,
     sourceContext: row.sourceContext ?? null,
     legacyIncomplete: false,
+    templatePipelineRunId: row.templatePipelineRunId ?? null,
+    templateArtifactHash: row.templateArtifactHash ?? null,
   };
 }
 

@@ -4,7 +4,7 @@ import { BookOpen } from "lucide-react";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 
 interface QuickStartCardProps {
-  templates: { id: string; name: string; status: string }[];
+  templates: { id: string; name: string; status: string; eligibleForProjects?: boolean }[];
   onOpenChange?: (open: boolean) => void;
 }
 

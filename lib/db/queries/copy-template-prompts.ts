@@ -50,6 +50,8 @@ export async function copyTemplatePromptsToChapter(
         function: p.function,
         notes: p.notes,
         sourceContext: p.sourceContext,
+        templatePipelineRunId: p.templatePipelineRunId,
+        templateArtifactHash: p.templateArtifactHash,
       })),
     ).returning({ id: prompts.id });
 
@@ -71,7 +73,7 @@ export async function copyTemplatePromptsToChapter(
   if (templatePlaceholders.length > 0) {
     const seen = new Map<
       string,
-      { chapterId: string; name: string; function: string | null }
+      { chapterId: string; name: string; function: string | null; templatePipelineRunId: string | null; templateArtifactHash: string | null }
     >();
     for (const ph of templatePlaceholders) {
       const key = ph.name.toLowerCase();
@@ -80,6 +82,8 @@ export async function copyTemplatePromptsToChapter(
           chapterId: projectChapterId,
           name: key,
           function: ph.function,
+          templatePipelineRunId: ph.templatePipelineRunId ?? null,
+          templateArtifactHash: ph.templateArtifactHash ?? null,
         });
       }
     }
@@ -106,7 +110,7 @@ export async function copyTemplatePlaceholdersBatch(
   // Group by (projectChapterId, lowerName) — first function wins
   const grouped = new Map<
     string,
-    { chapterId: string; name: string; function: string | null }
+    { chapterId: string; name: string; function: string | null; templatePipelineRunId: string | null; templateArtifactHash: string | null }
   >();
 
   for (const ph of templatePlaceholders) {
@@ -118,6 +122,8 @@ export async function copyTemplatePlaceholdersBatch(
         chapterId: projectChapterId,
         name: ph.name.toLowerCase(),
         function: ph.function,
+        templatePipelineRunId: ph.templatePipelineRunId ?? null,
+        templateArtifactHash: ph.templateArtifactHash ?? null,
       });
     }
   }

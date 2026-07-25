@@ -38,7 +38,7 @@ export function CreateProjectDialog({
   trigger,
   onOpenChange,
 }: {
-  templates: { id: string; name: string; status: string }[]
+  templates: { id: string; name: string; status: string; eligibleForProjects?: boolean }[]
   trigger?: React.ReactNode
   onOpenChange?: (open: boolean) => void
 }) {
@@ -139,21 +139,14 @@ export function CreateProjectDialog({
               <SelectContent>
                 <SelectItem value="__none__">No template (start from scratch)</SelectItem>
                 {templates.map((t) => {
-                  const isGenerating = t.status === "generating";
-                  const isFailed = t.status === "failed";
-                  const isDisabled = isGenerating || isFailed;
+                  const isDisabled = t.eligibleForProjects === false;
                   return (
                     <SelectItem key={t.id} value={t.id} disabled={isDisabled}>
                       <span className="flex items-center gap-2">
                         {t.name}
-                        {isGenerating && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 animate-pulse">
-                            Generating...
-                          </span>
-                        )}
-                        {isFailed && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-                            Failed
+                        {isDisabled && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            Unavailable
                           </span>
                         )}
                       </span>

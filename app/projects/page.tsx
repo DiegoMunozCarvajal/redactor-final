@@ -37,6 +37,7 @@ interface Template {
   id: string;
   name: string;
   status: string;
+  eligibleForProjects?: boolean;
 }
 
 export default function ProjectsPage() {
