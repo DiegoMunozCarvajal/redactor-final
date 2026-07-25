@@ -12,6 +12,9 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 import { resolvePromptRevision } from "@/lib/prompts/repository";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -121,6 +124,17 @@ export async function POST(
   //
   // Trigger.dev dispatch happens OUTSIDE the lock — never hold advisory lock
   // during external API calls (Trigger.dev is an HTTP API).
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale content generation rows (type IS NULL = original generation).
     // Stale pending rows block the rate limiter permanently if Trigger.dev

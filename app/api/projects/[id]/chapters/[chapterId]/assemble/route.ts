@@ -14,6 +14,9 @@ import { logAudit } from "@/lib/audit";
 import { DEFAULT_GENERATION_MODEL, getModelDefinition } from "@/lib/ai/providers";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, snapshotFromGenerationMetadata } from "@/lib/editorial-brief/context";
 import { resolvePromptRevision } from "@/lib/prompts/repository";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -240,6 +243,17 @@ export async function POST(
   // Serialize rate limit check + generation row insert under advisory lock.
   // Trigger.dev dispatch happens OUTSIDE the lock — never hold advisory lock
   // during external API calls (Trigger.dev is an HTTP API).
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale assembly rows before rate check.
     await cleanupStaleGenerations(projectId, "assembly", {

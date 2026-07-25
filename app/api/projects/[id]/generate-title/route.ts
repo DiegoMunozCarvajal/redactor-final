@@ -8,6 +8,9 @@ import { checkProjectRateLimit, withProjectLock, cleanupStaleGenerations } from 
 import { csrfCheck } from "@/lib/api/csrf";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialData } from "@/lib/editorial-brief/context";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   _req: NextRequest,
@@ -69,6 +72,17 @@ export async function POST(
   // Serialize rate limit check + generation row insert under advisory lock.
   // Creating a chapterGenerations row (type "title") ensures checkProjectRateLimit
   // counts it — preventing unlimited title generations per project.
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale title generation rows BEFORE the rate check.
     // If a previous title generation crashed (stuck in "generating"),

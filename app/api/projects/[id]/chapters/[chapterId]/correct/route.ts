@@ -10,6 +10,9 @@ import { generateCorrection } from "@/trigger/generate-correction";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { snapshotFromGenerationMetadata, metadataFromSnapshot } from "@/lib/editorial-brief/context";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -133,6 +136,17 @@ export async function POST(
   // Prompt revision validated at runtime by executeVersionedPrompt
   const resolvedModel = model ?? "claude-sonnet-4-20250514";
 
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale correction rows before rate check (inside lock for TOCTOU safety).
     await cleanupStaleGenerations(projectId, "correction", { chapterId });

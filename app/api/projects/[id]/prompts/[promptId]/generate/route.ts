@@ -11,6 +11,9 @@ import { getChapterPlaceholders, getMissingPlaceholderNames } from "@/lib/placeh
 import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot, renderEditorialData } from "@/lib/editorial-brief/context";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -82,6 +85,17 @@ export async function POST(
   // concurrent POSTs can both pass checkProjectRateLimit (count=0), both
   // insert a "generating" row, and both fire LLM calls — doubling cost.
   // The lock is released before the LLM call so UI-driven parallelism works.
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale generation rows for this prompt BEFORE the rate check.
     // If a previous prompt generation crashed (stuck in "pending" or

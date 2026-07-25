@@ -45,7 +45,7 @@ export const CONTAMINATION_BLOCKLIST: RegExp[] = [
   /\bciclismo\s+brit[aá]nico\b/i,
   /\bequipo\s+de\s+ciclismo\s+(brit[aá]nico|de\s+Gran\s+Breta[nñ]a)\b/i,
   /\binter[eé]s\s+compuesto\s+(de\s+los\s+|del\s+)?h[aá]bitos?\b/i,
-  /\bhielo\s+que\s+se\s+derrite\b/i,
+  /\bhielo(?:\s+\p{L}+){0,4}\s+se\s+derrite\b/iu,
   /\bacumulaci[oó]n\s+(de|imperceptible\s+de)\s+peque[ñn][oa]s?\s+mejoras?\b/i,
   /\bsistema\s+por\s+encima\s+de\s+(la\s+)?motivaci[oó]n\b/i,
   /\bvariable\s+que\s+predice\s+la\s+supervivencia\s+de\s+un\s+h[aá]bito\b/i,

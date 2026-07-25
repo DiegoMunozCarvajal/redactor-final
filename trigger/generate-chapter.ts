@@ -20,6 +20,7 @@ import { runAssemblyAssembler } from "@/lib/assembly/assembler";
 import { assemblyPlanV1Schema, validateAssemblyPlan } from "@/lib/assembly/plan-schema";
 import { resolvePromptRevision } from "@/lib/prompts/repository";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -51,6 +52,12 @@ export const generateChapter = task({
       plannerRevisionId,
       assemblyRevisionId,
     } = payload;
+
+    // Re-authorize at execution time — closes the queue-delay race where a
+    // template could become quarantined after the API enqueued the task.
+    const currentAuthorization = await assertTemplateGenerationAllowed(
+      payload.projectId,
+    );
 
     // Load generation
     const [gen] = await db

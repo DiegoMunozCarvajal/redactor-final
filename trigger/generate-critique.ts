@@ -6,6 +6,7 @@ import { STALE_TIMEOUT_MS } from "@/lib/api/rate-limit";
 import { sanitizeError } from "@/lib/sanitize-error";
 import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runCritique } from "@/lib/review/critique";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -41,6 +42,12 @@ export const generateCritique = task({
       model,
       effort,
     } = payload;
+
+    // Re-authorize at execution time — closes the queue-delay race where a
+    // template could become quarantined after the API enqueued the task.
+    const currentAuthorization = await assertTemplateGenerationAllowed(
+      payload.projectId,
+    );
 
     // Load generation
     const [gen] = await db

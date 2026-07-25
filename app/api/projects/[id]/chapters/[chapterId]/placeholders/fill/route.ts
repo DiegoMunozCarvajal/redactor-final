@@ -18,6 +18,9 @@ import { buildPlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { hashPromptContents, needsPlaceholderFill } from "@/lib/placeholder-utils";
 import { loadEditorialBundle } from "@/lib/editorial-brief/context";
 import { llmPromptExecutions } from "@/lib/db/schema/prompt-registry";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -66,6 +69,17 @@ export async function POST(
   // Rate limit: insert a generation row inside the lock so
   // checkProjectRateLimit counts fill operations alongside other generations.
   // Update to completed/failed after the SSE stream finishes.
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale fill generations before rate check (inside lock for TOCTOU safety).
     await cleanupStaleGenerations(projectId, "fill", { chapterId });

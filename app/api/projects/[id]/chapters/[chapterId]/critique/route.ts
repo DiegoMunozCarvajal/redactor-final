@@ -11,6 +11,9 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { logAudit } from "@/lib/audit";
 import { loadEditorialBundle, snapshotFromBundle, metadataFromSnapshot } from "@/lib/editorial-brief/context";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { generationBlockedResponse } from "@/lib/template-pipeline/http";
+import type { GenerationAuthorization } from "@/lib/template-pipeline/contracts";
 
 export async function POST(
   req: NextRequest,
@@ -101,6 +104,17 @@ export async function POST(
   const bundle = await loadEditorialBundle({ projectId });
   const snapshot = bundle ? snapshotFromBundle(bundle) : null;
 
+  // Authorize generation before acquiring project lock.
+  // Source-free projects and templates with clean v2 lineage pass;
+  // blocked templates throw GenerationBlockedError (mapped to 409 below).
+  let authorization: GenerationAuthorization;
+  try {
+    authorization = await assertTemplateGenerationAllowed(projectId);
+  } catch (error) {
+    const blocked = generationBlockedResponse(error);
+    if (blocked) return blocked;
+    throw error;
+  }
   const lockResult = await withProjectLock(projectId, async () => {
     // Clean up stale critique rows before rate check (inside lock for TOCTOU safety).
     await cleanupStaleGenerations(projectId, "critique", { chapterId });
