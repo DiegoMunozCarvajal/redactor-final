@@ -64,7 +64,6 @@ export async function POST(
     .where(and(eq(prompts.chapterId, chapterId), eq(prompts.projectId, projectId)))
     .orderBy(asc(prompts.position));
   const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
-  const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
   // Compute prompts hash for stale detection — includes userPrompt changes
   const promptsHash = hashPromptContents(promptContents);
@@ -202,13 +201,11 @@ export async function POST(
       placeholder: phDef,
       projectTopic: effectiveTopic,
       projectId,
-      promptContents,
       existingDefinitions,
       model: model ?? undefined,
       effort,
       chapterId,
       chapterGenerationId: fillGen.id,
-      sourceContexts,
       signal: req.signal,
       editorialBundle: briefBundle,
     });

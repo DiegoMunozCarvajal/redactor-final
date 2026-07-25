@@ -154,7 +154,6 @@ export async function POST(
     .orderBy(asc(prompts.position));
 
   const promptContents = promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("\n"));
-  const sourceContexts = promptRows.map((p) => p.sourceContext ?? null);
 
   // Compute prompts hash for stale detection — includes userPrompt changes
   const promptsHash = hashPromptContents(promptContents);
@@ -230,14 +229,12 @@ export async function POST(
         const effectiveTopic = briefBundle?.content.centralTopic ?? project.topic ?? null;
         for await (const event of fillPlaceholdersSequential(
           placeholderDefs,
-          promptContents,
           effectiveTopic,
           projectId,
           model,
           effort,
           undefined,
           chapterId,
-          sourceContexts,
           req.signal,
           briefBundle,
           fillGen.id,

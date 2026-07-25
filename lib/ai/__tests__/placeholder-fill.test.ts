@@ -202,10 +202,9 @@ describe("buildSearchQuery", () => {
 // ---------------------------------------------------------------------------
 
 describe("isNarrativePlaceholder", () => {
-  const ph = (fn: string, notes = ""): PlaceholderDef => ({
+  const ph = (fn: string): PlaceholderDef => ({
     name: "test",
     function: fn,
-    notes,
   });
 
   it("detects 'historia'", () => {
@@ -220,8 +219,14 @@ describe("isNarrativePlaceholder", () => {
     expect(isNarrativePlaceholder(ph("Un caso de estudio relevante"))).toBe(true);
   });
 
-  it("detects narrative patterns in notes field", () => {
-    expect(isNarrativePlaceholder({ name: "x", function: null, notes: "relato breve" })).toBe(true);
+  it("detects narrative patterns in function field", () => {
+    expect(isNarrativePlaceholder({ name: "x", function: "relato breve" })).toBe(true);
+  });
+
+  it("classifies correctly with function only", () => {
+    // notes field no longer exists on PlaceholderDef. Only name + function.
+    expect(isNarrativePlaceholder({ name: "x", function: null })).toBe(false);
+    expect(isNarrativePlaceholder({ name: "x", function: "un relato conmovedor" })).toBe(true);
   });
 
   it("returns false for factual placeholders", () => {
@@ -324,7 +329,6 @@ describe("fillOnePlaceholder evidence-driven sourceIds", () => {
     placeholder: { name: "evidence_placeholder" },
     projectTopic: "Test Topic",
     projectId: "proj-1",
-    promptContents: ["Content 1"],
     existingDefinitions: {},
     chapterId: CHAPTER_ID,
   };
@@ -405,7 +409,6 @@ describe("fillPlaceholdersSequential", () => {
     const events = [];
     for await (const event of fillPlaceholdersSequential(
       [{ name: "concepto" }],
-      ["Contenido"],
       "Tema",
       "project-1",
     )) {

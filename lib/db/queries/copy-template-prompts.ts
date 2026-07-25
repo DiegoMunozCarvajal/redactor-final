@@ -60,9 +60,9 @@ export async function copyTemplatePromptsToChapter(
     }
   }
 
-  // Copy placeholders (names only, no definitions).
+  // Copy placeholders (names and function only, no definitions or notes).
   // Deduplicate by lowercase name — template chapters may have both "foo" and
-  // "FOO" from the pre-lowercase-extraction era. First function/notes wins.
+  // "FOO" from the pre-lowercase-extraction era. First function wins.
   const templatePlaceholders = await tx
     .select()
     .from(chapterPlaceholders)
@@ -71,7 +71,7 @@ export async function copyTemplatePromptsToChapter(
   if (templatePlaceholders.length > 0) {
     const seen = new Map<
       string,
-      { chapterId: string; name: string; function: string | null; notes: string | null }
+      { chapterId: string; name: string; function: string | null }
     >();
     for (const ph of templatePlaceholders) {
       const key = ph.name.toLowerCase();
@@ -80,7 +80,6 @@ export async function copyTemplatePromptsToChapter(
           chapterId: projectChapterId,
           name: key,
           function: ph.function,
-          notes: ph.notes,
         });
       }
     }
@@ -90,7 +89,7 @@ export async function copyTemplatePromptsToChapter(
 
 /**
  * Batch copy placeholders from multiple template chapters to project chapters.
- * Deduplicates by (chapterId, lowerName) — first function/notes wins.
+ * Deduplicates by (chapterId, lowerName) — first function wins.
  */
 export async function copyTemplatePlaceholdersBatch(
   tx: Tx,
@@ -104,10 +103,10 @@ export async function copyTemplatePlaceholdersBatch(
     .from(chapterPlaceholders)
     .where(inArray(chapterPlaceholders.chapterId, allTemplateChapterIds));
 
-  // Group by (projectChapterId, lowerName) — first function/notes wins
+  // Group by (projectChapterId, lowerName) — first function wins
   const grouped = new Map<
     string,
-    { chapterId: string; name: string; function: string | null; notes: string | null }
+    { chapterId: string; name: string; function: string | null }
   >();
 
   for (const ph of templatePlaceholders) {
@@ -119,7 +118,6 @@ export async function copyTemplatePlaceholdersBatch(
         chapterId: projectChapterId,
         name: ph.name.toLowerCase(),
         function: ph.function,
-        notes: ph.notes,
       });
     }
   }

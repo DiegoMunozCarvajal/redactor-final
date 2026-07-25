@@ -13,11 +13,13 @@ import type { SearchResult } from "@/lib/ai/web-search";
 
 export interface PlaceholderContextInput {
   placeholderName: string;
-  function: string | null | undefined;
-  notes: string | null | undefined;
+  /** Narrative role of the placeholder — describes the pattern (abstract role), not the instance.
+   *  Answers "what does the writer need this variable for?".
+   *  Produced by the template-generator with semantic nullity (domain-agnostic). */
+  function?: string | null;
+  /** Project topic (from editorial brief or project.topic). Used as minimal domain signal. */
   projectTopic: string | null;
-  promptContents: string[];
-  sourceContexts?: string[];
+  /** Already-filled sibling placeholder definitions for consistency. */
   existingDefinitions: Record<string, string>;
 }
 

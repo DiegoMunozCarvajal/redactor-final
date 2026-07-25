@@ -6,7 +6,7 @@ export const RUNTIME_MARKER_RE = /\{\{[A-Z][A-Z0-9_]*\}\}/g;
 export const requiredMarkersByKind: Record<PromptKind, readonly string[]> = {
   'generation-system': ['{{EDITORIAL_CONTEXT}}'],
   'rhetoric-trace': ['{{CAPITULO_FUENTE}}', '{{OUTPUT_SCHEMA}}'],
-  'template-generator': ['{{RHETORIC_TRACE}}', '{{CAPITULO_FUENTE}}', '{{OUTPUT_SCHEMA}}'],
+  'template-generator': ['{{RHETORIC_TRACE}}', '{{OUTPUT_SCHEMA}}'],
   'assembly-planner': ['{{EDITORIAL_CONTEXT}}', '{{SECCIONES_GENERADAS}}', '{{OUTPUT_SCHEMA}}'],
   assembly: ['{{EDITORIAL_CONTEXT}}', '{{ASSEMBLY_PLAN}}', '{{SECCIONES_GENERADAS}}'],
   critique: ['{{EDITORIAL_CONTEXT}}', '{{CONTENIDO_CAPITULO}}'],

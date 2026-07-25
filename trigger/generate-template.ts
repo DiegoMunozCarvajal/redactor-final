@@ -33,17 +33,16 @@ const rhetoricTraceOutputSchema = z.object({
 const placeholderSchema = z.object({
   name: z.string(),
   function: z.string(),
-  notes: z.string(),
 });
 
 const templateBlockSchema = z.object({
   name: z.string(),
-  function: z.string(),
+  function: z.string().optional(),
   content: z.string(),
   userPrompt: z.string(),
-  sourceContext: z.string(),
+  sourceContext: z.string().optional(),
   placeholders: z.array(placeholderSchema),
-  notes: z.string(),
+  notes: z.string().optional(),
 });
 
 const templateGeneratorOutputSchema = z.object({
@@ -63,7 +62,7 @@ interface ChapterPayload {
 
 export const generateTemplate = task({
   id: "generate-template",
-  maxDuration: 600, // 10 minutes — multiple parallel LLM calls across chapters
+  maxDuration: 1800, // 30 minutes — two 10-min LLM calls per chapter + retry headroom
   retry: {
     maxAttempts: 3,
     factor: 2,
@@ -187,7 +186,7 @@ export const generateTemplate = task({
           }
 
           // Deduplicate placeholders across all blocks in this chapter
-          const placeholderMap = new Map<string, { function: string; notes: string }>();
+          const placeholderMap = new Map<string, { function: string }>();
 
           // Rebuild chapter prompts atomically. Delete stale prompts then insert
           // new ones in one transaction — prevents mixed old/new prompt set on
@@ -207,35 +206,34 @@ export const generateTemplate = task({
                 title: block.name,
                 content: block.content,
                 userPrompt: block.userPrompt,
-                function: block.function,
-                notes: block.notes,
+                function: block.function ?? null,
+                notes: block.notes ?? null,
                 sourceContext: (block.sourceContext?.slice(0, 300) || null) as string | null,
               }).returning({ id: prompts.id });
 
               // Create immutable revision so currentRevisionId is never null
               await writeCurrentChapterPromptRevision(inserted.id, null, tx);
 
-              // Collect placeholders (first seen wins for function/notes)
+              // Collect placeholders (first seen wins for function)
               for (const ph of block.placeholders) {
                 if (!placeholderMap.has(ph.name)) {
-                  placeholderMap.set(ph.name, { function: ph.function, notes: ph.notes });
+                  placeholderMap.set(ph.name, { function: ph.function });
                 }
               }
             }
 
-            // Upsert placeholders — refresh function/notes on regeneration
-            for (const [name, { function: fn, notes }] of placeholderMap) {
+            // Upsert placeholders — refresh function on regeneration
+            for (const [name, { function: fn }] of placeholderMap) {
               await tx
                 .insert(chapterPlaceholders)
                 .values({
                   chapterId: chapter.chapterId,
                   name,
                   function: fn,
-                  notes,
                 })
                 .onConflictDoUpdate({
                   target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
-                  set: { function: fn, notes },
+                  set: { function: fn },
                 });
             }
           });
@@ -253,6 +251,28 @@ export const generateTemplate = task({
       if (failed.length > 0) {
         console.error(
           `Template generation: ${failed.length}/${chapters.length} chapters failed:\n  ${failed.join("\n  ")}`,
+        );
+      }
+
+      // If ALL failures are transient (timeout or network abort), throw so
+      // the platform retries instead of leaving the template permanently "failed".
+      const rejected = results.filter((r) => r.status === "rejected");
+      const isTransient = (reason: unknown) => {
+        const err = reason as Error;
+        const msg = err?.message ?? String(reason);
+        const name = err?.name ?? "";
+        return (
+          msg.includes("The user aborted a request") ||
+          msg.includes("ERR_STREAM_PREMATURE_CLOSE") ||
+          msg.includes("Request was aborted") ||
+          name === "AbortError" ||
+          name === "TimeoutError" ||
+          name === "APIUserAbortError"
+        );
+      };
+      if (rejected.length > 0 && rejected.every((r) => isTransient(r.reason))) {
+        throw new Error(
+          `Transient error on ${rejected.length}/${chapters.length} chapters — retrying`,
         );
       }
 

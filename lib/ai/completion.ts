@@ -15,7 +15,7 @@ type TrackedStage = string;
  *  is hard-killed, allowing the catch handler to mark the row "failed" cleanly.
  *  Opus 4.8 + xhigh thinking can exceed 10 m — if you need longer per-call
  *  timeouts, raise the task maxDuration first, then bump this. */
-const DEFAULT_STAGE_TIMEOUT_MS = 240_000; // 4 minutes — safe below min task maxDuration (300 s)
+const DEFAULT_STAGE_TIMEOUT_MS = 600_000; // 10 minutes — generous ceiling for template generation (300 s)
 
 type ProviderResult<T> = {
   data: T;

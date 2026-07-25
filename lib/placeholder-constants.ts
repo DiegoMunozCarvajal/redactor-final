@@ -11,7 +11,7 @@ export const SEMANTIC_SCHOLAR_KEYWORDS = [
   "bibliografía", "bibliografia", "paper", "estudio", "investigación",
   "investigacion", "académico", "academico", "artículo", "articulo",
   "publicación", "publicacion", "autor", "evidence", "evidencia",
-  "fuente", "referencia", "cita", "científico",
+  "fuente", "referencia", "científico",
   "cientifico", "journal", "revista", "metaanálisis",
   "metanalisis", "revisión", "revision",
   "ensayo", "doi",

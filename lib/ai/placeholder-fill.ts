@@ -217,8 +217,9 @@ export function isNarrativePlaceholder(ph: PlaceholderDef): boolean {
   ];
   // Include placeholder name (with underscores → spaces) so bare-name
   // narrative placeholders like {anecdota} or {historia} are classified
-  // correctly even when function/notes are empty.
-  const text = `${ph.name.replace(/_/g, " ")} ${ph.function ?? ""} ${ph.notes ?? ""}`.toLowerCase();
+  // correctly even when function is empty.
+  // notes intentionally excluded — carries source chapter domain.
+  const text = `${ph.name.replace(/_/g, " ")} ${ph.function ?? ""}`.toLowerCase();
   return narrativePatterns.some((pattern) => pattern.test(text));
 }
 
@@ -434,7 +435,6 @@ async function generateAndValidate(
 export interface PlaceholderDef {
   name: string;
   function?: string | null;
-  notes?: string | null;
 }
 
 export interface FillOneResult {
@@ -466,10 +466,6 @@ export interface FillOnePlaceholderParams {
   chapterId?: string;
   /** Current chapter generation ID (for execution tracing) */
   chapterGenerationId?: string;
-  /** Prompt contents for context */
-  promptContents: string[];
-  /** Source contexts for each prompt (same index as promptContents). Null entries allowed. */
-  sourceContexts?: Array<string | null>;
   /** Existing definitions for other placeholders (for context and reuse) */
   existingDefinitions: Record<string, string>;
   /** Optional editorial bundle for evidence-driven RAG overrides */
@@ -498,14 +494,12 @@ export async function fillOnePlaceholder(
     placeholder: ph,
     projectTopic,
     projectId,
-    promptContents,
     existingDefinitions: existingDefs,
     model = DEFAULT_MODEL,
     effort,
     temperature,
     chapterId: currentChapterId,
     chapterGenerationId,
-    sourceContexts,
     signal,
     editorialBundle,
   } = params;
@@ -590,13 +584,6 @@ export async function fillOnePlaceholder(
     }
   }
 
-  const promptContext = promptContents
-    .map((c, i) => `Prompt ${i + 1}: ${c.slice(0, 10000)}${c.length > 10000 ? "..." : ""}`)
-    .join("\n\n");
-
-  // Collect source contexts as an array (null-filtered) for the data serializer.
-  // Only included for RAG and Semantic Scholar providers.
-
   // Phase 1: Research — only for RAG and Semantic Scholar providers.
   // Web search removed: LLM-only fills produce higher quality definitions than
   // scraping generic SEO articles that dominate web results for these queries.
@@ -658,26 +645,17 @@ export async function fillOnePlaceholder(
   }
 
   // Phase 2: Build marker values for the registry-hosted placeholder-fill prompt.
-  // The markers provide structured data; the registry template handles rendering
-  // and instruction text so the system prompt is no longer hardcoded here.
-
-  // Collect source contexts as an array (null-filtered) rather than inline text.
-  let sourceContextItems: string[] | undefined;
-  const includeSourceContext = provider === "rag" || provider === "semantic-scholar";
-  const hasSourceContext = includeSourceContext && sourceContexts && sourceContexts.some((s) => s?.trim());
-  if (hasSourceContext) {
-    sourceContextItems = sourceContexts!
-      .map((s) => (s?.trim() ? s.slice(0, 300) + (s.length > 300 ? "..." : "") : null))
-      .filter((s): s is string => s !== null);
-  }
+  // promptContents and sourceContexts intentionally excluded — they carry source
+  // chapter domain. function is included: the template-generator (v7+) receives
+  // only the rhetoric trace (no source chapter), producing domain-agnostic
+  // function values (pattern, not instance), making them safe for the fill LLM
+  // to consume as narrative role guidance.
+  // function is also used internally for buildSearchQuery and provider classification.
 
   const placeholderContext = serializePlaceholderContext({
     placeholderName: ph.name,
     function: ph.function,
-    notes: ph.notes,
     projectTopic,
-    promptContents,
-    sourceContexts: sourceContextItems,
     existingDefinitions: existingDefs,
   });
 
@@ -744,14 +722,12 @@ export async function fillOnePlaceholder(
 }
 export async function* fillPlaceholdersSequential(
   placeholders: PlaceholderDef[],
-  promptContents: string[],
   projectTopic: string | null,
   projectId: string,
   model: string = DEFAULT_MODEL,
   effort?: ReasoningEffort,
   temperature?: number,
   currentChapterId?: string,
-  sourceContexts?: (string | null)[],
   signal?: AbortSignal,
   editorialBundle?: EditorialBundle | null,
   chapterGenerationId?: string,
@@ -775,14 +751,12 @@ export async function* fillPlaceholdersSequential(
         placeholder: ph,
         projectTopic,
         projectId,
-        promptContents,
         existingDefinitions: existingDefs,
         model,
         effort,
         temperature,
         chapterId: currentChapterId,
         chapterGenerationId,
-        sourceContexts,
         signal,
         editorialBundle,
       };

@@ -91,6 +91,12 @@ export async function executeChapterPrompt(
   if (localUserPrompt) {
     systemMessage = localContent;
     userMessage = localUserPrompt;
+    // When the prompt provides its own system/user pair, the generation-system
+    // template (which normally carries {{EDITORIAL_CONTEXT}}) is bypassed.
+    // Inject the marker here so editorial context can still be applied.
+    if (editorialContext && !systemMessage.includes('{{EDITORIAL_CONTEXT}}') && !userMessage.includes('{{EDITORIAL_CONTEXT}}')) {
+      systemMessage = '<editorial_context>\n{{EDITORIAL_CONTEXT}}\n</editorial_context>\n\n' + systemMessage;
+    }
   } else {
     const generationSystemRevision = await resolvePromptRevision({
       kind: 'generation-system',
