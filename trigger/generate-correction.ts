@@ -7,6 +7,11 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runCorrection } from "@/lib/review/correction";
 import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { runOriginalityGate } from "@/lib/originality/gate";
+import {
+  OriginalityContaminationError,
+  OriginalityDetectorUnavailableError,
+} from "@/lib/originality/contracts";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -128,41 +133,79 @@ export const generateCorrection = task({
     if (!updated) return;
 
     try {
-      const result = await runCorrection({
-        projectId,
-        chapterId,
-        chapterGenerationId: generationId,
-        model: model ?? "claude-sonnet-4-20250514",
-        effort,
-        revisionId: correctorPromptRevisionId,
-        editorialContext: corrEditorialBundle
-          ? renderEditorialData(corrEditorialBundle, { chapterId }) ?? ""
-          : "",
-        chapterContent: contentToCorrect,
-        critiqueContent,
-        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-      });
+      try {
+        await runOriginalityGate({
+          context: {
+            projectId,
+            chapterId,
+            chapterGenerationId: generationId,
+            stage: "correction",
+            fieldPath: "correction.content",
+            authorization: currentAuthorization,
+          },
+          generate: async () => {
+            const result = await runCorrection({
+              projectId,
+              chapterId,
+              chapterGenerationId: generationId,
+              model: model ?? "claude-sonnet-4-20250514",
+              effort,
+              revisionId: correctorPromptRevisionId,
+              editorialContext: corrEditorialBundle
+                ? renderEditorialData(corrEditorialBundle, { chapterId }) ?? ""
+                : "",
+              chapterContent: contentToCorrect,
+              critiqueContent,
+              signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+            });
 
-      const capMatch = result.text.match(
-        /<capitulo_corregido>([\s\S]*?)<\/capitulo_corregido>/,
-      );
-      const cleanChapter = capMatch ? capMatch[1].trim() : result.text;
+            return {
+              value: result,
+              text: result.text,
+              executionId: result.executionId,
+              promptRevisions: { corrector: result.revisionId },
+            };
+          },
+          persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+            const result = candidate.value;
+            const capMatch = result.text.match(
+              /<capitulo_corregido>([\s\S]*?)<\/capitulo_corregido>/,
+            );
+            const cleanChapter = capMatch ? capMatch[1].trim() : result.text;
 
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: cleanChapter,
-          assemblyMetadata: {
-            algorithm: "correction",
-            model,
-            fragmentCount: 1,
-            correctionRaw: result.text,
-            correctionExecutionId: result.executionId,
-          } as Record<string, unknown>,
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, generationId));
+            await tx
+              .update(chapterGenerations)
+              .set({
+                status: "completed",
+                assembledContent: cleanChapter,
+                assemblyMetadata: {
+                  algorithm: "correction",
+                  model,
+                  fragmentCount: 1,
+                  correctionRaw: result.text,
+                  correctionExecutionId: result.executionId,
+                  originalityLineage: lineage,
+                  originalityAssessmentId: assessmentId,
+                } as Record<string, unknown>,
+                completedAt: new Date(),
+              })
+              .where(eq(chapterGenerations.id, generationId));
+            return { entityType: "chapter_generation", entityId: generationId };
+          },
+        });
+      } catch (gateErr) {
+        if (gateErr instanceof OriginalityContaminationError) {
+          return; // Already quarantined by gate
+        }
+        if (gateErr instanceof OriginalityDetectorUnavailableError) {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "failed", error: sanitizeError(gateErr) })
+            .where(eq(chapterGenerations.id, generationId));
+          return;
+        }
+        throw gateErr; // Let outer catch handle other errors
+      }
     } catch (err) {
       const message = sanitizeError(err);
       const maxAttempts = ctx.run.maxAttempts ?? 3;

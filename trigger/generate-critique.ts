@@ -7,6 +7,11 @@ import { sanitizeError } from "@/lib/sanitize-error";
 import { loadEditorialBundle, snapshotFromGenerationMetadata, renderEditorialData } from "@/lib/editorial-brief/context";
 import { runCritique } from "@/lib/review/critique";
 import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { runOriginalityGate } from "@/lib/originality/gate";
+import {
+  OriginalityContaminationError,
+  OriginalityDetectorUnavailableError,
+} from "@/lib/originality/contracts";
 
 /** Per-call LLM timeout. Must be below task maxDuration (600 s) so the
  *  AbortError fires inside the try/catch before a hard task kill. */
@@ -126,37 +131,75 @@ export const generateCritique = task({
     if (!updated) return;
 
     try {
-      const result = await runCritique({
-        projectId,
-        chapterId,
-        chapterGenerationId: generationId,
-        model: model ?? "claude-sonnet-4-20250514",
-        effort,
-        revisionId: critiquePromptRevisionId,
-        editorialContext: critEditorialBundle
-          ? renderEditorialData(critEditorialBundle, { chapterId }) ?? ""
-          : "",
-        chapterContent: contentToCritique,
-        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-      });
+      try {
+        await runOriginalityGate({
+          context: {
+            projectId,
+            chapterId,
+            chapterGenerationId: generationId,
+            stage: "critique",
+            fieldPath: "critique.content",
+            authorization: currentAuthorization,
+          },
+          generate: async () => {
+            const result = await runCritique({
+              projectId,
+              chapterId,
+              chapterGenerationId: generationId,
+              model: model ?? "claude-sonnet-4-20250514",
+              effort,
+              revisionId: critiquePromptRevisionId,
+              editorialContext: critEditorialBundle
+                ? renderEditorialData(critEditorialBundle, { chapterId }) ?? ""
+                : "",
+              chapterContent: contentToCritique,
+              signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+            });
 
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: result.text,
-          assemblyMetadata: {
-            algorithm: "critique",
-            model,
-            fragmentCount: 1,
-            critiqueExecutionId: result.executionId,
-            tokensUsed: result.usage.totalTokens,
-            ...(result.usage.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
-            ...(result.durationMs ? { durationMs: result.durationMs } : {}),
-          } as Record<string, unknown>,
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, generationId));
+            return {
+              value: result,
+              text: result.text,
+              executionId: result.executionId,
+              promptRevisions: { critique: result.revisionId },
+            };
+          },
+          persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+            const result = candidate.value;
+            await tx
+              .update(chapterGenerations)
+              .set({
+                status: "completed",
+                assembledContent: result.text,
+                assemblyMetadata: {
+                  algorithm: "critique",
+                  model,
+                  fragmentCount: 1,
+                  critiqueExecutionId: result.executionId,
+                  tokensUsed: result.usage.totalTokens,
+                  ...(result.usage.costUsd != null ? { costUsd: result.usage.costUsd } : {}),
+                  ...(result.durationMs ? { durationMs: result.durationMs } : {}),
+                  originalityLineage: lineage,
+                  originalityAssessmentId: assessmentId,
+                } as Record<string, unknown>,
+                completedAt: new Date(),
+              })
+              .where(eq(chapterGenerations.id, generationId));
+            return { entityType: "chapter_generation", entityId: generationId };
+          },
+        });
+      } catch (gateErr) {
+        if (gateErr instanceof OriginalityContaminationError) {
+          return; // Already quarantined by gate
+        }
+        if (gateErr instanceof OriginalityDetectorUnavailableError) {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "failed", error: sanitizeError(gateErr) })
+            .where(eq(chapterGenerations.id, generationId));
+          return;
+        }
+        throw gateErr; // Let outer catch handle other errors
+      }
     } catch (err) {
       const message = sanitizeError(err);
       const maxAttempts = ctx.run.maxAttempts ?? 3;

@@ -21,6 +21,12 @@ import { assemblyPlanV1Schema, validateAssemblyPlan } from "@/lib/assembly/plan-
 import { resolvePromptRevision } from "@/lib/prompts/repository";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
 import { assertTemplateGenerationAllowed } from "@/lib/template-pipeline/authorization";
+import { runOriginalityGate } from "@/lib/originality/gate";
+import {
+  OriginalityContaminationError,
+  OriginalityDetectorUnavailableError,
+} from "@/lib/originality/contracts";
+import { sha256Text } from "@/lib/template-pipeline/hash";
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -491,7 +497,7 @@ export const generateChapter = task({
           .where(eq(chapterGenerations.id, generationId));
       }
 
-      // ── Phase 3: Assembly ────────────────────────────────────────────
+      // ── Phase 3: Assembly (with originality gate) ────────────────────
       // Transition planning → assembling
       await db
         .update(chapterGenerations)
@@ -510,53 +516,102 @@ export const generateChapter = task({
         .set({ assemblyPromptRevisionId: effectiveAssemblyRevisionId })
         .where(eq(chapterGenerations.id, generationId));
 
-      const assemblerResult = await runAssemblyAssembler({
-        projectId,
-        model: model ?? DEFAULT_GENERATION_MODEL,
-        editorialContext: editorialData ?? "",
-        plan: assemblyPlan as unknown as import("@/lib/assembly/plan-schema").AssemblyPlanV1,
-        fragments: fragmentContents.map((f) => ({
+      // Compute artifact hash from fragments for lineage tracking
+      const assemblyArtifactHash = sha256Text(
+        JSON.stringify(fragmentContents.map((f) => ({
           id: f.id,
-          title: f.title,
           content: f.content,
-        })),
-        effort,
-        chapterId: gen.chapterId,
-        chapterGenerationId: generationId,
-        revisionId: effectiveAssemblyRevisionId,
-        dataLineage: {
-          '{{EDITORIAL_CONTEXT}}': genSnapshot ? {
-            entityIds: [genSnapshot.editorialBriefId],
-            versionIds: [`${genSnapshot.editorialBriefVersion}`],
-            sourceHashes: [genSnapshot.editorialBriefHash],
-          } : {},
-          '{{SECCIONES_GENERADAS}}': {
-            entityIds: fragmentContents.map((f) => f.id),
-          },
-          '{{ASSEMBLY_PLAN}}': {
-            sourceHashes: [createHash("sha256").update(JSON.stringify(assemblyPlan)).digest("hex")],
-          },
-        },
-      });
+        }))),
+      );
 
-      // Store assembled content.
-      await db
-        .update(chapterGenerations)
-        .set({
-          status: "completed",
-          assembledContent: assemblerResult.chapterText,
-          assemblyMetadata: {
-            algorithm: "planned-editorial-v1",
-            model: assemblerResult.model,
-            fragmentCount: fragmentContents.length,
-            plannerExecutionId: plannerExecutionId ?? undefined,
-            assemblyExecutionId: assemblerResult.executionId,
-            pipeline: "planned-editorial-v1",
+      try {
+        await runOriginalityGate({
+          context: {
+            projectId,
+            chapterId: gen.chapterId,
+            chapterGenerationId: generationId,
+            stage: "assembly",
+            fieldPath: "assembly.content",
+            authorization: currentAuthorization,
+            templateArtifactHash: assemblyArtifactHash,
           },
-          assemblyPromptRevisionId: assemblerResult.revisionId,
-          completedAt: new Date(),
-        })
-        .where(eq(chapterGenerations.id, generationId));
+          generate: async () => {
+            const assemblerResult = await runAssemblyAssembler({
+              projectId,
+              model: model ?? DEFAULT_GENERATION_MODEL,
+              editorialContext: editorialData ?? "",
+              plan: assemblyPlan as unknown as import("@/lib/assembly/plan-schema").AssemblyPlanV1,
+              fragments: fragmentContents.map((f) => ({
+                id: f.id,
+                title: f.title,
+                content: f.content,
+              })),
+              effort,
+              chapterId: gen.chapterId,
+              chapterGenerationId: generationId,
+              revisionId: effectiveAssemblyRevisionId,
+              dataLineage: {
+                '{{EDITORIAL_CONTEXT}}': genSnapshot ? {
+                  entityIds: [genSnapshot.editorialBriefId],
+                  versionIds: [`${genSnapshot.editorialBriefVersion}`],
+                  sourceHashes: [genSnapshot.editorialBriefHash],
+                } : {},
+                '{{SECCIONES_GENERADAS}}': {
+                  entityIds: fragmentContents.map((f) => f.id),
+                },
+                '{{ASSEMBLY_PLAN}}': {
+                  sourceHashes: [createHash("sha256").update(JSON.stringify(assemblyPlan)).digest("hex")],
+                },
+              },
+            });
+
+            return {
+              value: assemblerResult,
+              text: assemblerResult.chapterText,
+              executionId: assemblerResult.executionId,
+              promptRevisions: {
+                "assembly-planner": (plannerRevisionId ?? gen.plannerPromptRevisionId ?? "") as string,
+                "assembly": assemblerResult.revisionId,
+              },
+            };
+          },
+          persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+            const a = candidate.value;
+            await tx
+              .update(chapterGenerations)
+              .set({
+                status: "completed",
+                assembledContent: a.chapterText,
+                assemblyMetadata: {
+                  algorithm: "planned-editorial-v1",
+                  model: a.model,
+                  fragmentCount: fragmentContents.length,
+                  plannerExecutionId: plannerExecutionId ?? undefined,
+                  assemblyExecutionId: a.executionId,
+                  pipeline: "planned-editorial-v1",
+                  originalityLineage: lineage,
+                  originalityAssessmentId: assessmentId,
+                },
+                assemblyPromptRevisionId: a.revisionId,
+                completedAt: new Date(),
+              })
+              .where(eq(chapterGenerations.id, generationId));
+            return { entityType: "chapter_generation", entityId: generationId };
+          },
+        });
+      } catch (gateErr) {
+        if (gateErr instanceof OriginalityContaminationError) {
+          return; // Already quarantined by gate
+        }
+        if (gateErr instanceof OriginalityDetectorUnavailableError) {
+          await db
+            .update(chapterGenerations)
+            .set({ status: "failed", error: sanitizeError(gateErr) })
+            .where(eq(chapterGenerations.id, generationId));
+          return;
+        }
+        throw gateErr; // Let outer catch handle other errors
+      }
 
     } catch (err) {
       const message = sanitizeError(err);

@@ -46,6 +46,8 @@ export const chapterGenerations = pgTable(
         sourceProfileSetHash: string;
         originalityPolicyVersion: string;
       };
+      originalityLineage?: unknown;
+      originalityAssessmentId?: string;
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{
@@ -63,6 +65,8 @@ export const chapterGenerations = pgTable(
       pipeline?: string;
       plannerExecutionId?: string;
       assemblyExecutionId?: string;
+      originalityLineage?: unknown;
+      originalityAssessmentId?: string;
     }>(),
     assemblyPlan: jsonb("assembly_plan").$type<Record<string, unknown>>(),
     planningMetadata: jsonb("planning_metadata").$type<{
