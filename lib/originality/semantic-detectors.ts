@@ -98,6 +98,13 @@ export async function runSemanticDetectors(input: {
 
   // -----------------------------------------------------------------------
   // 2. Risk label similarity — compare candidate against element labels
+  //
+  // NOTE: labelMaxRiskElementId stores the canonicalLabel text (not an
+  // element ID) because semantic-only matches lack discrete element
+  // identity. The reviewer only engages when deterministic signals
+  // contribute actual element IDs via collectRiskLabels(). This means
+  // risk_label_embedding signals help push clean→suspect but cannot
+  // independently trigger the escalation reviewer.
   // -----------------------------------------------------------------------
   const labelEmbeddings = await getRiskLabelEmbeddings(
     profileSet,
@@ -108,6 +115,8 @@ export async function runSemanticDetectors(input: {
     const similarity = cosineSimilarity(candidateEmbedding, le.embedding);
     if (similarity > labelMaxSimilarity) {
       labelMaxSimilarity = similarity;
+      // Store canonical label text — semantic match lacks discrete element identity.
+      // Reviewer escalation requires deterministic element IDs from collectRiskLabels().
       labelMaxRiskElementId = le.canonicalLabel;
     }
   }

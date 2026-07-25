@@ -46,7 +46,7 @@ export interface LoadedChunk {
 // ---------------------------------------------------------------------------
 
 interface LabelEmbeddingEntry {
-  profileHash: string;
+  labelText: string;
   model: string;
   embedding: number[];
 }
@@ -184,7 +184,7 @@ export async function getRiskLabelEmbeddings(
   if (existing) {
     const entries = await existing;
     return entries.map((e) => ({
-      canonicalLabel: e.profileHash,
+      canonicalLabel: e.labelText,
       embedding: e.embedding,
     }));
   }
@@ -198,7 +198,7 @@ export async function getRiskLabelEmbeddings(
       );
     }
     return labelTexts.map((label, i) => ({
-      profileHash: label,
+      labelText: label,
       model: "openai",
       embedding: embeddings[i],
     }));
@@ -209,7 +209,7 @@ export async function getRiskLabelEmbeddings(
   try {
     const entries = await promise;
     return entries.map((e) => ({
-      canonicalLabel: e.profileHash,
+      canonicalLabel: e.labelText,
       embedding: e.embedding,
     }));
   } catch (err) {

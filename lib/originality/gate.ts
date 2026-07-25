@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import { sha256Text } from "@/lib/template-pipeline/hash";
 import { originalityAssessments } from "@/lib/db/schema/originality-assessments";
 import { chapterGenerations } from "@/lib/db/schema";
+import { templatePipelineRuns } from "@/lib/db/schema/template-pipeline";
 import { eq } from "drizzle-orm";
 import { evaluateOriginality } from "./evaluate";
 import { loadOriginalityProfileSet } from "./profile-loader";
@@ -178,7 +179,7 @@ async function persistClean<T>(
   profileSet: LoadedProfileSet,
   candidate: GeneratedCandidate<T>,
 ): Promise<OriginalityGateResult<T>> {
-  const lineage = buildLineage(context, candidate.promptRevisions);
+  const lineage = await buildLineage(context, candidate.promptRevisions);
 
   return db.transaction(async (tx) => {
     // Insert clean assessment
@@ -286,20 +287,50 @@ async function quarantineGeneration(
     .catch(() => {}); // best-effort - don't mask original error
 }
 
-function buildLineage(
+async function buildLineage(
   context: OriginalityGateInput<unknown>["context"],
   promptRevisions: Record<string, string>,
-): OriginalityLineage {
+): Promise<OriginalityLineage> {
   if (context.authorization.scope === "source-free") {
     return sourceFreeLineage({ promptRevisions });
   }
 
+  // Load compiler/recipe metadata from the pipeline run so lineage
+  // staleness detects when the compiler or recipe catalog changes.
+  let compilerVersion = "template-compiler-v1";
+  let compilerHash = "";
+  let recipeCatalogHash = "";
+  let pipelineVersion = "template-pipeline-v2";
+
+  try {
+    if (context.authorization.pipelineRunId) {
+      const [run] = await db
+        .select({
+          compilerVersion: templatePipelineRuns.compilerVersion,
+          compilerHash: templatePipelineRuns.compilerHash,
+          recipeCatalogHash: templatePipelineRuns.recipeCatalogHash,
+          pipelineVersion: templatePipelineRuns.pipelineVersion,
+        })
+        .from(templatePipelineRuns)
+        .where(eq(templatePipelineRuns.id, context.authorization.pipelineRunId))
+        .limit(1);
+      if (run) {
+        compilerVersion = run.compilerVersion ?? compilerVersion;
+        compilerHash = run.compilerHash ?? "";
+        recipeCatalogHash = run.recipeCatalogHash ?? "";
+        pipelineVersion = run.pipelineVersion ?? pipelineVersion;
+      }
+    }
+  } catch {
+    // Fall through with defaults — missing run metadata is not fatal
+  }
+
   return templateLineage({
     pipelineRunId: context.authorization.pipelineRunId,
-    pipelineVersion: "template-pipeline-v2",
-    compilerVersion: "template-compiler-v1",
-    compilerHash: "",
-    recipeCatalogHash: "",
+    pipelineVersion,
+    compilerVersion,
+    compilerHash,
+    recipeCatalogHash,
     templateArtifactHash: context.templateArtifactHash ?? "",
     sourceProfileVersion: "source-profile-v1",
     sourceProfileSetHash: context.authorization.sourceProfileSetHash,
