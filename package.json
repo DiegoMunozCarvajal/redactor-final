@@ -9,6 +9,7 @@
     "lint": "eslint . --ext .ts,.tsx,.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "audit:template-contamination": "tsx scripts/audit-contamination.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/apply-supabase-migrations.ts",
     "db:migrate:local": "tsx scripts/sync-local-migrations.ts && tsx scripts/apply-supabase-migrations.ts --local",
