@@ -251,10 +251,19 @@ export async function planTemplateRegeneration(
         );
       }
 
-      const blocks = artifact.compiledTemplate as Array<{ content: string; userPrompt?: string }>;
-      const combinedContent = blocks.map((b) => b.content).join("\n");
-      sourceHashes.push(sha256Text(combinedContent));
-      chapterContents.push(combinedContent);
+      // Use persisted sourceContent (original chapter text) when available.
+      // Falls back to traceIr description for legacy artifacts created before
+      // sourceContent was persisted (pre-2026-07-25 migrations).
+      const sourceMd =
+        (artifact.sourceContent as string | null) ??
+        (() => {
+          const trace = artifact.traceIr as Record<string, unknown>;
+          const description = typeof trace?.description === "string" ? trace.description : "";
+          return description || `# ${ch.title}\n\n[source content not recoverable — use --source-dir]`;
+        })();
+
+      sourceHashes.push(sha256Text(sourceMd));
+      chapterContents.push(sourceMd);
     }
   }
 

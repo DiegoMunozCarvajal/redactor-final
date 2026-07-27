@@ -23,6 +23,8 @@ export interface SaveArtifactInput {
   traceIr: TraceIr;
   compiledTemplate: CompiledBlock[];
   artifactHash: string;
+  /** Original source chapter content — persisted for regeneration recovery. */
+  sourceContent?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,6 +47,7 @@ export async function saveRunArtifact(
       traceIr: input.traceIr as unknown as Record<string, unknown>,
       compiledTemplate: input.compiledTemplate as unknown as Record<string, unknown>[],
       artifactHash: input.artifactHash,
+      sourceContent: input.sourceContent ?? null,
       validationReport: {
         identity: {
           pipelineRunId: input.pipelineRunId,
@@ -59,6 +62,7 @@ export async function saveRunArtifact(
         traceIr: input.traceIr as unknown as Record<string, unknown>,
         compiledTemplate: input.compiledTemplate as unknown as Record<string, unknown>[],
         artifactHash: input.artifactHash,
+        sourceContent: input.sourceContent ?? null,
       },
     })
     .returning();

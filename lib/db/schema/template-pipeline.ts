@@ -151,6 +151,7 @@ export const templateRunArtifacts = pgTable(
     traceIr: jsonb("trace_ir").notNull(),
     compiledTemplate: jsonb("compiled_template").notNull(),
     artifactHash: text("artifact_hash").notNull(),
+    sourceContent: text("source_content"),
     validationReport: jsonb("validation_report").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

@@ -19,7 +19,7 @@ export const originalityAssessments = pgTable("originality_assessments", {
   decision: text("decision").notNull(),
   signals: jsonb("signals").notNull().default([]),
   acceptedEntityType: text("accepted_entity_type"),
-  acceptedEntityId: uuid("accepted_entity_id"),
+  acceptedEntityId: text("accepted_entity_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

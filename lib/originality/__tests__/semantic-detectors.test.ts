@@ -23,6 +23,7 @@ import type { DistinctiveElement } from "@/lib/db/schema/template-pipeline";
 
 vi.mock("@/lib/ai/embeddings", () => ({
   generateEmbeddings: vi.fn(),
+  getEmbeddingDimensions: () => 1536,
 }));
 
 // ---------------------------------------------------------------------------

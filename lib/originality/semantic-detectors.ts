@@ -9,7 +9,7 @@
 // paraphrasing and restructuring that bypass lexical matching.
 // ---------------------------------------------------------------------------
 
-import { generateEmbeddings } from "@/lib/ai/embeddings";
+import { generateEmbeddings, getEmbeddingDimensions } from "@/lib/ai/embeddings";
 import { OriginalityDetectorUnavailableError } from "./contracts";
 import { getRiskLabelEmbeddings } from "./profile-loader";
 import type { OriginalitySignal, OriginalityPolicy } from "./contracts";
@@ -61,7 +61,7 @@ export async function runSemanticDetectors(input: {
 
   // Embed the candidate once
   const [candidateEmbedding] = await generateEmbeddings([candidate]);
-  if (!candidateEmbedding || candidateEmbedding.length !== 1536) {
+  if (!candidateEmbedding || candidateEmbedding.length !== getEmbeddingDimensions()) {
     throw new OriginalityDetectorUnavailableError(
       "Failed to generate candidate embedding",
     );

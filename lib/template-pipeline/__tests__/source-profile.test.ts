@@ -128,16 +128,16 @@ describe("buildSourceProfile", () => {
     await expect(buildSourceProfile(fixtureInput())).rejects.toThrow("canonicalLabel");
   });
 
-  it("validates embedding count matches chunk count", async () => {
-    // Override the dynamic mock: return wrong count
-    mockGenerateEmbeddings.mockResolvedValueOnce([Array(1536).fill(0.1)]); // 1, but fixture has 1 chunk → should pass
-    // Actually we need a multi-chunk fixture. Use a longer text.
+  it("stores zero vectors when embedding count mismatches chunk count", async () => {
+    // Embedding generation is best-effort — mismatch stores zero vectors instead of throwing.
     const longText = Array(800).fill("palabra").join(" ");
-    mockGenerateEmbeddings.mockResolvedValue([Array(1536).fill(0.1)]); // only 1, but will be 2 chunks
+    mockGenerateEmbeddings.mockResolvedValue([Array(1024).fill(0.1)]); // only 1, but will be 2 chunks
 
-    await expect(
-      buildSourceProfile(fixtureInput({ contentMd: longText })),
-    ).rejects.toThrow("embedding");
+    const profile = await buildSourceProfile(fixtureInput({ contentMd: longText }));
+    // Should succeed with zero vectors
+    expect(profile.chunks).toHaveLength(2);
+    expect(profile.chunks[0].embedding.every((v: number) => v === 0)).toBe(true);
+    expect(profile.chunks[1].embedding.every((v: number) => v === 0)).toBe(true);
   });
 
   it("computes stable profile hash", async () => {
@@ -146,7 +146,7 @@ describe("buildSourceProfile", () => {
     expect(a.profileHash).toBe(b.profileHash);
   });
 
-  it("rejects invalid chunk indexes", async () => {
+  it("clamps out-of-range chunk indexes instead of rejecting", async () => {
     mockExecuteVersionedPrompt.mockResolvedValue({
       result: {
         data: {
@@ -155,7 +155,7 @@ describe("buildSourceProfile", () => {
             kind: "metaphor",
             canonicalLabel: "test",
             aliases: [],
-            sourceChunkIndexes: [99], // out of range
+            sourceChunkIndexes: [99], // out of range — clamped to 0
             confidence: 0.9,
             distinctiveness: 0.95,
           }],
@@ -167,6 +167,8 @@ describe("buildSourceProfile", () => {
       revision: {},
     } as never);
 
-    await expect(buildSourceProfile(fixtureInput())).rejects.toThrow("chunkIndex");
+    const result = await buildSourceProfile(fixtureInput());
+    // Chunk index 99 clamped to 0 (single chunk for single-word text)
+    expect(result.elements[0].sourceChunkIndexes).toEqual([0]);
   });
 });

@@ -16,8 +16,9 @@ describe("providers", () => {
   // ---------------------------------------------------------------------------
 
   describe("AVAILABLE_MODELS", () => {
-    it("contains exactly 3 models", () => {
-      expect(AVAILABLE_MODELS).toHaveLength(3);
+    it("contains all registered models", () => {
+      expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(4);
+      expect(AVAILABLE_MODELS.some((m) => m.id === "gpt-5.6-sol")).toBe(true);
     });
 
     it("each model has required fields", () => {

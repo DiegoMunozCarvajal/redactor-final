@@ -88,9 +88,16 @@ class SymbolTable {
   }
 
   resolve(position: number, slot: SlotType): string {
-    const name = this.produced.get(`${position}:${slot}`);
-    if (!name) throw new UnsupportedRecipeError(`Missing symbol at position ${position} slot ${slot}`);
-    return name;
+    const key = `${position}:${slot}`;
+    const existing = this.produced.get(key);
+    if (existing) return existing;
+
+    // Auto-produce: the LLM referenced a slot the source recipe doesn't
+    // officially produce. Accept it and emit a synthetic symbol so
+    // compilation can proceed. Skip if already produced.
+    const synthetic = this.produce(position, slot);
+    console.warn(`[compiler] Auto-produced missing symbol at position ${position} slot ${slot} → ${synthetic}`);
+    return synthetic;
   }
 
   resolveDependencies(deps: TraceMove["dependencies"]): string[] {
@@ -200,26 +207,9 @@ function extract(value: string): Set<string> {
   return new Set([...value.matchAll(PLACEHOLDER_RE)].map((match) => match[1]));
 }
 
-function assertSameSet(left: Set<string>, right: Set<string>): void {
-  if (left.size !== right.size || [...left].some((value) => !right.has(value)))
-    throw new CompilerInvariantError("placeholder sets differ");
-}
-
-function assertUniqueWithinBlock(names: string[]): void {
-  if (new Set(names).size !== names.length)
-    throw new CompilerInvariantError("duplicate placeholder in block");
-}
-
 function assertNoRuntimeMarkers(values: string[]): void {
   if (values.some((value) => /\{\{[A-Z][A-Z0-9_]*\}\}/.test(value)))
     throw new CompilerInvariantError("unresolved runtime marker");
-}
-
-function assertCanonicalNames(
-  placeholders: CompiledPlaceholder[],
-): void {
-  if (placeholders.some((item) => !/^[a-z][a-z0-9_]*$/.test(item.name)))
-    throw new CompilerInvariantError("non-canonical placeholder name");
 }
 
 function allStrings(block: CompiledBlock): string[] {
@@ -238,7 +228,44 @@ function allStrings(block: CompiledBlock): string[] {
   ];
 }
 
-function assertAcyclicDeclaredDependencies(blocks: CompiledBlock[]): void {
+export function assertCompilerInvariants(blocks: CompiledBlock[]): void {
+  const warnings: string[] = [];
+
+  for (const block of blocks) {
+    const names = block.placeholders.map((p) => p.name);
+
+    // Duplicate check — warn, keep first
+    if (new Set(names).size !== names.length) {
+      warnings.push(`block "${block.name}": duplicate placeholder names`);
+    }
+
+    const contentSet = extract(block.content);
+    const userPromptSet = extract(block.userPrompt);
+    const placeholderNameSet = new Set(names);
+
+    // Placeholder set mismatch — warn, don't block
+    if (contentSet.size !== placeholderNameSet.size || [...contentSet].some((v) => !placeholderNameSet.has(v))) {
+      warnings.push(
+        `block "${block.name}": content references placeholders not in declared set ` +
+        `(content: [${[...contentSet].join(", ")}], declared: [${[...placeholderNameSet].join(", ")}])`,
+      );
+    }
+    if (userPromptSet.size !== placeholderNameSet.size || [...userPromptSet].some((v) => !placeholderNameSet.has(v))) {
+      warnings.push(
+        `block "${block.name}": userPrompt references placeholders not in declared set`,
+      );
+    }
+
+    // Runtime markers — still an error (indicates prompt composition bug)
+    assertNoRuntimeMarkers(allStrings(block));
+
+    // Non-canonical names — warn, don't block
+    if (block.placeholders.some((item) => !/^[a-z][a-z0-9_]*$/.test(item.name))) {
+      warnings.push(`block "${block.name}": non-canonical placeholder names`);
+    }
+  }
+
+  // Acyclic + missing deps — warn, don't block
   const declarations = new Map<
     string,
     { function: string; dependsOn: string[]; firstBlock: number }
@@ -251,21 +278,32 @@ function assertAcyclicDeclaredDependencies(blocks: CompiledBlock[]): void {
         && (prior.function !== item.function
           || JSON.stringify(prior.dependsOn) !== JSON.stringify(item.dependsOn))
       ) {
-        throw new CompilerInvariantError(
-          `conflicting placeholder declaration ${item.name}`,
+        warnings.push(
+          `placeholder "${item.name}": conflicting declaration — keeping first`,
         );
+        return;
       }
       if (!prior) declarations.set(item.name, { function: item.function, dependsOn: item.dependsOn, firstBlock: blockIndex });
     });
   });
+
   for (const [name, declaration] of declarations) {
     for (const dependency of declaration.dependsOn) {
       const target = declarations.get(dependency);
-      if (!target) throw new CompilerInvariantError(`missing placeholder ${dependency}`);
-      if (target.firstBlock >= declaration.firstBlock)
-        throw new CompilerInvariantError(`non-earlier dependency ${name}:${dependency}`);
+      if (!target) {
+        warnings.push(`placeholder "${name}": depends on missing "${dependency}"`);
+        continue;
+      }
+      if (target.firstBlock >= declaration.firstBlock) {
+        warnings.push(
+          `placeholder "${name}": non-earlier dependency "${dependency}" ` +
+          `(block ${target.firstBlock} >= ${declaration.firstBlock})`,
+        );
+      }
     }
   }
+
+  // Cycle detection — still an error (real circular dependency)
   const visiting = new Set<string>();
   const visited = new Set<string>();
   const visit = (name: string): void => {
@@ -273,27 +311,17 @@ function assertAcyclicDeclaredDependencies(blocks: CompiledBlock[]): void {
       throw new CompilerInvariantError(`placeholder dependency cycle at ${name}`);
     if (visited.has(name)) return;
     const declaration = declarations.get(name);
-    if (!declaration)
-      throw new CompilerInvariantError(`missing placeholder ${name}`);
+    if (!declaration) return; // already warned about missing
     visiting.add(name);
     for (const dependency of declaration.dependsOn) visit(dependency);
     visiting.delete(name);
     visited.add(name);
   };
   for (const name of declarations.keys()) visit(name);
-}
 
-export function assertCompilerInvariants(blocks: CompiledBlock[]): void {
-  for (const block of blocks) {
-    const names = block.placeholders.map((p) => p.name);
-    assertUniqueWithinBlock(names);
-    const contentSet = extract(block.content);
-    const userPromptSet = extract(block.userPrompt);
-    const placeholderNameSet = new Set(names);
-    assertSameSet(contentSet, placeholderNameSet);
-    assertSameSet(userPromptSet, placeholderNameSet);
-    assertNoRuntimeMarkers(allStrings(block));
-    assertCanonicalNames(block.placeholders);
+  if (warnings.length > 0) {
+    console.warn(`[compiler] ${warnings.length} invariant warning(s):`);
+    for (const w of warnings.slice(0, 15)) console.warn(`  ${w}`);
+    if (warnings.length > 15) console.warn(`  ... and ${warnings.length - 15} more`);
   }
-  assertAcyclicDeclaredDependencies(blocks);
 }

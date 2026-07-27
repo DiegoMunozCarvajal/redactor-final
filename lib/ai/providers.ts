@@ -26,6 +26,15 @@ export interface ModelDefinition {
 export const AVAILABLE_MODELS: ModelDefinition[] = [
   // OpenAI
   {
+    id: "gpt-5.6-sol",
+    label: "GPT 5.6 Sol",
+    provider: "openai",
+    pricing: { input: 5.0, output: 30.0 },
+    supportsStructuredOutput: true,
+    fixedTemperature: 1,
+    maxOutputTokens: 128000,
+  },
+  {
     id: "gpt-5.5",
     label: "GPT 5.5",
     provider: "openai",

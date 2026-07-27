@@ -136,7 +136,7 @@ export function CreateProjectDialog({
               <SelectTrigger id="bookTemplateId">
                 <SelectValue placeholder="No template (start from scratch)" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px] overflow-y-auto">
                 <SelectItem value="__none__">No template (start from scratch)</SelectItem>
                 {templates.map((t) => {
                   const isDisabled = t.eligibleForProjects === false;

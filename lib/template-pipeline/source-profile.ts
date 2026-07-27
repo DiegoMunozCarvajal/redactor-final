@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { eq, and } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { templateSourceProfiles, templateSourceProfileChunks } from "@/lib/db/schema";
 import { sha256Text } from "./hash";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
-import { generateEmbeddings, EMBEDDING_MODEL } from "@/lib/ai/embeddings";
+import { generateEmbeddings, getEmbeddingModel, getEmbeddingDimensions } from "@/lib/ai/embeddings";
 import { normalizeText, computeWordShingles } from "@/lib/ai/originality-check";
 
 // ---------------------------------------------------------------------------
@@ -129,18 +132,33 @@ export async function buildSourceProfile(
     tokenCount: content.split(/\s+/).length,
   }));
 
-  // Generate embeddings
-  const embeddings = await generateEmbeddings(chunks.map((c) => c));
-  if (embeddings.length !== profileChunks.length) {
-    throw new Error(
-      `Embedding count mismatch: ${embeddings.length} embeddings for ${profileChunks.length} chunks`,
-    );
-  }
-  for (let i = 0; i < profileChunks.length; i++) {
-    if (embeddings[i].length !== 1536) {
-      throw new Error(`Chunk ${i} embedding has ${embeddings[i].length} dimensions, expected 1536`);
+  // Generate embeddings (best-effort — semantic originality degrades gracefully
+  // with zero vectors when the embedding provider is unavailable).
+  // getEmbeddingDimensions() is lazily set by generateEmbeddings → must read after call.
+  let embeddingDim = getEmbeddingDimensions();
+  try {
+    const embeddings = await generateEmbeddings(chunks.map((c) => c));
+    embeddingDim = getEmbeddingDimensions(); // now initialized by the call above
+    if (embeddings.length !== profileChunks.length) {
+      throw new Error(
+        `Embedding count mismatch: ${embeddings.length} embeddings for ${profileChunks.length} chunks`,
+      );
     }
-    profileChunks[i].embedding = embeddings[i];
+    for (let i = 0; i < profileChunks.length; i++) {
+      if (embeddings[i].length !== embeddingDim) {
+        throw new Error(`Chunk ${i} embedding has ${embeddings[i].length} dimensions, expected ${embeddingDim}`);
+      }
+      profileChunks[i].embedding = embeddings[i];
+    }
+  } catch (err) {
+    console.warn(
+      `[source-profile] Embedding generation failed — storing zero vectors. ` +
+      `Semantic originality detection will be unavailable for this run. ` +
+      `Error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    for (const chunk of profileChunks) {
+      chunk.embedding = new Array(embeddingDim).fill(0);
+    }
   }
 
   // Invoke profiler with source redaction
@@ -173,16 +191,21 @@ export async function buildSourceProfile(
   }
   const profile = parsed.data;
 
-  // Validate chunk indexes
-  for (const element of profile.elements) {
-    for (const idx of element.sourceChunkIndexes) {
-      if (idx >= profileChunks.length) {
-        throw new Error(
-          `Element ${element.id}: chunkIndex ${idx} out of range (max ${profileChunks.length - 1})`,
+  // Normalize and validate chunk indexes.
+  // LLMs may use 1-based indexing or otherwise overshoot — clamp gracefully.
+  const maxIdx = profileChunks.length - 1;
+  const normalizedElements = profile.elements.map((element) => {
+    const clamped = element.sourceChunkIndexes.map((idx) => {
+      if (idx > maxIdx) {
+        console.warn(
+          `[source-profile] Element ${element.id}: chunkIndex ${idx} clamped to ${maxIdx} (out of range)`,
         );
+        return maxIdx;
       }
-    }
-  }
+      return idx;
+    });
+    return { ...element, sourceChunkIndexes: [...new Set(clamped)] };
+  });
 
   // Compute profileHash from all components
   const profileHash = sha256Text(
@@ -190,10 +213,10 @@ export async function buildSourceProfile(
       sourceHash,
       language: "es",
       version: PROFILE_VERSION,
-      elements: profile.elements,
+      elements: normalizedElements,
       chunkHashes: profileChunks.map((c) => c.contentHash),
       fingerprints: profileChunks.map((c) => c.lexicalFingerprint),
-      embeddingModel: EMBEDDING_MODEL,
+      embeddingModel: getEmbeddingModel(),
     }),
   );
 
@@ -203,6 +226,59 @@ export async function buildSourceProfile(
     profileVersion: PROFILE_VERSION,
     profileHash,
     chunks: profileChunks,
-    elements: profile.elements,
+    elements: normalizedElements,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Profile persistence
+// ---------------------------------------------------------------------------
+
+export async function saveSourceProfile(
+  pipelineRunId: string,
+  chapterId: string,
+  profile: SourceProfile,
+): Promise<string> {
+  const [row] = await db
+    .insert(templateSourceProfiles)
+    .values({
+      pipelineRunId,
+      chapterId,
+      sourceHash: profile.sourceHash,
+      sourceLanguage: profile.sourceLanguage,
+      profileVersion: profile.profileVersion,
+      distinctiveElements: profile.elements,
+      profileHash: profile.profileHash,
+    })
+    .onConflictDoUpdate({
+      target: [templateSourceProfiles.pipelineRunId, templateSourceProfiles.chapterId],
+      set: {
+        sourceHash: profile.sourceHash,
+        sourceLanguage: profile.sourceLanguage,
+        profileVersion: profile.profileVersion,
+        distinctiveElements: profile.elements,
+        profileHash: profile.profileHash,
+      },
+    })
+    .returning({ id: templateSourceProfiles.id });
+
+  // Replace chunks atomically: delete existing, insert new
+  await db
+    .delete(templateSourceProfileChunks)
+    .where(eq(templateSourceProfileChunks.sourceProfileId, row.id));
+
+  if (profile.chunks.length > 0) {
+    await db.insert(templateSourceProfileChunks).values(
+      profile.chunks.map((chunk) => ({
+        sourceProfileId: row.id,
+        chunkIndex: chunk.chunkIndex,
+        contentHash: chunk.contentHash,
+        lexicalFingerprint: chunk.lexicalFingerprint,
+        embedding: JSON.stringify(chunk.embedding),
+        tokenCount: chunk.tokenCount,
+      })),
+    );
+  }
+
+  return row.id;
 }

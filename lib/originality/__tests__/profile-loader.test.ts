@@ -77,16 +77,19 @@ describe("loadOriginalityProfileSet", () => {
   // Missing profiles
   // -----------------------------------------------------------------------
 
-  it("throws when no profiles found for pipeline run", async () => {
+  it("returns degraded source-free set when no profiles found (legacy runs)", async () => {
     mockDbSelect.mockReturnValueOnce({
       from: vi.fn().mockReturnValueOnce({
         where: vi.fn().mockResolvedValue([]),
       }),
     });
 
-    await expect(
-      loadOriginalityProfileSet(templateAuth({ pipelineRunId: "empty-run" })),
-    ).rejects.toThrow(OriginalityDetectorUnavailableError);
+    const result = await loadOriginalityProfileSet(
+      templateAuth({ pipelineRunId: "empty-run" }),
+    );
+    expect(result.scope).toBe("source-free");
+    expect(result.profiles).toEqual([]);
+    expect(result.pipelineRunId).toBe("empty-run");
   });
 
   // -----------------------------------------------------------------------

@@ -1,7 +1,3 @@
-export const EMBEDDING_MODEL = "text-embedding-3-small";
-
-export const EMBEDDING_DIMENSIONS = 1536;
-
 // Chunking defaults
 export const CHUNK_SIZE_TOKENS = 1000;
 export const CHUNK_OVERLAP_TOKENS = 200;

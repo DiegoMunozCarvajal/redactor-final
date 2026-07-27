@@ -37,6 +37,7 @@ vi.mock("@/lib/ai/originality-check", async () => {
 
 vi.mock("@/lib/template-pipeline/source-profile", () => ({
   buildSourceProfile: (...args: unknown[]) => mocks.buildSourceProfile(...args),
+  saveSourceProfile: vi.fn().mockResolvedValue("profile-id"),
 }));
 
 vi.mock("@/lib/template-pipeline/artifacts", () => ({

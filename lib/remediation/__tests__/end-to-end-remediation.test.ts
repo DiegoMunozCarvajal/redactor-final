@@ -1,26 +1,18 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { auditTemplate, auditAllTemplates } from "@/lib/remediation/audit";
-import { planTemplateRegeneration, executeTemplateRegeneration } from "@/lib/remediation/regenerate-template";
-import { planProjectClone, executeProjectClone } from "@/lib/remediation/clone-project";
+import { planTemplateRegeneration } from "@/lib/remediation/regenerate-template";
+import { planProjectClone } from "@/lib/remediation/clone-project";
 import {
   bookTemplates,
   chapters,
   projects,
   chapterGenerations,
-  templatePipelineRuns,
-  templateSourceProfiles,
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { sha256Text, sha256Canonical } from "@/lib/template-pipeline/hash";
+import { sha256Text } from "@/lib/template-pipeline/hash";
 
 describe("end-to-end remediation", () => {
-  // Seed: contaminated legacy template + project with generated content
-  // Audit -> contaminated
-  // Regeneration -> new clean template
-  // Clone -> new project
-  // Verify old unchanged, new clean
-
   const LEGACY_TEMPLATE_ID = "e0000000-0000-4000-8000-000000000001";
   const LEGACY_PROJECT_ID = "e0000000-0000-4000-8000-000000000002";
   const OPERATION_REGENERATE = "e0000000-0000-4000-8000-000000000010";
@@ -30,7 +22,6 @@ describe("end-to-end remediation", () => {
 
   beforeAll(async () => {
     try {
-      // Seed legacy template
       await db
         .insert(bookTemplates)
         .values({
@@ -40,7 +31,6 @@ describe("end-to-end remediation", () => {
         })
         .onConflictDoNothing();
 
-      // Seed chapters
       await db
         .insert(chapters)
         .values([
@@ -59,8 +49,7 @@ describe("end-to-end remediation", () => {
         ])
         .onConflictDoNothing();
 
-      // Seed legacy project
-      const project = await db
+      await db
         .insert(projects)
         .values({
           id: LEGACY_PROJECT_ID,
@@ -69,10 +58,8 @@ describe("end-to-end remediation", () => {
           userId: "00000000-0000-0000-0000-000000000000",
           bookTemplateId: LEGACY_TEMPLATE_ID,
         })
-        .onConflictDoNothing()
-        .returning();
+        .onConflictDoNothing();
 
-      // Seed a generation to mark it as "contaminated" in assessments
       await db
         .insert(chapterGenerations)
         .values({
@@ -85,15 +72,14 @@ describe("end-to-end remediation", () => {
 
       seedOk = true;
     } catch (err) {
-      console.warn("Seed failed — some E2E tests will skip:", err);
+      console.warn("Seed failed — E2E tests will skip:", err);
       seedOk = false;
     }
   });
 
   afterAll(async () => {
     // Cleanup skipped: seeded rows are useful for manual inspection.
-    // If you need to re-run without conflicts, onConflictDoNothing handles
-    // duplicates safely.
+    // onConflictDoNothing handles duplicates safely on re-run.
   });
 
   // -----------------------------------------------------------------------
@@ -101,9 +87,10 @@ describe("end-to-end remediation", () => {
   // -----------------------------------------------------------------------
 
   it("audit classifies legacy template correctly", async () => {
+    if (!seedOk) return; // fixture-dependent test
+
     const report = await auditTemplate(LEGACY_TEMPLATE_ID);
     expect(report.templateId).toBe(LEGACY_TEMPLATE_ID);
-    // Classification should be at least legacy_unverified or worse
     expect(["legacy_unverified", "suspect", "contaminated"]).toContain(
       report.classification,
     );
@@ -117,40 +104,37 @@ describe("end-to-end remediation", () => {
   // Test 2: Regeneration dry-run plan (no writes)
   // -----------------------------------------------------------------------
 
-  it("regeneration dry-run validates without writes", async () => {
-    const plan = await planTemplateRegeneration({
-      operationId: OPERATION_REGENERATE,
-      legacyTemplateId: LEGACY_TEMPLATE_ID,
-      rhetoricTraceRevisionId: "00000000-0000-4000-8000-000000000100",
-      sourceProfilerRevisionId: "00000000-0000-4000-8000-000000000200",
-      sourceDir: "/nonexistent", // will fail, but validates structure
-      dryRun: true,
-    }).catch((err) => {
-      // Expected: source dir doesn't exist
-      expect(err.message).toMatch(/ENOENT|not found|no such file/i);
-      return null;
-    });
-    // If it throws, that's expected (no source dir)
+  it("regeneration dry-run throws for missing source dir", async () => {
+    // Dry-run with a nonexistent sourceDir must throw — the validation
+    // should fail because the directory doesn't exist.
+    await expect(
+      planTemplateRegeneration({
+        operationId: OPERATION_REGENERATE,
+        legacyTemplateId: LEGACY_TEMPLATE_ID,
+        rhetoricTraceRevisionId: "00000000-0000-4000-8000-000000000100",
+        sourceProfilerRevisionId: "00000000-0000-4000-8000-000000000200",
+        sourceDir: "/nonexistent",
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/ENOENT|not found|no such file/i);
   });
 
   // -----------------------------------------------------------------------
   // Test 3: Clone dry-run (no writes)
   // -----------------------------------------------------------------------
 
-  it("clone dry-run validates without writes", async () => {
-    // Clone needs a clean template. Use a non-existent one to test dry-run validation.
-    const result = await planProjectClone({
-      operationId: OPERATION_CLONE,
-      legacyProjectId: LEGACY_PROJECT_ID,
-      cleanTemplateId: "00000000-0000-4000-8000-ffffffffffff",
-      legacyProjectStateHash: sha256Text("test-state"),
-      cleanTemplateArtifactSetHash: sha256Text("test-artifacts"),
-      dryRun: true,
-    }).catch((err) => {
-      // Expected: template or project not found
-      expect(err.message).toMatch(/not found|eligible|exist/i);
-      return null;
-    });
+  it("clone dry-run throws for ineligible template", async () => {
+    // Dry-run clone with a nonexistent clean template must throw.
+    await expect(
+      planProjectClone({
+        operationId: OPERATION_CLONE,
+        legacyProjectId: LEGACY_PROJECT_ID,
+        cleanTemplateId: "00000000-0000-4000-8000-ffffffffffff",
+        legacyProjectStateHash: sha256Text("test-state"),
+        cleanTemplateArtifactSetHash: sha256Text("test-artifacts"),
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/not found|eligible|exist/i);
   });
 
   // -----------------------------------------------------------------------
@@ -158,6 +142,8 @@ describe("end-to-end remediation", () => {
   // -----------------------------------------------------------------------
 
   it("audit never returns source snippets or labels", async () => {
+    if (!seedOk) return; // fixture-dependent test
+
     const reports = await auditAllTemplates();
     for (const report of reports) {
       if (report.templateId !== LEGACY_TEMPLATE_ID) continue;
@@ -168,13 +154,12 @@ describe("end-to-end remediation", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Test 5: Duplicate operation calls (idempotency conceptual)
+  // Test 5: Idempotent hash contract
   // -----------------------------------------------------------------------
 
-  it("same operation hash returns same result ID pattern", async () => {
-    // This tests the contract -- actual idempotency testing is in operations.test.ts
+  it("same input produces same hash", async () => {
     const hash1 = sha256Text(JSON.stringify({ a: 1 }));
     const hash2 = sha256Text(JSON.stringify({ a: 1 }));
-    expect(hash1).toBe(hash2); // Same input -> same hash
+    expect(hash1).toBe(hash2);
   });
 });

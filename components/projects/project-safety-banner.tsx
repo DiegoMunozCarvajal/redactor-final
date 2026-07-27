@@ -5,12 +5,9 @@ import {
 } from "@/components/ui/alert";
 import { AlertTriangle, Info } from "lucide-react";
 import Link from "next/link";
+import type { ProjectSafety as ProjectSafetyType } from "@/lib/remediation/safety";
 
-export interface ProjectSafety {
-  state: "source_free" | "clean_v2" | "legacy_read_only";
-  reasonCode?: string;
-  replacementProjectId?: string;
-}
+export type ProjectSafety = ProjectSafetyType;
 
 export function ProjectSafetyBanner({
   safety,

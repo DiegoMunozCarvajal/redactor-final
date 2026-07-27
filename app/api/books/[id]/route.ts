@@ -11,10 +11,11 @@ import {
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/admin";
-import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { logAudit } from "@/lib/audit";
 import { COMPILER_VERSION } from "@/lib/template-pipeline/compiler";
+import { SAFE_PIPELINE_VERSION } from "@/lib/template-pipeline/contracts";
 import { UUID_RE } from "@/lib/constants";
 
 // GET is open to all authenticated users — templates must be
@@ -100,6 +101,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         eq(templatePipelineRuns.bookTemplateId, id),
         eq(templatePipelineRuns.status, "clean"),
         eq(templatePipelineRuns.compilerVersion, COMPILER_VERSION),
+        eq(templatePipelineRuns.pipelineVersion, SAFE_PIPELINE_VERSION),
       ),
     )
     .orderBy(desc(templatePipelineRuns.createdAt))
@@ -108,21 +110,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (cleanRun) {
     classification = "clean_v2";
   } else {
-    // 2. Check originalityAssessments for contaminated/suspect decisions
-    const [assessment] = await db
-      .select({ decision: originalityAssessments.decision })
+    // 2. Aggregate ALL originalityAssessments for this template's projects.
+    //    Precedence: contaminated > suspect. A single contaminated assessment
+    //    is never masked by a later suspect assessment.
+    const assessments = await db
+      .selectDistinct({ decision: originalityAssessments.decision })
       .from(originalityAssessments)
       .innerJoin(projects, eq(originalityAssessments.projectId, projects.id))
-      .where(eq(projects.bookTemplateId, id))
-      .orderBy(desc(originalityAssessments.createdAt))
-      .limit(1);
+      .where(eq(projects.bookTemplateId, id));
 
-    if (assessment) {
-      if (assessment.decision === "contaminated") {
-        classification = "contaminated";
-      } else if (assessment.decision === "suspect") {
-        classification = "suspect";
-      }
+    const decisions = new Set(assessments.map((a) => a.decision));
+    if (decisions.has("contaminated")) {
+      classification = "contaminated";
+    } else if (decisions.has("suspect")) {
+      classification = "suspect";
     }
   }
 

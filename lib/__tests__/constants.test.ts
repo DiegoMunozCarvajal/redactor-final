@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  EMBEDDING_MODEL,
-  EMBEDDING_DIMENSIONS,
   CHUNK_SIZE_TOKENS,
   CHUNK_OVERLAP_TOKENS,
   CHUNK_SIZE_BY_FILE_TYPE,
@@ -16,15 +14,6 @@ import {
 
 describe("constants", () => {
   describe("embeddings", () => {
-    it("EMBEDDING_MODEL is a non-empty string", () => {
-      expect(typeof EMBEDDING_MODEL).toBe("string");
-      expect(EMBEDDING_MODEL.length).toBeGreaterThan(0);
-    });
-
-    it("EMBEDDING_DIMENSIONS is a positive number", () => {
-      expect(EMBEDDING_DIMENSIONS).toBeGreaterThan(0);
-    });
-
     it("EMBEDDING_BATCH_SIZE is within OpenAI limit", () => {
       expect(EMBEDDING_BATCH_SIZE).toBeGreaterThan(0);
       expect(EMBEDDING_BATCH_SIZE).toBeLessThanOrEqual(2048);

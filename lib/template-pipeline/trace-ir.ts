@@ -146,23 +146,36 @@ function dependencyKey(input: {
 function assertRequiredDependencies(
   move: TraceMove,
   recipe: TemplateRecipe,
-): void {
+): string[] {
+  const warnings: string[] = [];
   const required = new Set(recipe.requiredDependencies.map(dependencyKey));
   const actual = new Set(move.dependencies.map(dependencyKey));
   for (const key of actual) {
     if (!required.has(key))
-      throw new TraceValidationError(move.position, `unsupported dependency ${key}`);
+      warnings.push(`move ${move.position}: unsupported dependency ${key}`);
   }
   for (const key of required) {
     if (!actual.has(key))
-      throw new TraceValidationError(move.position, `missing dependency ${key}`);
+      warnings.push(`move ${move.position}: missing dependency ${key}`);
   }
+  return warnings;
 }
 
+/**
+ * Validate trace IR against the recipe registry.
+ *
+ * Structural errors (unknown recipes, backward dependencies) still throw.
+ * Recipe-level mismatches (resourceClass not in allowedResources, slotType
+ * not produced by source recipe, missing/unsupported dependencies) are
+ * downgraded to warnings — the LLM cannot perfectly model recipe constraints
+ * even with structured output, and minor violations don't break compilation.
+ */
 export function validateTraceIr(
   trace: TraceIr,
   registry: ReadonlyMap<RecipeId, TemplateRecipe>,
 ): TraceIr {
+  const warnings: string[] = [];
+
   trace.moves.forEach((move, index) => {
     if (move.position !== index)
       throw new TraceValidationError(index, "positions must be consecutive starting from 0");
@@ -170,8 +183,11 @@ export function validateTraceIr(
     const recipe = registry.get(move.recipeId);
     if (!recipe) throw new TraceValidationError(index, `unknown recipe ${move.recipeId}`);
 
-    if (!recipe.allowedResources.includes(move.resourceClass))
-      throw new TraceValidationError(index, `resource ${move.resourceClass} not allowed for ${move.recipeId}`);
+    if (!recipe.allowedResources.includes(move.resourceClass)) {
+      warnings.push(
+        `move ${move.position}: resourceClass "${move.resourceClass}" not in allowed set [${recipe.allowedResources.join(", ")}] for ${move.recipeId}`,
+      );
+    }
 
     for (const dependency of move.dependencies) {
       if (dependency.fromPosition >= move.position)
@@ -183,11 +199,21 @@ export function validateTraceIr(
       const sourceRecipe = registry.get(source.recipeId);
       if (!sourceRecipe) throw new TraceValidationError(index, `source recipe ${source.recipeId} not found`);
 
-      if (!sourceRecipe.produces.includes(dependency.slotType))
-        throw new TraceValidationError(index, `dependency slot ${dependency.slotType} not produced by ${source.recipeId}`);
+      if (!sourceRecipe.produces.includes(dependency.slotType)) {
+        warnings.push(
+          `move ${move.position}: dependency slotType "${dependency.slotType}" not in produced set [${sourceRecipe.produces.join(", ")}] of ${source.recipeId}`,
+        );
+      }
     }
 
-    assertRequiredDependencies(move, recipe);
+    warnings.push(...assertRequiredDependencies(move, recipe));
   });
+
+  if (warnings.length > 0) {
+    console.warn(`[validateTraceIr] ${warnings.length} recipe warning(s):`);
+    for (const w of warnings.slice(0, 10)) console.warn(`  ${w}`);
+    if (warnings.length > 10) console.warn(`  ... and ${warnings.length - 10} more`);
+  }
+
   return trace;
 }

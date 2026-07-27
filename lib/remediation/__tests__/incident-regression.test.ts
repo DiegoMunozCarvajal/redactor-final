@@ -28,8 +28,12 @@ describe("incident regression", () => {
   });
 
   it("classifies confirmed incident template as contaminated", async () => {
+    // Fixture-dependent — requires the original incident rows in the DB.
+    // These tests exist to catch regressions against the specific confirmed
+    // contamination incident (project f67abde7, chapter 7cd9272e).
+    // Skip when fixture is absent (e.g., local dev without production data).
     if (!fixtureAvailable) {
-      console.log("Skipping: incident fixture rows not in local database");
+      console.warn("[incident-regression] Skipping: fixture data not available in this environment");
       return;
     }
 
@@ -41,7 +45,7 @@ describe("incident regression", () => {
 
   it("never leaks snippets, labels, or regex patterns", async () => {
     if (!fixtureAvailable) {
-      console.log("Skipping: incident fixture rows not in local database");
+      console.warn("[incident-regression] Skipping: fixture data not available in this environment");
       return;
     }
 

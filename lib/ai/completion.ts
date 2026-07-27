@@ -164,7 +164,7 @@ export function getErrorMessage(error: unknown): string {
 // Models that reject the `temperature` parameter entirely (legacy reasoning models).
 // This is distinct from ModelDefinition.fixedTemperature, which locks temperature
 // to a specific value only when reasoning is active.
-const MODELS_WITHOUT_TEMPERATURE_SUPPORT = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
+const MODELS_WITHOUT_TEMPERATURE_SUPPORT = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini", "gpt-5.5", "gpt-5.6-sol"]);
 
 // Anthropic thinking models (Opus 4.7+) reject the `temperature` parameter.
 // When effort is not explicitly set, omit temperature instead of failing.
@@ -233,11 +233,10 @@ async function completeWithOpenAI<T extends z.ZodType>(
   const modelDef = requireModelDefinition(model);
   const supportsTemperature = !MODELS_WITHOUT_TEMPERATURE_SUPPORT.has(model);
 
-  // Reasoning models (GPT-5.x) only support temperature=1 when reasoning_effort is active.
-  // GPT-5.5 defaults to medium reasoning, GPT-5.4 defaults to none.
-  // If the model has a fixedTemperature and reasoning is active, lock to that value.
+  // GPT-5.x models only support temperature=1 regardless of reasoning state.
+  // If the model declares a fixedTemperature, use it unconditionally.
   const reasoningActive = !!effortConfig.reasoningEffort;
-  const effectiveTemperature = reasoningActive && modelDef.fixedTemperature !== undefined
+  const effectiveTemperature = modelDef.fixedTemperature !== undefined
     ? modelDef.fixedTemperature
     : temperature;
 

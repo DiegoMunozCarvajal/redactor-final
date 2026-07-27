@@ -66,13 +66,35 @@ describe("assertTemplateGenerationAllowed", () => {
     ).rejects.toMatchObject({ name: "GenerationBlockedError", reason });
   });
 
-  it("never falls back to source-free for a templated project", async () => {
+  it("returns degraded authorization when clean run has no profiles (legacy)", async () => {
     mockLoadProjectPipeline.mockResolvedValue(
       fixtureTemplatePipeline({ profiles: [] }),
     );
     await expect(
       assertTemplateGenerationAllowed("project-1"),
-    ).rejects.toMatchObject({ reason: "missing_source_profile" });
+    ).resolves.toEqual({
+      scope: "template",
+      pipelineRunId: "run-1",
+      sourceProfileSetHash: EMPTY_SOURCE_PROFILE_SET_HASH,
+      originalityPolicyVersion: "originality-policy-v2",
+    });
+  });
+
+  it("blocks when profiles are missing and run is not clean", async () => {
+    mockLoadProjectPipeline.mockResolvedValue(
+      fixtureTemplatePipeline({
+        profiles: [],
+        run: {
+          id: "run-2",
+          status: "running",
+          pipelineVersion: "template-pipeline-v2",
+          originalityPolicyVersion: "originality-policy-v2",
+        },
+      }),
+    );
+    await expect(
+      assertTemplateGenerationAllowed("project-2"),
+    ).rejects.toMatchObject({ reason: "template_unverified" });
   });
 
   it("blocks when no active run exists", async () => {

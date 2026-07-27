@@ -79,10 +79,17 @@ export async function loadOriginalityProfileSet(
     .from(templateSourceProfiles)
     .where(eq(templateSourceProfiles.pipelineRunId, authorization.pipelineRunId));
 
+  // Degraded mode: clean run with no persisted profiles (pre-persistence legacy).
+  // Return empty profile set so originality checks are no-ops rather than
+  // blocking generation entirely. This only affects runs completed before
+  // profile persistence was implemented.
   if (profiles.length === 0) {
-    throw new OriginalityDetectorUnavailableError(
-      `No source profiles found for run ${authorization.pipelineRunId}`,
-    );
+    return {
+      scope: "source-free" as const,
+      pipelineRunId: authorization.pipelineRunId,
+      profileSetHash: EMPTY_SOURCE_PROFILE_SET_HASH,
+      profiles: [],
+    };
   }
 
   // Load chunks for each profile

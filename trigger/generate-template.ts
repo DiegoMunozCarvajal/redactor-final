@@ -7,10 +7,13 @@ import {
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { runSettledWithConcurrency } from "@/lib/promise-pool";
-import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
+// Template generation requires native structured output (OpenAI json_schema strict
+// or Anthropic tool_use). DeepSeek only supports json_object mode which cannot
+// enforce complex schemas reliably.
+const DEFAULT_TEMPLATE_MODEL = "gpt-5.5";
 import type { ReasoningEffort } from "@/lib/ai/completion";
 import { collectTemplateFields, assertTemplateFieldsClean } from "@/lib/template-pipeline/template-field-scan";
-import { buildSourceProfile } from "@/lib/template-pipeline/source-profile";
+import { buildSourceProfile, saveSourceProfile } from "@/lib/template-pipeline/source-profile";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { traceIrSchema, validateTraceIr } from "@/lib/template-pipeline/trace-ir";
 import { TEMPLATE_RECIPE_REGISTRY } from "@/lib/template-pipeline/recipes";
@@ -74,7 +77,7 @@ export const generateTemplate = task({
       rhetoricTraceRevisionId,
       sourceProfilerRevisionId,
       chapters,
-      model = DEFAULT_GENERATION_MODEL,
+      model = DEFAULT_TEMPLATE_MODEL,
       effort,
     } = payload;
 
@@ -118,7 +121,12 @@ export const generateTemplate = task({
       const failed = results
         .map((r, i) =>
           r.status === "rejected"
-            ? `${chapters[i].title}: ${(r.reason as Error)?.message ?? String(r.reason)}`
+            ? (() => {
+                const err = r.reason as Error;
+                const msg = err?.message ?? String(r.reason);
+                const stack = err?.stack ? `\n  stack: ${err.stack.split("\n").slice(1, 5).join("\n  ")}` : "";
+                return `${chapters[i].title}: ${msg}${stack}`;
+              })()
             : null,
         )
         .filter((s): s is string => s !== null);
@@ -158,7 +166,11 @@ export const generateTemplate = task({
         // Complete any linked maintenance operation (regeneration)
         await completeOperationIfLinked(pipelineRunId, templateId, chapters.length);
       } else {
-        // Some chapters failed — mark run and template failed
+        // Some chapters failed — mark run and template failed with error details
+        const firstError = rejected[0]?.reason;
+        const errorMessage = firstError instanceof Error ? firstError.message : String(firstError ?? "unknown");
+        const errorName = firstError instanceof Error ? firstError.name : "ChapterError";
+
         await db
           .update(bookTemplates)
           .set({ status: "failed" })
@@ -166,13 +178,23 @@ export const generateTemplate = task({
 
         await db
           .update(templatePipelineRuns)
-          .set({ status: "failed", completedAt: new Date() })
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            failureStage: errorName,
+            report: { error: errorMessage.slice(0, 2000), failed: failed },
+          })
           .where(eq(templatePipelineRuns.id, pipelineRunId));
 
         await failOperationIfLinked(pipelineRunId, "partial_failure");
       }
     } catch (err) {
-      // Mark failed on unhandled errors
+      // Mark failed on unhandled errors — capture error details for diagnosis
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorName = err instanceof Error ? err.name : "Unknown";
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      console.error(`[generate-template] Fatal error: ${errorName}: ${errorMessage}`, errorStack);
+
       await db
         .update(bookTemplates)
         .set({ status: "failed" })
@@ -181,7 +203,12 @@ export const generateTemplate = task({
 
       await db
         .update(templatePipelineRuns)
-        .set({ status: "failed", completedAt: new Date() })
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          failureStage: errorName,
+          report: { error: errorMessage.slice(0, 2000), stack: errorStack?.slice(0, 2000) },
+        })
         .where(eq(templatePipelineRuns.id, pipelineRunId))
         .catch(() => {});
 
@@ -208,14 +235,17 @@ async function buildChapterArtifact(input: ChapterBuildInput) {
     model: input.model,
   });
 
-  // 2. Classify rhetoric trace with one validation retry
+  // 1b. Persist the source profile so authorization can find it.
+  await saveSourceProfile(input.pipelineRunId, input.chapterId, profile);
+
+  // 2. Classify rhetoric trace (3 attempts, auto-normalizes positions)
   const trace = await classifyTraceWithOneValidationRetry({
     ...input,
     rhetoricRevisionId: input.rhetoricRevisionId,
   });
 
-  // 3. Validate trace against recipe registry
-  const validated = validateTraceIr(trace, TEMPLATE_RECIPE_REGISTRY);
+  // 3. Trace is already validated + normalized by classifyTraceWithOneValidationRetry
+  const validated = trace;
 
   // 4. Compile deterministically
   const compiled = compileTrace(validated);
@@ -227,13 +257,14 @@ async function buildChapterArtifact(input: ChapterBuildInput) {
     text: "", // profile chunks don't store raw text
   })));
 
-  // 6. Save artifact (idempotent upsert)
+  // 6. Save artifact (idempotent upsert) — persist original source for regeneration recovery
   return saveRunArtifact({
     pipelineRunId: input.pipelineRunId,
     chapterId: input.chapterId,
     traceIr: validated,
     compiledTemplate: compiled.blocks,
     artifactHash: compiled.artifactHash,
+    sourceContent: input.contentMd,
   });
 }
 
@@ -258,26 +289,99 @@ function isTraceOutputError(err: unknown): boolean {
 async function classifyTraceWithOneValidationRetry(
   input: TraceClassifierInput,
 ): Promise<TraceIr> {
-  let firstError: unknown;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const result = await executeTraceClassifier(input);
-      return validateTraceIr(result, TEMPLATE_RECIPE_REGISTRY);
+      const normalized = normalizeTracePositions(result);
+      return validateTraceIr(normalized, TEMPLATE_RECIPE_REGISTRY);
     } catch (error) {
-      firstError ??= error;
-      if (!isTraceOutputError(error) || attempt === 1) throw error;
+      lastError = error;
+      if (!isTraceOutputError(error) || attempt === 2) throw error;
     }
   }
-  throw firstError;
+  throw lastError;
+}
+
+/** Sort moves by position and renumber 0..N-1, updating dependency fromPosition. */
+function normalizeTracePositions(trace: TraceIr): TraceIr {
+  const sortedMoves = [...trace.moves].sort((a, b) => a.position - b.position);
+  const posMap = new Map<number, number>();
+  sortedMoves.forEach((_, i) => posMap.set(sortedMoves[i].position, i));
+  return {
+    moves: sortedMoves.map((move, i) => ({
+      ...move,
+      position: i,
+      dependencies: move.dependencies.map((dep) => ({
+        ...dep,
+        fromPosition: posMap.get(dep.fromPosition) ?? i,
+      })),
+    })),
+  };
 }
 
 async function executeTraceClassifier(
   input: TraceClassifierInput,
 ): Promise<TraceIr> {
   const capituloFuente = `# ${input.title}\n\n${input.contentMd}`;
-  const schemaStr = JSON.stringify(
-    { type: "object", properties: { moves: { type: "array" } }, required: ["moves"] },
-  );
+  const schemaStr = JSON.stringify({
+    type: "object",
+    properties: {
+      moves: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            position: { type: "integer" },
+            recipeId: {
+              type: "string",
+              enum: [
+                "opening_case", "rhetorical_bridge", "claim_presentation",
+                "claim_contrast", "quantitative_illustration", "analogy_explanation",
+                "parallel_comparison", "definition", "evidence_support",
+                "objection", "response", "application", "transition", "synthesis_close",
+              ],
+            },
+            resourceClass: { type: "string", enum: ["case", "concept", "claim"] },
+            discourseRelation: {
+              type: "string",
+              enum: ["open", "sequence", "elaborate", "contrast", "support", "close"],
+            },
+            readerEffect: {
+              type: "string",
+              enum: ["curiosity", "clarity", "tension", "conviction", "insight", "closure"],
+            },
+            dependencies: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  fromPosition: { type: "integer" },
+                  relation: {
+                    type: "string",
+                    enum: ["supports", "contrasts", "extends", "exemplifies"],
+                  },
+                  slotType: {
+                    type: "string",
+                    enum: ["concept", "claim", "example", "question", "objection", "response", "evidence", "application"],
+                  },
+                },
+                required: ["fromPosition", "relation", "slotType"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: [
+            "position", "recipeId", "resourceClass",
+            "discourseRelation", "readerEffect", "dependencies",
+          ],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["moves"],
+    additionalProperties: false,
+  });
 
   const { result } = await executeVersionedPrompt({
     stage: "template-generation",
