@@ -268,16 +268,28 @@ export async function saveSourceProfile(
     .where(eq(templateSourceProfileChunks.sourceProfileId, row.id));
 
   if (profile.chunks.length > 0) {
-    await db.insert(templateSourceProfileChunks).values(
-      profile.chunks.map((chunk) => ({
-        sourceProfileId: row.id,
-        chunkIndex: chunk.chunkIndex,
-        contentHash: chunk.contentHash,
-        lexicalFingerprint: chunk.lexicalFingerprint,
-        embedding: JSON.stringify(chunk.embedding),
-        tokenCount: chunk.tokenCount,
-      })),
-    );
+    try {
+      await db.insert(templateSourceProfileChunks).values(
+        profile.chunks.map((chunk) => ({
+          sourceProfileId: row.id,
+          chunkIndex: chunk.chunkIndex,
+          contentHash: chunk.contentHash,
+          lexicalFingerprint: chunk.lexicalFingerprint,
+          embedding: JSON.stringify(chunk.embedding),
+          tokenCount: chunk.tokenCount,
+        })),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const detail = (err as { detail?: string }).detail ?? "";
+      const hint = (err as { hint?: string }).hint ?? "";
+      throw new Error(
+        `Failed to insert ${profile.chunks.length} source profile chunks: ${msg}` +
+        (detail ? `\nDetail: ${detail}` : "") +
+        (hint ? `\nHint: ${hint}` : ""),
+        { cause: err },
+      );
+    }
   }
 
   return row.id;
