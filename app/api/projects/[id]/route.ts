@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterGenerations, chapterPlaceholders } from "@/lib/db/schema";
+import { projects, chapters, chapterGenerations, chapterPlaceholders, placeholderVersions } from "@/lib/db/schema";
+import type { PlaceholderFillMetadata } from "@/lib/placeholder-fill-metadata";
 import { createClient } from "@/lib/supabase/server";
 import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
@@ -196,17 +197,39 @@ export async function PATCH(
           }
         }
 
-        // Batch update all tema variants
+        // Batch update all tema variants — create version rows
         for (const [chId, names] of updatesByChapter) {
-          await tx
-            .update(chapterPlaceholders)
-            .set({ definition: topic })
-            .where(
-              and(
-                eq(chapterPlaceholders.chapterId, chId),
-                inArray(chapterPlaceholders.name, names),
-              ),
-            );
+          // Fetch placeholder IDs for the names in this chapter
+          const phRows = await tx
+            .select({ id: chapterPlaceholders.id, name: chapterPlaceholders.name })
+            .from(chapterPlaceholders)
+            .where(and(eq(chapterPlaceholders.chapterId, chId), inArray(chapterPlaceholders.name, names)));
+
+          for (const ph of phRows) {
+            // Create version row
+            const [version] = await tx
+              .insert(placeholderVersions)
+              .values({
+                placeholderId: ph.id,
+                definition: topic,
+                fillMetadata: {
+                  sources: [],
+                  filledAt: new Date().toISOString(),
+                  definitionOrigin: "system",
+                } satisfies PlaceholderFillMetadata,
+              })
+              .returning({ id: placeholderVersions.id });
+
+            // Update main row
+            await tx
+              .update(chapterPlaceholders)
+              .set({
+                definition: topic,
+                activeVersionId: version.id,
+                definitionOrigin: "system",
+              })
+              .where(eq(chapterPlaceholders.id, ph.id));
+          }
         }
       }
     }
