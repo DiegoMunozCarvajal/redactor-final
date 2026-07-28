@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { projects, chapters, chapterPlaceholders, prompts } from "@/lib/db/schema";
+import { projects, chapters, chapterPlaceholders, prompts, placeholderVersions } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { hashPromptContents } from "@/lib/placeholder-utils";
 
@@ -129,21 +129,91 @@ export async function PATCH(
     }
   }
 
-  // Batch upsert placeholder definitions using ON CONFLICT to avoid N+1 updates
-  if (entries.length > 0) {
-    await db
-      .insert(chapterPlaceholders)
-      .values(
-        entries.map(([name, definition]) => ({
-          chapterId,
-          name,
-          definition,
-        })),
-      )
-      .onConflictDoUpdate({
-        target: [chapterPlaceholders.chapterId, chapterPlaceholders.name],
-        set: { definition: sql`excluded.definition` },
-      });
+  // Fetch existing placeholder rows to detect changes
+  const existingRows = await db
+    .select({
+      id: chapterPlaceholders.id,
+      name: chapterPlaceholders.name,
+      definition: chapterPlaceholders.definition,
+    })
+    .from(chapterPlaceholders)
+    .where(eq(chapterPlaceholders.chapterId, chapterId));
+
+  const existingByName = new Map(existingRows.map((r) => [r.name, r]));
+
+  // Process each entry: create version if definition changed or is new
+  for (const [name, definition] of entries) {
+    const existing = existingByName.get(name);
+
+    if (existing) {
+      // Existing placeholder — check if definition actually changed
+      const oldDef = existing.definition ?? null;
+      const newDef = definition ?? null;
+      if (oldDef !== newDef) {
+        if (newDef !== null) {
+          // Definition changed to non-null → create version
+          const [version] = await db
+            .insert(placeholderVersions)
+            .values({
+              placeholderId: existing.id,
+              definition: newDef,
+              fillMetadata: {
+                sources: [],
+                filledAt: new Date().toISOString(),
+                definitionOrigin: "manual",
+              },
+            })
+            .returning({ id: placeholderVersions.id });
+
+          await db
+            .update(chapterPlaceholders)
+            .set({
+              definition: newDef,
+              activeVersionId: version.id,
+              definitionOrigin: "manual",
+            })
+            .where(eq(chapterPlaceholders.id, existing.id));
+        } else {
+          // Definition set to null → no version, clear activeVersionId
+          await db
+            .update(chapterPlaceholders)
+            .set({
+              definition: null,
+              activeVersionId: null,
+            })
+            .where(eq(chapterPlaceholders.id, existing.id));
+        }
+      }
+    } else {
+      // New placeholder — insert row + create version if definition is non-null
+      const [inserted] = await db
+        .insert(chapterPlaceholders)
+        .values({ chapterId, name, definition })
+        .returning({ id: chapterPlaceholders.id });
+
+      if (definition !== null && inserted) {
+        const [version] = await db
+          .insert(placeholderVersions)
+          .values({
+            placeholderId: inserted.id,
+            definition,
+            fillMetadata: {
+              sources: [],
+              filledAt: new Date().toISOString(),
+              definitionOrigin: "manual",
+            },
+          })
+          .returning({ id: placeholderVersions.id });
+
+        await db
+          .update(chapterPlaceholders)
+          .set({
+            activeVersionId: version.id,
+            definitionOrigin: "manual",
+          })
+          .where(eq(chapterPlaceholders.id, inserted.id));
+      }
+    }
   }
 
   // Return updated list with current prompts hash for consistency with GET
