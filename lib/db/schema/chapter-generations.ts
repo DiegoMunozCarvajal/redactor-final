@@ -48,6 +48,10 @@ export const chapterGenerations = pgTable(
       };
       originalityLineage?: unknown;
       originalityAssessmentId?: string;
+      /** C3 stage omission: derived mode for each stage (e.g. omitir, desarrollar) */
+      stageConfig?: Record<string, string>;
+      /** Names of stages that were omitted during generation */
+      stageOmissions?: string[];
     }>(),
     assembledContent: text("assembled_content"),
     assemblyMetadata: jsonb("assembly_metadata").$type<{

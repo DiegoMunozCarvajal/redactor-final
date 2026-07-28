@@ -27,6 +27,9 @@ import {
   OriginalityDetectorUnavailableError,
 } from "@/lib/originality/contracts";
 import { sha256Text } from "@/lib/template-pipeline/hash";
+import { extractMetadataBlocks, loadPreviousChaptersContext } from "@/lib/assembly/metadata-blocks";
+import { applyStageOmission } from "@/lib/assembly/stage-config";
+import type { FragmentWithMeta } from "@/lib/assembly/stage-config";
 
 export const generateChapter = task({
   id: "generate-chapter",
@@ -157,6 +160,13 @@ export const generateChapter = task({
       .limit(1);
     if (!chapter) throw new Error(`Chapter ${gen.chapterId} not found`);
 
+    // Load extracted metadata blocks from previous chapters
+    const previousChaptersContext = await loadPreviousChaptersContext(
+      db,
+      projectId,
+      chapter.position,
+    );
+
     // Resolve editorial brief snapshot from generation metadata
     const genSnapshot = snapshotFromGenerationMetadata(
       (gen.generationMetadata as Record<string, unknown> | null) ?? {},
@@ -211,7 +221,7 @@ export const generateChapter = task({
       (p) => !p.isAssembly && !p.isCritique && !p.isCorrector,
     );
 
-    const fragmentContents: { id: string; title: string; content: string }[] = [];
+    const fragmentContents: FragmentWithMeta[] = [];
 
     try {
       if (fragmentIds && fragmentIds.length > 0) {
@@ -223,6 +233,8 @@ export const generateChapter = task({
             id: fragments.id,
             title: prompts.title,
             content: fragments.content,
+            position: fragments.position,
+            metadata: fragments.metadata,
           })
           .from(fragments)
           .leftJoin(prompts, eq(fragments.projectPromptId, prompts.id))
@@ -234,6 +246,8 @@ export const generateChapter = task({
             id: f.id,
             title: f.title ?? "Fragment",
             content: f.content ?? "",
+            position: f.position,
+            extractedBlocks: (f.metadata as { extractedBlocks?: Record<string, Record<string, string>> } | null)?.extractedBlocks,
           });
         }
       } else {
@@ -245,6 +259,8 @@ export const generateChapter = task({
             projectPromptId: fragments.projectPromptId,
             title: prompts.title,
             content: fragments.content,
+            position: fragments.position,
+            metadata: fragments.metadata,
           })
           .from(fragments)
           .leftJoin(prompts, eq(fragments.projectPromptId, prompts.id))
@@ -274,6 +290,8 @@ export const generateChapter = task({
                 id: f.id,
                 title: f.title ?? "Fragment",
                 content: f.content ?? "",
+                position: f.position,
+                extractedBlocks: (f.metadata as { extractedBlocks?: Record<string, Record<string, string>> } | null)?.extractedBlocks,
               });
             }
           }
@@ -322,6 +340,13 @@ export const generateChapter = task({
                 ...(effort !== undefined ? { effort } : {}),
               });
 
+              // Extract metadata blocks from generated fragment text
+              const { blocks: extractedBlocks, cleanedText } =
+                extractMetadataBlocks(result.text);
+              if (Object.keys(extractedBlocks).length > 0) {
+                result.text = cleanedText;
+              }
+
               const [inserted] = await db
                 .insert(fragments)
                 .values({
@@ -341,6 +366,7 @@ export const generateChapter = task({
                     ...(result.usage?.cacheCreationTokens ? { cacheCreationTokens: result.usage.cacheCreationTokens } : {}),
                     ...(result.usage?.cacheReadTokens ? { cacheReadTokens: result.usage.cacheReadTokens } : {}),
                     ...(result.durationMs ? { durationMs: result.durationMs } : {}),
+                    ...(Object.keys(extractedBlocks).length > 0 ? { extractedBlocks } : {}),
                   },
                 })
                 .returning({ id: fragments.id });
@@ -349,6 +375,8 @@ export const generateChapter = task({
                 id: inserted.id,
                 title: prompt.title,
                 content: result.text,
+                position: prompt.position,
+                extractedBlocks: Object.keys(extractedBlocks).length > 0 ? extractedBlocks : undefined,
               };
             },
           );
@@ -363,6 +391,29 @@ export const generateChapter = task({
           }
           }
         }
+      }
+
+      // ── Stage omission ────────────────────────────────────────────────
+      // Apply stage omission based on [ESTADO_ETAPAS] extracted from fragments
+      const omissionResult = applyStageOmission(fragmentContents);
+      if (omissionResult) {
+        // Replace in-place (avoids const → let reassignment fights with formatter)
+        fragmentContents.splice(0, fragmentContents.length, ...omissionResult.fragments);
+      }
+
+      // Persist stage config to generation metadata
+      if (omissionResult) {
+        const existingMeta = (gen.generationMetadata ?? {}) as Record<string, unknown>;
+        await db
+          .update(chapterGenerations)
+          .set({
+            generationMetadata: {
+              ...existingMeta,
+              stageConfig: omissionResult.stageConfig,
+              stageOmissions: omissionResult.omissions,
+            } as any,
+          })
+          .where(eq(chapterGenerations.id, generationId));
       }
 
       if (fragmentContents.length === 0) {
@@ -382,10 +433,17 @@ export const generateChapter = task({
       let plan: Record<string, unknown> | null = persistedPlan;
       let plannerExecutionId: string | null = null;
 
-      // Build editorial data context (data-only, no instructions)
-      const editorialData = editorialBundle
+      // Build editorial data context (data-only, no instructions).
+      // Append previous chapters' extracted metadata blocks as sibling XML.
+      let editorialData = editorialBundle
         ? renderEditorialData(editorialBundle, { chapterId: gen.chapterId })
         : null;
+
+      if (previousChaptersContext) {
+        editorialData = editorialData
+          ? editorialData + "\n" + previousChaptersContext
+          : previousChaptersContext;
+      }
 
       // Derive mustCover and current fragment IDs for plan validation.
       // These must be available before the plan check so semantic validation

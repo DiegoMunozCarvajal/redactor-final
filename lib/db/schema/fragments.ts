@@ -4,6 +4,24 @@ import { prompts } from "./prompts";
 import { promptVersions } from "./prompt-versions";
 import { llmPromptExecutions } from "./prompt-registry";
 
+/**
+ * Shape of the `metadata` jsonb column on fragments.
+ *
+ * `extractedBlocks` holds [BLOCK_NAME] blocks stripped from fragment text
+ * for cross-chapter editorial context. Other fields track generation metadata.
+ */
+export type FragmentMetadata = {
+  provider?: string;
+  costUsd?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  durationMs?: number;
+  extractedBlocks?: Record<string, Record<string, string>>;
+  /** Originality gate lineage metadata (set by the prompt-generation route). */
+  originalityLineage?: unknown;
+  originalityAssessmentId?: string;
+};
+
 export const fragments = pgTable(
   "fragments",
   {
@@ -20,7 +38,7 @@ export const fragments = pgTable(
       .references(() => llmPromptExecutions.id, { onDelete: "restrict" }),
     position: integer("position").notNull(),
     content: text("content"),
-    metadata: jsonb("metadata"),
+    metadata: jsonb("metadata").$type<FragmentMetadata>(),
     modelUsed: text("model_used"),
     tokensUsed: integer("tokens_used"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -33,6 +51,3 @@ export const fragments = pgTable(
 
 export type Fragment = typeof fragments.$inferSelect;
 export type NewFragment = typeof fragments.$inferInsert;
-
-// fragmentMetadataSchema and FragmentMetadata removed — unused.
-// The `metadata` jsonb column is typed as unknown in application code.

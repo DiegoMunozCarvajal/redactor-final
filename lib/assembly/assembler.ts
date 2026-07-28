@@ -3,6 +3,7 @@ import { serializeAssemblyFragments, serializeAssemblyPlan, type AssemblyFragmen
 import type { AssemblyPlanV1 } from './plan-schema';
 import type { ReasoningEffort } from '@/lib/ai/completion';
 import { assertOriginalEnough } from '@/lib/ai/originality-check';
+import { validateFragmentMarkers } from './validate-fragments';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,6 +91,9 @@ function assertNotSingleFragmentEcho(
 export async function runAssemblyAssembler(
   input: AssemblerInput,
 ): Promise<AssemblerResult> {
+  // Pre-flight guard: reject fragments with unresolved evidence markers
+  validateFragmentMarkers(input.fragments);
+
   const serializedFragments = serializeAssemblyFragments(input.fragments);
   const serializedPlan = serializeAssemblyPlan(input.plan);
 
