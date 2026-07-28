@@ -103,7 +103,7 @@ const selectFields = {
  * rejects revisions marked as `legacyNonExecutable`.
  */
 export async function resolvePromptRevision(
-  input: { kind: PromptKind; runRevisionId?: string; projectId?: string },
+  input: { kind: PromptKind; runRevisionId?: string; projectId?: string; revisionNumber?: number },
   ctx: DB = db,
 ): Promise<ResolvedPromptRevision> {
   let rows: SelectRow[];
@@ -136,6 +136,9 @@ export async function resolvePromptRevision(
         and(
           eq(projectPromptBindings.projectId, input.projectId),
           eq(projectPromptBindings.kind, input.kind),
+          ...(input.revisionNumber !== undefined
+            ? [eq(promptRevisions.revisionNumber, input.revisionNumber)]
+            : []),
         ),
       )
       .limit(1);
@@ -153,7 +156,14 @@ export async function resolvePromptRevision(
           promptDefinitions,
           eq(promptRevisions.promptDefinitionId, promptDefinitions.id),
         )
-        .where(eq(promptDefaults.kind, input.kind))
+        .where(
+          and(
+            eq(promptDefaults.kind, input.kind),
+            ...(input.revisionNumber !== undefined
+              ? [eq(promptRevisions.revisionNumber, input.revisionNumber)]
+              : []),
+          ),
+        )
         .limit(1);
     }
   } else {
@@ -169,7 +179,34 @@ export async function resolvePromptRevision(
         promptDefinitions,
         eq(promptRevisions.promptDefinitionId, promptDefinitions.id),
       )
-      .where(eq(promptDefaults.kind, input.kind))
+      .where(
+        and(
+          eq(promptDefaults.kind, input.kind),
+          ...(input.revisionNumber !== undefined
+            ? [eq(promptRevisions.revisionNumber, input.revisionNumber)]
+            : []),
+        ),
+      )
+      .limit(1);
+  }
+
+  // 4. Direct lookup by kind + revisionNumber when defaults chain failed
+  // promptDefaults FK join constrains to one revision — can't resolve
+  // a different revisionNumber. Bypass defaults, query directly.
+  if (rows.length === 0 && input.revisionNumber !== undefined) {
+    rows = await ctx
+      .select(selectFields)
+      .from(promptRevisions)
+      .innerJoin(
+        promptDefinitions,
+        eq(promptRevisions.promptDefinitionId, promptDefinitions.id),
+      )
+      .where(
+        and(
+          eq(promptDefinitions.kind, input.kind),
+          eq(promptRevisions.revisionNumber, input.revisionNumber),
+        ),
+      )
       .limit(1);
   }
 
