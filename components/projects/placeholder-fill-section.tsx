@@ -38,10 +38,19 @@ interface SearchResult {
   provider: string;
 }
 
+export interface EnrichedPlaceholder extends ChapterPlaceholder {
+  versions?: Array<{
+    id: string;
+    definition: string | null;
+    fillMetadata: PlaceholderFillMetadata | null;
+    createdAt: string;
+  }>;
+}
+
 interface Props {
   projectId: string;
   chapterId: string;
-  placeholders: ChapterPlaceholder[];
+  placeholders: EnrichedPlaceholder[];
   onSaveDefinition: (name: string, definition: string | null) => Promise<void>;
   onFillComplete?: () => void | Promise<void>;
   currentPromptsHash?: string;
@@ -75,6 +84,7 @@ export function PlaceholderFillSection({
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [changingVersion, setChangingVersion] = useState<Set<string>>(new Set());
   const editRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -516,6 +526,65 @@ export function PlaceholderFillSection({
                       <Pencil className="h-2.5 w-2.5" />
                       edit
                     </button>
+                  )}
+                  {
+                    /* Version dots */
+                  }
+                  {ph.versions && ph.versions.length > 1 && (
+                    <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
+                      <span className="text-[9px] text-muted-foreground/50">v:</span>
+                      {ph.versions.map((v, i) => {
+                        const isActive = v.id === ph.activeVersionId;
+                        const isLoading = changingVersion.has(ph.name);
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            disabled={isLoading}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (v.id === ph.activeVersionId) return;
+                              setChangingVersion((prev) => new Set(prev).add(ph.name));
+                              try {
+                                const res = await fetch(
+                                  `/api/projects/${projectId}/chapters/${chapterId}/placeholders/${encodeURIComponent(ph.name)}/version`,
+                                  {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ activeVersionId: v.id }),
+                                  },
+                                );
+                                if (res.ok) {
+                                  await onFillComplete?.();
+                                } else {
+                                  const err = await res.json().catch(() => ({}));
+                                  toast.error(err.error ?? 'Failed to switch version');
+                                }
+                              } catch {
+                                toast.error('Network error');
+                              } finally {
+                                setChangingVersion((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(ph.name);
+                                  return next;
+                                });
+                              }
+                            }}
+                            className={`text-[9px] px-1 py-px rounded transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                            } ${isLoading ? 'opacity-50' : ''}`}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-2 w-2 animate-spin" />
+                            ) : (
+                              `v${ph.versions!.length - i}`
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
 

@@ -59,9 +59,9 @@ import { CorrectorSection } from "@/components/prompts/corrector-section";
 import { CorrectorPromptSection } from "@/components/prompts/corrector-prompt-section";
 import { VersionHistory } from "@/components/prompts/version-history";
 import { PlaceholderFillSection } from "@/components/projects/placeholder-fill-section";
+import type { EnrichedPlaceholder } from "@/components/projects/placeholder-fill-section";
 import { DiffModal } from "@/components/projects/diff-modal";
 import { EditorialVersionBadge } from "@/components/projects/editorial-version-badge";
-import type { ChapterPlaceholder } from "@/lib/db/schema";
 import { getLatestGenerationError } from "@/lib/generation-errors";
 import {
   getActiveGeneration,
@@ -237,7 +237,7 @@ export default function ChapterPage() {
   const [savingReviewKind, setSavingReviewKind] = useState<ReviewPromptKind | null>(null);
   const fetchingRef = useRef(false);
   const pollErrorCount = useRef(0);
-  const [placeholders, setPlaceholders] = useState<ChapterPlaceholder[]>([]);
+  const [placeholders, setPlaceholders] = useState<EnrichedPlaceholder[]>([]);
   const [currentPromptsHash, setCurrentPromptsHash] = useState<string | undefined>();
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [addingPrompt, setAddingPrompt] = useState(false);
