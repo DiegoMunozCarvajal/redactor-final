@@ -4,7 +4,7 @@ import { searchSemanticScholar, type SearchResult } from "./web-search";
 import { retrieveContext } from "./rag";
 import { inferPlaceholderProvider } from "@/lib/placeholder-research";
 import { db } from "@/lib/db";
-import { chapterPlaceholders, chapters } from "@/lib/db/schema";
+import { chapterPlaceholders, chapters, placeholderVersions } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
 import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
 import type { EditorialBundle } from "@/lib/editorial-brief/schema";
@@ -480,6 +480,8 @@ export interface FillOneResult {
   evidenceSourceIds?: string[];
   /** Execution IDs from versioned prompt calls (first attempt and optionally retry) */
   executionIds?: string[];
+  /** ID of the created placeholder_versions row (gate path only). */
+  versionId?: string;
 }
 
 export interface FillOnePlaceholderParams {
@@ -765,6 +767,7 @@ export async function fillOnePlaceholder(
     // Sentinal used by persistAccepted closure to detect whether the
     // generate callback actually produced a definition.
     let lastExecutionIds: string[] = [];
+    let persistedVersionId: string | undefined;
 
     const gateInput: OriginalityGateInput<string> = {
       context: gateContext,
@@ -813,29 +816,64 @@ export async function fillOnePlaceholder(
         };
       },
       persistAccepted: async (tx, candidate, assessmentId, lineage) => {
+        // First, look up the placeholder row to get its ID
+        const [phRow] = await tx
+          .select({ id: chapterPlaceholders.id })
+          .from(chapterPlaceholders)
+          .where(
+            and(
+              eq(chapterPlaceholders.chapterId, currentChapterId!),
+              eq(chapterPlaceholders.name, ph.name),
+            ),
+          )
+          .limit(1);
+
+        if (!phRow) {
+          throw new Error(`Placeholder {${ph.name}} not found for chapter ${currentChapterId}`);
+        }
+
+        const fillMeta = buildPlaceholderFillMetadata({
+          provider,
+          sources,
+          ragChunks: ragChunks || undefined,
+          model,
+          ...(editorialBundle
+            ? {
+                editorialBriefId: editorialBundle.id,
+                editorialBriefVersion: editorialBundle.version,
+                editorialBriefHash: editorialBundle.hash,
+              }
+            : {}),
+          ...(evidenceQuery ? { evidenceQuery } : {}),
+          ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
+          status: "completed",
+          originalityLineage: lineage,
+          originalityAssessmentId: assessmentId,
+          definitionOrigin: "ai",
+        });
+
+        // INSERT version row
+        const [version] = await tx
+          .insert(placeholderVersions)
+          .values({
+            placeholderId: phRow.id,
+            definition: candidate.value,
+            fillMetadata: fillMeta,
+            chapterGenerationId: chapterGenerationId ?? null,
+          })
+          .returning({ id: placeholderVersions.id });
+
+        // Capture version ID for FillOneResult
+        persistedVersionId = version.id;
+
+        // UPDATE chapterPlaceholders with definition + activeVersionId
         await tx
           .update(chapterPlaceholders)
           .set({
             definition: candidate.value,
-            fillMetadata: buildPlaceholderFillMetadata({
-              provider,
-              sources,
-              ragChunks: ragChunks || undefined,
-              model,
-              ...(editorialBundle
-                ? {
-                    editorialBriefId: editorialBundle.id,
-                    editorialBriefVersion: editorialBundle.version,
-                    editorialBriefHash: editorialBundle.hash,
-                  }
-                : {}),
-              ...(evidenceQuery ? { evidenceQuery } : {}),
-              ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
-              status: "completed",
-              originalityLineage: lineage,
-              originalityAssessmentId: assessmentId,
-              definitionOrigin: "ai",
-            }),
+            fillMetadata: fillMeta,
+            activeVersionId: version.id,
+            definitionOrigin: "ai",
           })
           .where(
             and(
@@ -858,6 +896,7 @@ export async function fillOnePlaceholder(
         ragChunks: ragChunks || undefined,
         provider,
         executionIds: lastExecutionIds,
+        versionId: persistedVersionId,
         ...(evidenceQuery ? { evidenceQuery } : {}),
         ...(evidenceSourceIds ? { evidenceSourceIds } : {}),
       };
