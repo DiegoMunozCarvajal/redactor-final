@@ -1,5 +1,6 @@
 export * from "./book-templates";
 export * from "./chapter-placeholders";
+export * from "./placeholder-versions";
 export * from "./chapters";
 export * from "./prompts";
 export * from "./projects";

@@ -20,6 +20,10 @@ export const chapterPlaceholders = pgTable(
     templateArtifactHash: text("template_artifact_hash"),
     dependencyNames: text("dependency_names").array().notNull().default([]),
     fillMetadata: jsonb("fill_metadata").$type<PlaceholderFillMetadata>(),
+    // FK to placeholder_versions enforced via SQL migration.
+    // No Drizzle `references()` call to avoid circular import between
+    // chapter-placeholders and placeholder-versions.
+    activeVersionId: uuid("active_version_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("idx_chapter_placeholders_unique").on(table.chapterId, table.name)],
