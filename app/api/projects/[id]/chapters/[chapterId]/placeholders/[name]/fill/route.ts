@@ -524,14 +524,16 @@ export async function PATCH(
       });
 
   // Check if a version row already exists for the current definition
-  const existingVersions = await db
+  const [existingVersion] = await db
     .select({ id: placeholderVersions.id })
     .from(placeholderVersions)
-    .where(eq(placeholderVersions.placeholderId, placeholderRow.id))
-    .orderBy(placeholderVersions.createdAt)
+    .where(and(
+      eq(placeholderVersions.placeholderId, placeholderRow.id),
+      eq(placeholderVersions.definition, placeholderRow.definition),
+    ))
     .limit(1);
 
-  let activeVersionId: string | null = existingVersions[0]?.id ?? null;
+  let activeVersionId: string | null = existingVersion?.id ?? null;
 
   // If no version exists for this definition, create one
   if (!activeVersionId && placeholderRow.definition) {
