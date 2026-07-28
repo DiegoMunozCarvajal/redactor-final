@@ -2,7 +2,7 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "@/lib/db/schema";
 import { db } from "@/lib/db";
-import { chapterPlaceholders } from "@/lib/db/schema";
+import { chapterPlaceholders, placeholderVersions } from "@/lib/db/schema";
 import { eq, inArray, and, asc } from "drizzle-orm";
 import {
   extractPlaceholders,
@@ -119,28 +119,42 @@ export async function syncChapterPlaceholders(
     // Auto-resolve tema variants from project topic (if provided)
     if (projectTopic) {
       const allRows = await tx
-        .select({ name: chapterPlaceholders.name, definition: chapterPlaceholders.definition })
+        .select({
+          id: chapterPlaceholders.id,
+          name: chapterPlaceholders.name,
+          definition: chapterPlaceholders.definition,
+        })
         .from(chapterPlaceholders)
         .where(eq(chapterPlaceholders.chapterId, chapterId));
 
-      const unresolvedTemaNames = allRows
-        .filter((r) => {
-          if (r.definition) return false;
-          const segments = r.name.toLowerCase().split("_");
-          return segments.includes("tema") || segments.includes("topic");
-        })
-        .map((r) => r.name);
+      const unresolvedTemaNames = allRows.filter((r) => {
+        if (r.definition) return false;
+        const segments = r.name.toLowerCase().split("_");
+        return segments.includes("tema") || segments.includes("topic");
+      });
 
-      if (unresolvedTemaNames.length > 0) {
+      for (const row of unresolvedTemaNames) {
+        const [version] = await tx
+          .insert(placeholderVersions)
+          .values({
+            placeholderId: row.id,
+            definition: projectTopic,
+            fillMetadata: {
+              sources: [],
+              filledAt: new Date().toISOString(),
+              definitionOrigin: "system",
+            },
+          })
+          .returning({ id: placeholderVersions.id });
+
         await tx
           .update(chapterPlaceholders)
-          .set({ definition: projectTopic })
-          .where(
-            and(
-              eq(chapterPlaceholders.chapterId, chapterId),
-              inArray(chapterPlaceholders.name, unresolvedTemaNames),
-            ),
-          );
+          .set({
+            definition: projectTopic,
+            activeVersionId: version.id,
+            definitionOrigin: "system",
+          })
+          .where(eq(chapterPlaceholders.id, row.id));
       }
     }
   };
