@@ -25,7 +25,7 @@ export interface PlaceholderFillMetadata {
   /** ID of the originality assessment result, if one was performed. */
   originalityAssessmentId?: string;
   /** How this placeholder definition was originally filled. */
-  definitionOrigin?: "legacy" | "manual" | "ai";
+  definitionOrigin?: "legacy" | "manual" | "ai" | "system";
   /** ISO timestamp of when a human confirmed this placeholder definition. */
   manualConfirmedAt?: string;
 }
@@ -46,7 +46,7 @@ export function buildPlaceholderFillMetadata(params: {
   evidenceSourceIds?: string[];
   originalityLineage?: OriginalityLineage;
   originalityAssessmentId?: string;
-  definitionOrigin?: "legacy" | "manual" | "ai";
+  definitionOrigin?: "legacy" | "manual" | "ai" | "system";
   manualConfirmedAt?: string;
 }): PlaceholderFillMetadata {
   return {
