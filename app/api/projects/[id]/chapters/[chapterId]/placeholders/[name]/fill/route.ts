@@ -523,20 +523,48 @@ export async function PATCH(
         promptRevisions: {},
       });
 
-  // Update fillMetadata: set manualConfirmedAt, definitionOrigin, and lineage
-  const existingMeta = (placeholderRow.fillMetadata ?? {}) as PlaceholderFillMetadata;
-  const updatedMeta: PlaceholderFillMetadata = {
-    ...existingMeta,
-    filledAt: new Date().toISOString(),
-    definitionOrigin: "manual",
-    manualConfirmedAt: new Date().toISOString(),
-    originalityLineage: authLineage,
-  };
+  // Check if a version row already exists for the current definition
+  const existingVersions = await db
+    .select({ id: placeholderVersions.id })
+    .from(placeholderVersions)
+    .where(eq(placeholderVersions.placeholderId, placeholderRow.id))
+    .orderBy(placeholderVersions.createdAt)
+    .limit(1);
+
+  let activeVersionId: string | null = existingVersions[0]?.id ?? null;
+
+  // If no version exists for this definition, create one
+  if (!activeVersionId && placeholderRow.definition) {
+    const [version] = await db
+      .insert(placeholderVersions)
+      .values({
+        placeholderId: placeholderRow.id,
+        definition: placeholderRow.definition,
+        fillMetadata: {
+          ...((placeholderRow.fillMetadata as PlaceholderFillMetadata) ?? { sources: [] }),
+          filledAt: new Date().toISOString(),
+          definitionOrigin: "manual",
+          manualConfirmedAt: new Date().toISOString(),
+          originalityLineage: authLineage,
+        },
+      })
+      .returning({ id: placeholderVersions.id });
+
+    activeVersionId = version.id;
+  }
+
   await db
     .update(chapterPlaceholders)
     .set({
-      fillMetadata: updatedMeta,
+      fillMetadata: {
+        ...((placeholderRow.fillMetadata as PlaceholderFillMetadata) ?? { sources: [] }),
+        filledAt: new Date().toISOString(),
+        definitionOrigin: "manual",
+        manualConfirmedAt: new Date().toISOString(),
+        originalityLineage: authLineage,
+      },
       definitionOrigin: "manual",
+      ...(activeVersionId ? { activeVersionId } : {}),
     })
     .where(
       and(
