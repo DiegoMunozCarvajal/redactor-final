@@ -6,6 +6,7 @@ import {
   chapterPlaceholders,
   chapters,
   chapterGenerations,
+  placeholderVersions,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, lt, sql } from "drizzle-orm";
@@ -258,34 +259,58 @@ export async function POST(
 
           // Persist definition to DB on each placeholder event.
           // Blocked placeholders only get fillMetadata (no definition set).
-          if (event.type === "placeholder" && event.name && event.definition) {
-            await db
-              .update(chapterPlaceholders)
-              .set({
-                definition: event.definition,
-                fillMetadata: buildPlaceholderFillMetadata({
-                  provider: event.provider,
-                  sources: event.sources,
-                  ragChunks: event.ragChunks,
-                  model,
-                  promptsHash,
-                  ...(briefBundle
-                    ? {
-                        editorialBriefId: briefBundle.id,
-                        editorialBriefVersion: briefBundle.version,
-                        editorialBriefHash: briefBundle.hash,
-                      }
-                    : {}),
-                  ...(event.evidenceQuery ? { evidenceQuery: event.evidenceQuery } : {}),
-                  ...(event.evidenceSourceIds ? { evidenceSourceIds: event.evidenceSourceIds } : {}),
-                }),
-              })
+          if (event.type === 'placeholder' && event.name && event.definition) {
+            // Look up placeholder row ID
+            const [phRow] = await db
+              .select({ id: chapterPlaceholders.id })
+              .from(chapterPlaceholders)
               .where(
-                and(
-                  eq(chapterPlaceholders.chapterId, chapterId),
-                  eq(chapterPlaceholders.name, event.name),
-                ),
-              );
+                and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, event.name)),
+              )
+              .limit(1);
+
+            if (phRow) {
+              const fillMeta = buildPlaceholderFillMetadata({
+                provider: event.provider,
+                sources: event.sources,
+                ragChunks: event.ragChunks,
+                model,
+                promptsHash,
+                ...(briefBundle
+                  ? {
+                      editorialBriefId: briefBundle.id,
+                      editorialBriefVersion: briefBundle.version,
+                      editorialBriefHash: briefBundle.hash,
+                    }
+                  : {}),
+                ...(event.evidenceQuery ? { evidenceQuery: event.evidenceQuery } : {}),
+                ...(event.evidenceSourceIds ? { evidenceSourceIds: event.evidenceSourceIds } : {}),
+              });
+
+              // INSERT version row
+              const [version] = await db
+                .insert(placeholderVersions)
+                .values({
+                  placeholderId: phRow.id,
+                  definition: event.definition,
+                  fillMetadata: fillMeta,
+                  chapterGenerationId: fillGen.id,
+                })
+                .returning({ id: placeholderVersions.id });
+
+              // UPDATE chapterPlaceholders with definition + activeVersionId
+              await db
+                .update(chapterPlaceholders)
+                .set({
+                  definition: event.definition,
+                  fillMetadata: fillMeta,
+                  activeVersionId: version.id,
+                  definitionOrigin: 'ai',
+                })
+                .where(
+                  and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, event.name)),
+                );
+            }
           } else if (event.type === "blocked" && event.name) {
             // Persist blocked status in fillMetadata so UI can show reason.
             // Don't set definition — placeholder remains unfilled.
