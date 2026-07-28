@@ -1,12 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   editorialBriefContentSchema,
+  editorialBriefContentSchemaV3,
+  editorialBriefContentWriteSchemaV3,
   chapterEditorialContractSchema,
   editorialBriefBundleInputSchema,
   editorialSnapshotSchema,
+  isEditorialBriefContentV3,
+  type EditorialBriefContentV3,
 } from "../schema";
 import {
   createTestBriefContent,
+  createTestBriefContentV3,
   createTestChapterContract,
   TEST_CHAPTER_1_ID,
   TEST_CHAPTER_2_ID,
@@ -314,5 +319,72 @@ describe("editorialSnapshotSchema", () => {
         "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("editorialBriefContentSchemaV3", () => {
+  it("accepts v3 content with all required fields", () => {
+    const data = createTestBriefContentV3();
+    const result = editorialBriefContentSchemaV3.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects v3 content missing schemaVersion", () => {
+    const data = createTestBriefContentV3();
+    const { schemaVersion: _, ...noVersion } = data as Record<string, unknown>;
+    const result = editorialBriefContentSchemaV3.safeParse(noVersion);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects v3 content missing topicKnowledge", () => {
+    const data = createTestBriefContentV3();
+    const { topicKnowledge: _, ...noTk } = data as Record<string, unknown>;
+    const result = editorialBriefContentSchemaV3.safeParse(noTk);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects v3 content with extra unknown fields (strict mode)", () => {
+    const data = { ...createTestBriefContentV3(), rogueField: "nope" };
+    const result = editorialBriefContentSchemaV3.safeParse(data);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) => /unexpected|unrecognized/i.test(i.message)),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("editorialBriefContentWriteSchemaV3", () => {
+  it("requires centralTopic with min(1)", () => {
+    const result = editorialBriefContentWriteSchemaV3.safeParse({
+      ...createTestBriefContentV3(),
+      centralTopic: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts valid minimal content with centralTopic set", () => {
+    const data = createTestBriefContentV3();
+    const result = editorialBriefContentWriteSchemaV3.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("isEditorialBriefContentV3", () => {
+  it("returns true for object with schemaVersion: '3.0'", () => {
+    const data = createTestBriefContentV3();
+    expect(isEditorialBriefContentV3(data)).toBe(true);
+  });
+
+  it("returns false for object without schemaVersion", () => {
+    const data = createTestBriefContentV3();
+    const { schemaVersion: _, ...noVersion } = data;
+    expect(isEditorialBriefContentV3(noVersion as unknown as EditorialBriefContentV3)).toBe(false);
+  });
+
+  it("returns false for v2 content shape (has contentStrategy, evidence but no schemaVersion)", () => {
+    const data = createTestBriefContent();
+    expect(isEditorialBriefContentV3(data)).toBe(false);
   });
 });

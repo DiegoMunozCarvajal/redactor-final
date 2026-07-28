@@ -1,8 +1,11 @@
 import type {
   EditorialBriefContent,
+  EditorialBriefContentV3,
   ChapterEditorialContract,
   EditorialBundle,
 } from "./schema";
+
+import { isEditorialBriefContentV3 } from "./schema";
 
 // ---------------------------------------------------------------------------
 // XML escaping
@@ -143,6 +146,63 @@ function renderResearchBasis(
 }
 
 // ---------------------------------------------------------------------------
+// v3 render functions
+// ---------------------------------------------------------------------------
+
+function renderTopicKnowledge(
+  tk: EditorialBriefContentV3["topicKnowledge"],
+): string {
+  return [
+    "  <topic_knowledge>",
+    renderArray("essential_topics", tk.essentialTopics),
+    renderArray("audience_language", tk.audienceLanguage),
+    renderArray("niche_terms", tk.nicheTerms),
+    renderArray("out_of_scope", tk.outOfScope),
+    "  </topic_knowledge>",
+  ].join("\n");
+}
+
+function renderScenarioCatalog(
+  sc: EditorialBriefContentV3["scenarioCatalog"],
+): string {
+  if (sc.length === 0) return "";
+  const scenarios = sc.map((entry) =>
+    [
+      "    <scenario>",
+      `      ${renderElement("situation", entry.situation)}`,
+      `      ${renderElement("context", entry.context)}`,
+      "    </scenario>",
+    ].join("\n"),
+  );
+  return [
+    "  <scenario_catalog>",
+    ...scenarios,
+    "  </scenario_catalog>",
+  ].join("\n");
+}
+
+function renderEvidenceGaps(
+  gaps: EditorialBriefContentV3["evidenceGaps"],
+): string {
+  if (gaps.length === 0) return "";
+  const items = gaps.map((gap) =>
+    [
+      "    <gap>",
+      `      ${renderElement("question", gap.question)}`,
+      `      ${renderElement("category", gap.category)}`,
+      renderArray("suggested_queries", gap.suggestedQueries, 6),
+      `      ${renderElement("required", String(gap.required))}`,
+      "    </gap>",
+    ].join("\n"),
+  );
+  return [
+    "  <evidence_gaps>",
+    ...items,
+    "  </evidence_gaps>",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Evidence policy (placeholder-fill specific section)
 // ---------------------------------------------------------------------------
 
@@ -242,6 +302,42 @@ const ALL_DATA_SECTIONS: Array<keyof EditorialBriefContent> = [
   "researchBasis",
 ];
 
+// ---------------------------------------------------------------------------
+// v3 data-only renderer
+// ---------------------------------------------------------------------------
+
+function renderEditorialDataV3(bundle: EditorialBundle): string {
+  const content = bundle.content as EditorialBriefContentV3;
+  const parts: string[] = [];
+
+  // centralTopic
+  if (content.centralTopic && content.centralTopic !== "-") {
+    parts.push(renderCentralTopic(content.centralTopic));
+  }
+
+  // shared v2 sections
+  parts.push(renderMarket(content.market));
+  parts.push(renderAudience(content.audience));
+  parts.push(renderThesis(content.thesis));
+  parts.push(renderVoice(content.voice));
+
+  // more shared sections
+  parts.push(renderGuardrails(content.guardrails));
+  parts.push(renderPackaging(content.packaging));
+  parts.push(renderResearchBasis(content.researchBasis));
+
+  // v3-only sections
+  parts.push(renderTopicKnowledge(content.topicKnowledge));
+  parts.push(renderScenarioCatalog(content.scenarioCatalog));
+  parts.push(renderEvidenceGaps(content.evidenceGaps));
+
+  return [
+    `<editorial_context version="${bundle.version}" hash="${escapeXml(bundle.hash)}">`,
+    ...parts,
+    "</editorial_context>",
+  ].join("\n");
+}
+
 /**
  * Render an editorial bundle's data sections as XML, without any instruction
  * tags, authority markers, or scope-specific prose.
@@ -260,11 +356,17 @@ export function renderEditorialData(
 ): string | null {
   if (bundle === null) return null;
 
+  if (isEditorialBriefContentV3(bundle.content)) {
+    return renderEditorialDataV3(bundle);
+  }
+
+  // v2: existing behavior unchanged
   const { chapterId } = params;
 
   // Build data sections (all of them — no scope filtering)
   const parts: string[] = [];
 
+  // v2 — all sections
   for (const sectionKey of ALL_DATA_SECTIONS) {
     const render = SECTION_RENDERERS[sectionKey];
     parts.push(render(bundle.content[sectionKey]));

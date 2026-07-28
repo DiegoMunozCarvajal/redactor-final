@@ -4,6 +4,8 @@ import { renderEditorialData } from "../render";
 import { hashEditorialBundle } from "../hash";
 import {
   createTestEditorialBundle,
+  createTestEditorialBundleV3,
+  createTestBriefContent,
   TEST_CHAPTER_1_ID,
 } from "./fixtures";
 import type { EditorialBundle } from "../schema";
@@ -77,6 +79,17 @@ describe("renderEditorialData", () => {
     expect(result).toContain("first_message_stats");
   });
 
+  it("renders <content_strategy> and <evidence> for v2 bundle", () => {
+    const { bundle } = getBundles();
+    const result = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+    expect(result).toContain("<content_strategy>");
+    expect(result).toContain("</content_strategy>");
+    expect(result).toContain("<evidence>");
+    expect(result).toContain("</evidence>");
+  });
+
   it("does NOT include authority tag", () => {
     const { bundle } = getBundles();
     const result = renderEditorialData(bundle, {
@@ -136,5 +149,82 @@ describe("renderEditorialData", () => {
     expect(result).toContain("Men &amp; women");
     expect(result).toContain("&lt; 30 years old");
     expect(result).not.toContain("Men & women");
+  });
+});
+
+function getV3Bundle(): { bundle: EditorialBundle; hash: string } {
+  const bundle = createTestEditorialBundleV3();
+  const hashValue = hashEditorialBundle(bundle);
+  return {
+    bundle: { ...bundle, hash: hashValue },
+    hash: hashValue,
+  };
+}
+
+describe("renderEditorialData with v3 bundle", () => {
+  it("contains <topic_knowledge>, <scenario_catalog>, <evidence_gaps>", () => {
+    const { bundle } = getV3Bundle();
+    const result = renderEditorialData(bundle, {});
+    expect(result).toContain("<topic_knowledge>");
+    expect(result).toContain("</topic_knowledge>");
+    expect(result).toContain("<scenario_catalog>");
+    expect(result).toContain("</scenario_catalog>");
+    expect(result).toContain("<evidence_gaps>");
+    expect(result).toContain("</evidence_gaps>");
+  });
+
+  it("does NOT contain <chapter_contract>, <content_strategy>, <evidence>", () => {
+    const { bundle } = getV3Bundle();
+    const result = renderEditorialData(bundle, {});
+    expect(result).not.toContain("<chapter_contract>");
+    expect(result).not.toContain("<content_strategy>");
+    expect(result).not.toContain("<evidence>");
+  });
+
+  it("works without chapterId param (no contract rendered)", () => {
+    const { bundle } = getV3Bundle();
+    const withoutChapterId = renderEditorialData(bundle, {});
+    const withChapterId = renderEditorialData(bundle, {
+      chapterId: TEST_CHAPTER_1_ID,
+    });
+
+    // Both should succeed and contain v3 sections
+    expect(withoutChapterId).toContain("<topic_knowledge>");
+    expect(withChapterId).toContain("<topic_knowledge>");
+    // Neither should contain chapter_contract — v3 ignores chapterId
+    expect(withoutChapterId).not.toContain("<chapter_contract>");
+    expect(withChapterId).not.toContain("<chapter_contract>");
+  });
+
+  it("does NOT include instruction tags in v3 mode", () => {
+    const { bundle } = getV3Bundle();
+    const result = renderEditorialData(bundle, {});
+    expect(result).not.toContain("assembly_instructions");
+    expect(result).not.toContain("placeholder_fill_instructions");
+    expect(result).not.toContain("adherence_rubric");
+  });
+
+  it("renders v3 topicKnowledge data values", () => {
+    const { bundle } = getV3Bundle();
+    const result = renderEditorialData(bundle, {});
+
+    // topicKnowledge fields
+    expect(result).toContain("Conversation threading");
+    expect(result).toContain("ghosting");
+    expect(result).toContain("IOI");
+
+    // scenarioCatalog data
+    expect(result).toContain("After mutual match, no message sent yet");
+
+    // evidenceGaps data
+    expect(result).toContain("first message response rate dating apps");
+  });
+
+  it("renders <editorial_context> with correct version and hash", () => {
+    const { bundle, hash } = getV3Bundle();
+    const result = renderEditorialData(bundle, {});
+    expect(result).toContain(
+      `<editorial_context version="${bundle.version}" hash="${hash}">`,
+    );
   });
 });

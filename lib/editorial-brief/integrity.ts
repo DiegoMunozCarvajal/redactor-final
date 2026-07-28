@@ -8,6 +8,7 @@ import { canonicalStringify, hashEditorialBundle } from "./hash";
 import {
   chapterEditorialContractSchema,
   editorialBriefContentSchema,
+  editorialBriefContentSchemaV3,
   type ChapterEditorialContract,
   type EditorialBundle,
 } from "./schema";
@@ -39,9 +40,14 @@ export function hashEditorialContract(contract: unknown): string {
 export function verifyStoredEditorialBundle(
   stored: StoredEditorialBundle,
 ): EditorialBundle {
-  const parsedContent = editorialBriefContentSchema.safeParse(
-    stored.brief.content,
-  );
+  // Branch on schema version — v2 uses .strict() schema that would reject v3
+  // content with unknown keys (topicKnowledge, scenarioCatalog, evidenceGaps).
+  const rawContent = stored.brief.content as Record<string, unknown> | null;
+  const isV3 = rawContent?.schemaVersion === "3.0";
+
+  const parsedContent = isV3
+    ? editorialBriefContentSchemaV3.safeParse(stored.brief.content)
+    : editorialBriefContentSchema.safeParse(stored.brief.content);
   if (!parsedContent.success) {
     throw new EditorialBriefIntegrityError(
       `Stored brief content failed schema validation for brief ${stored.brief.id}: ${parsedContent.error.message}`,
@@ -49,27 +55,29 @@ export function verifyStoredEditorialBundle(
   }
 
   const parsedContracts: ChapterEditorialContract[] = [];
-  for (const row of stored.contracts) {
-    const computedContractHash = hashEditorialContract(row.content);
-    if (computedContractHash !== row.contentHash) {
-      throw new EditorialBriefIntegrityError(
-        `Contract content hash mismatch for chapter ${row.chapterId} in brief ${stored.brief.id} (expected ${row.contentHash}, computed ${computedContractHash})`,
-      );
-    }
+  if (!isV3) {
+    for (const row of stored.contracts) {
+      const computedContractHash = hashEditorialContract(row.content);
+      if (computedContractHash !== row.contentHash) {
+        throw new EditorialBriefIntegrityError(
+          `Contract content hash mismatch for chapter ${row.chapterId} in brief ${stored.brief.id} (expected ${row.contentHash}, computed ${computedContractHash})`,
+        );
+      }
 
-    const parsedContract = chapterEditorialContractSchema.safeParse(row.content);
-    if (!parsedContract.success) {
-      throw new EditorialBriefIntegrityError(
-        `Stored contract for chapter ${row.chapterId} in brief ${stored.brief.id} failed schema validation: ${parsedContract.error.message}`,
-      );
-    }
-    if (parsedContract.data.chapterId !== row.chapterId) {
-      throw new EditorialBriefIntegrityError(
-        `Stored contract chapterId mismatch in brief ${stored.brief.id}: row ${row.chapterId}, content ${parsedContract.data.chapterId}`,
-      );
-    }
+      const parsedContract = chapterEditorialContractSchema.safeParse(row.content);
+      if (!parsedContract.success) {
+        throw new EditorialBriefIntegrityError(
+          `Stored contract for chapter ${row.chapterId} in brief ${stored.brief.id} failed schema validation: ${parsedContract.error.message}`,
+        );
+      }
+      if (parsedContract.data.chapterId !== row.chapterId) {
+        throw new EditorialBriefIntegrityError(
+          `Stored contract chapterId mismatch in brief ${stored.brief.id}: row ${row.chapterId}, content ${parsedContract.data.chapterId}`,
+        );
+      }
 
-    parsedContracts.push(parsedContract.data);
+      parsedContracts.push(parsedContract.data);
+    }
   }
 
   const candidate: EditorialBundle = {

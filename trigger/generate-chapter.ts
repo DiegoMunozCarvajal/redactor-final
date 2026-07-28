@@ -27,6 +27,7 @@ import {
   OriginalityDetectorUnavailableError,
 } from "@/lib/originality/contracts";
 import { sha256Text } from "@/lib/template-pipeline/hash";
+import { isEditorialBriefContentV3 } from "@/lib/editorial-brief/schema";
 import { extractMetadataBlocks, loadPreviousChaptersContext } from "@/lib/assembly/metadata-blocks";
 import { applyStageOmission } from "@/lib/assembly/stage-config";
 import type { FragmentWithMeta } from "@/lib/assembly/stage-config";
@@ -450,11 +451,15 @@ export const generateChapter = task({
       // can verify the persisted plan against the CURRENT generation state.
       let mustCover: string[] = [];
       if (editorialBundle) {
-        const contract = editorialBundle.contracts.find(
-          (c) => c.chapterId === gen.chapterId,
-        );
-        if (contract) {
-          mustCover = contract.mustCover;
+        if (isEditorialBriefContentV3(editorialBundle.content)) {
+          mustCover = []; // v3 has no chapter contracts
+        } else {
+          const contract = editorialBundle.contracts.find(
+            (c) => c.chapterId === gen.chapterId,
+          );
+          if (contract) {
+            mustCover = contract.mustCover;
+          }
         }
       }
       const currentFragmentIds = fragmentContents.map((f) => f.id);

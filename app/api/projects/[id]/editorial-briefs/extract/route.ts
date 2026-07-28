@@ -18,6 +18,7 @@ import { mapRepoError } from "../map-repo-error";
 const extractBodySchema = z.object({
   sourceId: z.string().uuid("sourceId must be a valid UUID"),
   model: z.string().optional(),
+  schemaVersion: z.enum(["3.0"]).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -131,6 +132,7 @@ export async function POST(
       projectTopic: project.topic ?? "",
       chapterContext,
       model: body.model,
+      schemaVersion: body.schemaVersion,
     });
 
     // Create draft from extraction result, binding the extracted source

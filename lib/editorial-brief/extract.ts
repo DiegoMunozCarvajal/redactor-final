@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { DEFAULT_GENERATION_MODEL } from "@/lib/ai/providers";
-import { editorialBriefBundleInputSchema } from "@/lib/editorial-brief/schema";
-import type { EditorialBriefBundleInput, ChapterEditorialContract } from "@/lib/editorial-brief/schema";
+import { editorialBriefBundleInputSchema, editorialBriefContentSchemaV3 } from "@/lib/editorial-brief/schema";
+import type { EditorialBriefContent, EditorialBriefContentV3, ChapterEditorialContract } from "@/lib/editorial-brief/schema";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,8 @@ export class ExtractionPostValidationError extends Error {
 // ---------------------------------------------------------------------------
 
 export interface ExtractEditorialBriefDraftInput {
+  /** Schema version. "3.0" skips chapter contracts and returns content-only. */
+  schemaVersion?: "3.0";
   /** Raw research source text to analyze. */
   sourceText: string;
   /** Project ID for prompt resolution and lineage tracking. */
@@ -211,10 +213,63 @@ function validateEvidenceNeeds(
  */
 export async function extractEditorialBriefDraft(
   input: ExtractEditorialBriefDraftInput,
-): Promise<{ draft: EditorialBriefBundleInput; executionId: string }> {
+): Promise<{ draft: { content: EditorialBriefContent | EditorialBriefContentV3; contracts: ChapterEditorialContract[]; evidenceSourceIds: string[] }; executionId: string }> {
   // Step 1: Validate source text length
   if (input.sourceText.length > MAX_SOURCE_CHARS) {
     throw new ExtractionSourceTooLargeError(input.sourceText.length);
+  }
+
+  // Step 1b: V3 branch — content-only extraction (no chapter contracts)
+  if (input.schemaVersion === "3.0") {
+    const escapedSource = xmlEscape(input.sourceText);
+
+    const jsonSchema = zodToJsonSchema(editorialBriefContentSchemaV3, {
+      target: "openApi3",
+      $refStrategy: "none",
+    });
+    const outputSchemaStr = JSON.stringify(jsonSchema, null, 2);
+
+    const sourceHash = createHash("sha256").update(input.sourceText).digest("hex");
+
+    const { result, executionId } = await executeVersionedPrompt({
+      stage: "editorial-brief-extraction",
+      kind: "editorial-brief-extractor",
+      projectId: input.projectId,
+      revisionId: input.promptRevisionId,
+      markerValues: {
+        "{{PROJECT_TOPIC}}": input.projectTopic,
+        "{{CHAPTER_CONTEXT}}": "",
+        "{{RESEARCH_DOCUMENT}}": escapedSource,
+        "{{OUTPUT_SCHEMA}}": outputSchemaStr,
+      },
+      dataLineage: {
+        "{{RESEARCH_DOCUMENT}}": {
+          sourceHashes: [sourceHash],
+        },
+      },
+      model: input.model ?? DEFAULT_GENERATION_MODEL,
+      schema: editorialBriefContentSchemaV3,
+    });
+
+    const parsedV3 = result.data;
+
+    // Post-validation: centralTopic must be present and meaningful
+    const centralTopic = parsedV3.centralTopic?.trim();
+    if (!centralTopic || centralTopic === "-") {
+      throw new ExtractionPostValidationError(
+        "Extraction produced no centralTopic — the LLM did not infer a topic from the research document.",
+        "The extracted brief must include a non-empty centralTopic field.",
+      );
+    }
+
+    return {
+      draft: {
+        content: parsedV3,
+        contracts: [],
+        evidenceSourceIds: [],
+      },
+      executionId,
+    };
   }
 
   // Step 2: Build marker values

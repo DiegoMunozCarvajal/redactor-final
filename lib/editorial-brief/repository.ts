@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { db } from "@/lib/db/drizzle";
 import { and, eq, sql, max, desc } from "drizzle-orm";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
@@ -19,12 +20,15 @@ import {
 } from "@/lib/editorial-brief/integrity";
 import {
   editorialBriefBundleInputSchema,
+  editorialBriefContentWriteSchemaV3,
+  isEditorialBriefContentV3,
 } from "@/lib/editorial-brief/schema";
 import {
   assertExactChapterCoverage,
 } from "@/lib/editorial-brief/coverage";
 import type {
   EditorialBriefContent,
+  EditorialBriefContentV3,
   ChapterEditorialContract,
   EditorialBundle,
 } from "@/lib/editorial-brief/schema";
@@ -157,7 +161,7 @@ async function enrichToBundle(
 export async function createEditorialBriefDraft(
   input: {
     projectId: string;
-    content: EditorialBriefContent;
+    content: EditorialBriefContent | EditorialBriefContentV3;
     contracts: ChapterEditorialContract[];
     evidenceSourceIds: string[];
   },
@@ -165,16 +169,43 @@ export async function createEditorialBriefDraft(
 ): Promise<EditorialBundle> {
   const dbCtx = ctx ?? db;
 
-  // Validate input shape
-  const parsed = editorialBriefBundleInputSchema.safeParse({
-    content: input.content,
-    contracts: input.contracts,
-    evidenceSourceIds: input.evidenceSourceIds,
-  });
-  if (!parsed.success) {
-    throw new Error(`Invalid bundle input: ${parsed.error.message}`);
+  // Branch on schema version — v3 briefs skip bundle input schema validation
+  // (requires .min(1) contracts) and skip exact chapter coverage.
+  const isV3 = isEditorialBriefContentV3(input.content);
+
+  let normalized: {
+    content: EditorialBriefContent | EditorialBriefContentV3;
+    contracts: ChapterEditorialContract[];
+    evidenceSourceIds: string[];
+  };
+
+  if (isV3) {
+    const parsedContent = editorialBriefContentWriteSchemaV3.parse(input.content);
+    const parsedEvSources = z
+      .array(z.string().uuid().transform((value) => value.toLowerCase()))
+      .max(100)
+      .safeParse(input.evidenceSourceIds);
+    if (!parsedEvSources.success) {
+      throw new Error(
+        `Invalid evidence source ids: ${parsedEvSources.error.message}`,
+      );
+    }
+    normalized = {
+      content: parsedContent,
+      contracts: input.contracts,
+      evidenceSourceIds: parsedEvSources.data,
+    };
+  } else {
+    const parsed = editorialBriefBundleInputSchema.safeParse({
+      content: input.content,
+      contracts: input.contracts,
+      evidenceSourceIds: input.evidenceSourceIds,
+    });
+    if (!parsed.success) {
+      throw new Error(`Invalid bundle input: ${parsed.error.message}`);
+    }
+    normalized = parsed.data;
   }
-  const normalized = parsed.data;
 
   // Compute hash once — unchanged across retries
   const bundleForHash: EditorialBundle = {
@@ -204,8 +235,11 @@ export async function createEditorialBriefDraft(
       ),
     ]);
 
-    // Validate exact chapter coverage on create — every project chapter needs a contract
-    assertExactChapterCoverage(chapterIds, currentChapterIds);
+    // Validate exact chapter coverage on create — every project chapter needs a contract.
+    // V3 briefs have no contracts so this check does not apply.
+    if (!isV3) {
+      assertExactChapterCoverage(chapterIds, currentChapterIds);
+    }
 
     // Check for existing draft BEFORE inserting. The partial unique
     // index uq_editorial_briefs_project_draft enforces at most one draft per
@@ -276,7 +310,7 @@ export async function replaceEditorialBriefDraft(
   input: {
     briefId: string;
     projectId: string;
-    content: EditorialBriefContent;
+    content: EditorialBriefContent | EditorialBriefContentV3;
     contracts: ChapterEditorialContract[];
     evidenceSourceIds: string[];
   },
@@ -284,16 +318,43 @@ export async function replaceEditorialBriefDraft(
 ): Promise<EditorialBundle> {
   const dbCtx = ctx ?? db;
 
-  // Validate input shape
-  const parsed = editorialBriefBundleInputSchema.safeParse({
-    content: input.content,
-    contracts: input.contracts,
-    evidenceSourceIds: input.evidenceSourceIds,
-  });
-  if (!parsed.success) {
-    throw new Error(`Invalid bundle input: ${parsed.error.message}`);
+  // Branch on schema version — v3 briefs skip bundle input schema validation
+  // (requires .min(1) contracts) and skip exact chapter coverage.
+  const isV3 = isEditorialBriefContentV3(input.content);
+
+  let normalized: {
+    content: EditorialBriefContent | EditorialBriefContentV3;
+    contracts: ChapterEditorialContract[];
+    evidenceSourceIds: string[];
+  };
+
+  if (isV3) {
+    const parsedContent = editorialBriefContentWriteSchemaV3.parse(input.content);
+    const parsedEvSources = z
+      .array(z.string().uuid().transform((value) => value.toLowerCase()))
+      .max(100)
+      .safeParse(input.evidenceSourceIds);
+    if (!parsedEvSources.success) {
+      throw new Error(
+        `Invalid evidence source ids: ${parsedEvSources.error.message}`,
+      );
+    }
+    normalized = {
+      content: parsedContent,
+      contracts: input.contracts,
+      evidenceSourceIds: parsedEvSources.data,
+    };
+  } else {
+    const parsed = editorialBriefBundleInputSchema.safeParse({
+      content: input.content,
+      contracts: input.contracts,
+      evidenceSourceIds: input.evidenceSourceIds,
+    });
+    if (!parsed.success) {
+      throw new Error(`Invalid bundle input: ${parsed.error.message}`);
+    }
+    normalized = parsed.data;
   }
-  const normalized = parsed.data;
 
   const bundleForHash: EditorialBundle = {
     id: "",
@@ -342,8 +403,11 @@ export async function replaceEditorialBriefDraft(
       ),
     ]);
 
-    // Validate exact chapter coverage on save — prevents incomplete drafts
-    assertExactChapterCoverage(chapterIds, currentChapterIds);
+    // Validate exact chapter coverage on save — prevents incomplete drafts.
+    // V3 briefs have no contracts so this check does not apply.
+    if (!isV3) {
+      assertExactChapterCoverage(chapterIds, currentChapterIds);
+    }
 
     // Remove old contracts and sources
     await tx
@@ -473,11 +537,14 @@ export async function approveEditorialBrief(
       .from(chapterEditorialContracts)
       .where(eq(chapterEditorialContracts.editorialBriefId, input.briefId));
 
-    // Validate exact chapter coverage before approving
-    assertExactChapterCoverage(
-      contractRows.map((c) => c.chapterId),
-      currentChapterIds,
-    );
+    // Validate exact chapter coverage before approving (skip for v3 briefs)
+    const briefContentForCoverage = brief.content as Record<string, unknown> | null;
+    if (briefContentForCoverage?.schemaVersion !== "3.0") {
+      assertExactChapterCoverage(
+        contractRows.map((c) => c.chapterId),
+        currentChapterIds,
+      );
+    }
 
     // Validate centralTopic is present and meaningful.
     // The write schema (editorialBriefContentWriteSchema) enforces min(1)

@@ -143,6 +143,43 @@ const researchBasisSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------
+// topicKnowledge (v3)
+// ---------------------------------------------------------------------------
+
+const topicKnowledgeSchema = z
+  .object({
+    essentialTopics: z.array(z.string().min(1).max(2000)).max(50),
+    audienceLanguage: z.array(z.string().min(1).max(500)).max(50),
+    nicheTerms: z.array(z.string().min(1).max(500)).max(50),
+    outOfScope: z.array(z.string().min(1).max(2000)).max(50),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// scenarioCatalog (v3)
+// ---------------------------------------------------------------------------
+
+const scenarioCatalogEntrySchema = z
+  .object({
+    situation: z.string().min(1).max(2000),
+    context: z.string().min(1).max(2000),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// evidenceGaps (v3)
+// ---------------------------------------------------------------------------
+
+const evidenceGapSchema = z
+  .object({
+    question: z.string().min(1).max(2000),
+    category: z.string().min(1).max(200),
+    suggestedQueries: z.array(z.string().min(1).max(2000)).max(10),
+    required: z.boolean(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
 // EditorialBriefContent
 // ---------------------------------------------------------------------------
 
@@ -169,6 +206,44 @@ export const editorialBriefContentWriteSchema = editorialBriefContentSchema
   .strict();
 
 export type EditorialBriefContent = z.infer<typeof editorialBriefContentSchema>;
+
+// ---------------------------------------------------------------------------
+// EditorialBriefContentV3
+// ---------------------------------------------------------------------------
+
+export const editorialBriefContentSchemaV3 = z
+  .object({
+    schemaVersion: z.literal("3.0"),
+    centralTopic: z.string().max(500).optional(),
+    market: marketSchema,
+    audience: audienceSchema,
+    thesis: thesisSchema,
+    voice: voiceSchema,
+    guardrails: guardrailsSchema,
+    packaging: packagingSchema,
+    researchBasis: researchBasisSchema,
+    topicKnowledge: topicKnowledgeSchema,
+    scenarioCatalog: z.array(scenarioCatalogEntrySchema).max(50),
+    evidenceGaps: z.array(evidenceGapSchema).max(50),
+  })
+  .strict();
+
+/** Write schema — requires centralTopic for v3 briefs. */
+export const editorialBriefContentWriteSchemaV3 = editorialBriefContentSchemaV3
+  .extend({
+    centralTopic: z.string().min(1).max(500),
+  })
+  .strict();
+
+export type EditorialBriefContentV3 = z.infer<
+  typeof editorialBriefContentSchemaV3
+>;
+
+export function isEditorialBriefContentV3(
+  content: EditorialBriefContent | EditorialBriefContentV3,
+): content is EditorialBriefContentV3 {
+  return "schemaVersion" in content && content.schemaVersion === "3.0";
+}
 
 // ---------------------------------------------------------------------------
 // ChapterEditorialContract
@@ -272,7 +347,7 @@ export type EditorialSnapshot = z.infer<typeof editorialSnapshotSchema>;
 // ---------------------------------------------------------------------------
 
 export interface EditorialBundle {
-  content: EditorialBriefContent;
+  content: EditorialBriefContent | EditorialBriefContentV3;
   contracts: ChapterEditorialContract[];
   evidenceSourceIds: string[];
   id: string;

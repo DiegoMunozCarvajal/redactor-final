@@ -58,6 +58,9 @@ import {
   resolveDirectly,
   buildSearchQuery,
   isNarrativePlaceholder,
+  isEvidencePlaceholder,
+  buildEvidenceQuery,
+  matchEvidenceGap,
   validateDefinition,
   fillOnePlaceholder,
   fillPlaceholdersSequential,
@@ -305,6 +308,193 @@ describe("validateDefinition", () => {
       ph({ name: "tema" }),
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isEvidencePlaceholder — detects evidence-related placeholder names and text
+// ---------------------------------------------------------------------------
+
+describe("isEvidencePlaceholder", () => {
+  it("returns true for names containing 'evidencia'", () => {
+    expect(isEvidencePlaceholder("evidencia_placeholder", "")).toBe(true);
+  });
+
+  it("returns true for names containing 'evidence'", () => {
+    expect(isEvidencePlaceholder("evidence_placeholder", "")).toBe(true);
+  });
+
+  it("returns true for names containing 'estudio'", () => {
+    expect(isEvidencePlaceholder("estudio_caso", "")).toBe(true);
+  });
+
+  it("returns true for prompt text containing 'presenta evidencia'", () => {
+    expect(isEvidencePlaceholder("some_name", "presenta evidencia concreta")).toBe(true);
+  });
+
+  it("returns true for prompt text containing 'datos'", () => {
+    expect(isEvidencePlaceholder("some_name", "incorpore datos estadísticos")).toBe(true);
+  });
+
+  it("returns false for non-evidence placeholder", () => {
+    expect(isEvidencePlaceholder("concepto_central", "")).toBe(false);
+  });
+
+  it("returns false for empty name and text", () => {
+    expect(isEvidencePlaceholder("", "")).toBe(false);
+  });
+
+  it("returns true for prompt text containing 'fuente'", () => {
+    expect(isEvidencePlaceholder("cita", "una fuente confiable")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildEvidenceQuery — builds search query from placeholder + prompt text
+// ---------------------------------------------------------------------------
+
+describe("buildEvidenceQuery", () => {
+  it("extracts meaningful keywords from prompt text", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "evidencia" },
+      promptText: "presenta datos estadísticos sobre el tema",
+      projectTopic: "Hábitos",
+    });
+    expect(result).toContain("presenta");
+    expect(result).toContain("datos");
+    expect(result).toContain("estadísticos");
+    expect(result).toContain("sobre");
+    expect(result).toContain("tema");
+    expect(result).toContain("Hábitos");
+  });
+
+  it("filters short words (length <= 3)", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "evidencia" },
+      promptText: "el y la del con",
+      projectTopic: "Topic",
+    });
+    // All input words are short, only project topic remains
+    expect(result).not.toMatch(/\bel\b/);
+    expect(result).toContain("Topic");
+  });
+
+  it("deduplicates repeated keywords", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "evidencia" },
+      promptText: "dato importante dato clave",
+      projectTopic: "Topic",
+    });
+    const countDato = result.split("dato").length - 1;
+    expect(countDato).toBe(1);
+  });
+
+  it("handles null project topic", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "evidencia" },
+      promptText: "datos estadísticos importantes",
+      projectTopic: null,
+    });
+    expect(result).toBe("datos estadísticos importantes ");
+  });
+
+  it("handles empty prompt text", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "evidencia" },
+      promptText: "",
+      projectTopic: "Topic",
+    });
+    expect(result).toBe(" Topic");
+  });
+
+  it("computes the right result for a realistic example", () => {
+    const result = buildEvidenceQuery({
+      ph: { name: "estadisticas_manuscrito" },
+      promptText: "Presenta evidencia sobre la efectividad de mensajes personalizados en apps de citas",
+      projectTopic: "Dating app strategies",
+    });
+    expect(result).toContain("Presenta");
+    expect(result).toContain("evidencia");
+    expect(result).toContain("efectividad");
+    expect(result).toContain("mensajes");
+    expect(result).toContain("personalizados");
+    expect(result).toContain("citas");
+    expect(result).toContain("Dating");
+    expect(result).toContain("app");
+    expect(result).toContain("strategies");
+    // "de", "en" are short words — filtered out
+    expect(result).not.toMatch(/\bde\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchEvidenceGap — matches query against evidence gaps by word overlap
+// ---------------------------------------------------------------------------
+
+describe("matchEvidenceGap", () => {
+  const gaps = [
+    {
+      question: "What is the response rate for personalized first messages?",
+      category: "statistics",
+      suggestedQueries: [
+        "first message response rate dating apps",
+        "personalized opener effectiveness",
+      ],
+      required: true,
+    },
+    {
+      question: "How does message length affect reply probability?",
+      category: "engagement",
+      suggestedQueries: ["optimal message length dating apps"],
+      required: false,
+    },
+    {
+      question: "What is the best time to send a first message?",
+      category: "timing",
+      suggestedQueries: ["best time to message dating apps"],
+      required: false,
+    },
+  ];
+
+  it("returns best match by word overlap", () => {
+    const result = matchEvidenceGap(
+      "response rate personalized first messages effectiveness",
+      gaps,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.suggestedQueries).toContain("first message response rate dating apps");
+  });
+
+  it("returns different match for different queries", () => {
+    const result = matchEvidenceGap(
+      "message length affect probability optimal",
+      gaps,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.suggestedQueries).toContain("optimal message length dating apps");
+  });
+
+  it("returns null when no gap matches (below 0.2 threshold)", () => {
+    const result = matchEvidenceGap(
+      "completely unrelated topic like cooking recipes",
+      gaps,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns null for empty query", () => {
+    const result = matchEvidenceGap("", gaps);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for query with only short words", () => {
+    const result = matchEvidenceGap("a an the in on at", gaps);
+    expect(result).toBeNull();
+  });
+
+  it("handles empty gaps array", () => {
+    const result = matchEvidenceGap("response rate messages", []);
+    expect(result).toBeNull();
   });
 });
 

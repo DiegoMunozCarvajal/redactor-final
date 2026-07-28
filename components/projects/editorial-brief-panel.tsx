@@ -18,6 +18,7 @@ import { ChapterContractEditor } from "./chapter-contract-editor";
 import { Loader2, FileText, CheckCircle, History, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { EditorialBundle } from "@/lib/editorial-brief/schema";
+import { isEditorialBriefContentV3 } from "@/lib/editorial-brief/schema";
 
 interface EditorialBriefPanelProps {
   projectId: string;
@@ -505,12 +506,18 @@ export function EditorialBriefPanel({ projectId, sourcesVersion = 0 }: Editorial
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Global content form */}
-            <EditorialBriefForm
-              content={draft.content}
-              onChange={(content) =>
-                updateContent((prev) => ({ ...prev, content }))
-              }
-            />
+            {isEditorialBriefContentV3(draft.content) ? (
+              <p className="text-sm text-muted-foreground border rounded-md p-4">
+                El formato v3 del brief no es editable en esta versión del editor.
+              </p>
+            ) : (
+              <EditorialBriefForm
+                content={draft.content}
+                onChange={(content) =>
+                  updateContent((prev) => ({ ...prev, content }))
+                }
+              />
+            )}
 
             {/* Chapter contracts */}
             <div>

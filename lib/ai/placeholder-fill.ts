@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { chapterPlaceholders, chapters, placeholderVersions } from "@/lib/db/schema";
 import { eq, and, not, isNotNull } from "drizzle-orm";
 import { checkBlocklist, assertOriginalEnough, OriginalityError } from "./originality-check";
-import type { EditorialBundle } from "@/lib/editorial-brief/schema";
+import { isEditorialBriefContentV3, type EditorialBriefContentV3, type EditorialBundle } from "@/lib/editorial-brief/schema";
 import { renderEditorialData } from "@/lib/editorial-brief/render";
 import { executeVersionedPrompt } from "@/lib/prompts/executor";
 import { z } from "zod";
@@ -192,6 +192,65 @@ export function buildSearchQuery(ph: PlaceholderDef, projectTopic: string | null
   // Fallback: use placeholder name with underscores replaced
   const nameReadable = ph.name.replace(/_/g, " ");
   return `${nameReadable} ${topic}`.trim();
+}
+
+// ── V3 evidence helpers ──
+
+/** Detect whether a placeholder name or its surrounding prompt text suggests
+ *  an evidence need (statistics, studies, citations, data, etc.).
+ *  Uses both name patterns and semantic prompt text keywords. */
+export function isEvidencePlaceholder(name: string, promptText: string): boolean {
+  const evidenceNames = ['evidencia', 'evidence', 'estudio', 'dato', 'fuente', 'cita', 'hallazgo', 'investigacion', 'investigación'];
+  const evidenceKeywords = ['presenta evidencia', 'evalúa la afirmación', 'respalda', 'datos', 'investigación', 'estudio', 'cita', 'fuente'];
+  const nameLower = name.toLowerCase();
+  const textLower = promptText.toLowerCase();
+  return evidenceNames.some(n => nameLower.includes(n)) ||
+         evidenceKeywords.some(k => textLower.includes(k));
+}
+
+/** Build a search query from placeholder metadata + prompt text for evidence
+ *  matching. Extracts meaningful keywords (>3 chars), deduplicates, and
+ *  appends the project topic for context. */
+export function buildEvidenceQuery(params: {
+  ph: { name: string };
+  promptText: string;
+  projectTopic: string | null;
+}): string {
+  // Extract meaningful keywords from prompt text
+  // Remove domain stopwords, keep distinctive terms
+  // Combine with projectTopic for context
+  const words = params.promptText
+    .replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3);
+  const topic = params.projectTopic ?? "";
+  return [...new Set(words)].join(' ') + ' ' + topic;
+}
+
+/** Match a generated evidence query against the project's evidence gaps
+ *  using word overlap scoring. Returns the best match with a score >= 0.2
+ *  threshold, or null if no gap matches closely enough. */
+export function matchEvidenceGap(query: string, gaps: Array<{ question: string; category: string; suggestedQueries: string[]; required: boolean }>): { suggestedQueries: string[] } | null {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, "");
+  const queryLower = normalize(query);
+  const queryWords = new Set(queryLower.split(/\s+/).filter(w => w.length > 3));
+
+  let bestMatch: { suggestedQueries: string[] } | null = null;
+  let bestScore = 0;
+
+  for (const gap of gaps) {
+    const gapText = normalize(gap.question + " " + gap.category);
+    const gapWords = gapText.split(/\s+/).filter(w => w.length > 3);
+    const overlap = gapWords.filter(w => queryWords.has(w)).length;
+    const score = gapWords.length > 0 ? overlap / gapWords.length : 0;
+
+    if (score > bestScore && score >= 0.2) {
+      bestScore = score;
+      bestMatch = { suggestedQueries: gap.suggestedQueries };
+    }
+  }
+
+  return bestMatch;
 }
 
 /** Schema for structured output from the placeholder-fill prompt revision.
@@ -558,7 +617,27 @@ export async function fillOnePlaceholder(
   let isRequiredEvidence = false;
   let evidenceSourceIds: string[] | undefined;
 
-  if (editorialBundle && currentChapterId) {
+  const isV3 = editorialBundle
+    ? isEditorialBriefContentV3(editorialBundle.content)
+    : false;
+
+  if (isV3 && editorialBundle) {
+    // V3: semantic matching against evidenceGaps (project-level, no chapterId needed)
+    const v3 = editorialBundle.content as EditorialBriefContentV3;
+    const promptText = ph.function ?? ph.name;
+    if (isEvidencePlaceholder(ph.name, promptText)) {
+      const query = buildEvidenceQuery({ ph, promptText, projectTopic });
+      const gapMatch = matchEvidenceGap(query, v3.evidenceGaps);
+      if (gapMatch) {
+        evidenceQuery = gapMatch.suggestedQueries?.[0] ?? query;
+        evidenceSourceIds = editorialBundle.evidenceSourceIds;
+      } else {
+        evidenceQuery = query;
+        evidenceSourceIds = editorialBundle.evidenceSourceIds;
+      }
+    }
+  } else if (!isV3 && editorialBundle && currentChapterId) {
+    // V2: existing behavior (contract lookup)
     const contract = editorialBundle.contracts.find(
       (c) => c.chapterId === currentChapterId,
     );
@@ -615,8 +694,8 @@ export async function fillOnePlaceholder(
   // Editorial brief context: market, audience, thesis, voice, and guardrails
   // that constrain placeholder definitions to the project niche.
   let editorialContextSection = "";
-  if (editorialBundle && currentChapterId) {
-    const scope = renderEditorialData(editorialBundle, { chapterId: currentChapterId });
+  if (editorialBundle && (isV3 || currentChapterId)) {
+    const scope = renderEditorialData(editorialBundle, { chapterId: isV3 ? undefined : currentChapterId });
     if (scope) {
       editorialContextSection = `\n${scope}\n\n`;
     }
