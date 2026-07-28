@@ -6,6 +6,7 @@ import {
   chapterPlaceholders,
   chapters,
   chapterGenerations,
+  placeholderVersions,
 } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { eq, and, asc, lt, sql } from "drizzle-orm";
@@ -102,29 +103,47 @@ export async function POST(
   const { resolved } = resolvePlaceholdersDirect([name], effectiveTopic);
 
   if (resolved[name]) {
-    await db
-      .update(chapterPlaceholders)
-      .set({
-        definition: resolved[name],
-        fillMetadata: buildPlaceholderFillMetadata({
-          provider: "direct",
-          model,
-          promptsHash,
-          ...(briefBundle
-            ? {
-                editorialBriefId: briefBundle.id,
-                editorialBriefVersion: briefBundle.version,
-                editorialBriefHash: briefBundle.hash,
-              }
-            : {}),
-        }),
-      })
-      .where(
-        and(
-          eq(chapterPlaceholders.chapterId, chapterId),
-          eq(chapterPlaceholders.name, name),
-        ),
-      );
+    // Look up placeholder row ID
+    const [phRow] = await db
+      .select({ id: chapterPlaceholders.id })
+      .from(chapterPlaceholders)
+      .where(and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, name)))
+      .limit(1);
+
+    if (phRow) {
+      const fillMeta = buildPlaceholderFillMetadata({
+        provider: "direct",
+        model,
+        promptsHash,
+        definitionOrigin: "system",
+        ...(briefBundle
+          ? {
+              editorialBriefId: briefBundle.id,
+              editorialBriefVersion: briefBundle.version,
+              editorialBriefHash: briefBundle.hash,
+            }
+          : {}),
+      });
+
+      const [version] = await db
+        .insert(placeholderVersions)
+        .values({
+          placeholderId: phRow.id,
+          definition: resolved[name],
+          fillMetadata: fillMeta,
+        })
+        .returning({ id: placeholderVersions.id });
+
+      await db
+        .update(chapterPlaceholders)
+        .set({
+          definition: resolved[name],
+          fillMetadata: fillMeta,
+          activeVersionId: version.id,
+          definitionOrigin: "system",
+        })
+        .where(and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, name)));
+    }
 
     return NextResponse.json({ name, definition: resolved[name], sources: [] });
   }
@@ -361,34 +380,33 @@ export async function POST(
     );
   }
 
-  // Persist definition + mark generation completed
-  await db
-    .update(chapterPlaceholders)
-    .set({
-      definition: result.definition,
-      fillMetadata: buildPlaceholderFillMetadata({
-        provider: result.provider,
-        sources: result.sources,
-        ragChunks: result.ragChunks,
-        model,
-        promptsHash,
-        ...(briefBundle
-          ? {
-              editorialBriefId: briefBundle.id,
-              editorialBriefVersion: briefBundle.version,
-              editorialBriefHash: briefBundle.hash,
-            }
-          : {}),
-        ...(result.evidenceQuery ? { evidenceQuery: result.evidenceQuery } : {}),
-        ...(result.evidenceSourceIds ? { evidenceSourceIds: result.evidenceSourceIds } : {}),
-      }),
-    })
-    .where(
-      and(
-        eq(chapterPlaceholders.chapterId, chapterId),
-        eq(chapterPlaceholders.name, name),
-      ),
-    );
+  // Gate already persisted definition + version + activeVersionId.
+  // Re-read to get the metadata the gate wrote, then add promptsHash.
+  const [updatedRow] = await db
+    .select({ fillMetadata: chapterPlaceholders.fillMetadata })
+    .from(chapterPlaceholders)
+    .where(and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, name)))
+    .limit(1);
+
+  if (updatedRow) {
+    const existingMeta = (updatedRow.fillMetadata ?? {}) as PlaceholderFillMetadata;
+    const updatedMeta: PlaceholderFillMetadata = {
+      ...existingMeta,
+      promptsHash,
+      ...(briefBundle
+        ? {
+            editorialBriefId: briefBundle.id,
+            editorialBriefVersion: briefBundle.version,
+            editorialBriefHash: briefBundle.hash,
+          }
+        : {}),
+    };
+
+    await db
+      .update(chapterPlaceholders)
+      .set({ fillMetadata: updatedMeta })
+      .where(and(eq(chapterPlaceholders.chapterId, chapterId), eq(chapterPlaceholders.name, name)));
+  }
 
   await db
     .update(chapterGenerations)
