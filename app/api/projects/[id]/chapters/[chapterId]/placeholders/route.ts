@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { projects, chapters, chapterPlaceholders, prompts, placeholderVersions } from "@/lib/db/schema";
 import { createClient } from "@/lib/supabase/server";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { csrfCheck } from "@/lib/api/csrf";
 import { hashPromptContents } from "@/lib/placeholder-utils";
 
@@ -40,6 +40,31 @@ export async function GET(
     .where(eq(chapterPlaceholders.chapterId, chapterId))
     .orderBy(asc(chapterPlaceholders.name));
 
+  // Fetch versions for all placeholders in one query
+  const placeholderIds = rows.map((r) => r.id);
+  const allVersions =
+    placeholderIds.length > 0
+      ? await db
+          .select()
+          .from(placeholderVersions)
+          .where(inArray(placeholderVersions.placeholderId, placeholderIds))
+          .orderBy(placeholderVersions.createdAt)
+      : [];
+
+  const versionsByPlaceholderId = new Map<string, typeof allVersions>();
+  for (const v of allVersions) {
+    const list = versionsByPlaceholderId.get(v.placeholderId) ?? [];
+    list.push(v);
+    versionsByPlaceholderId.set(v.placeholderId, list);
+  }
+
+  // Enrich each placeholder with its versions (newest first)
+  const enrichedRows = rows.map((row) => ({
+    ...row,
+    activeVersionId: row.activeVersionId,
+    versions: (versionsByPlaceholderId.get(row.id) ?? []).reverse(),
+  }));
+
   // Compute current prompts hash for stale detection
   const promptRows = await db
     .select({ content: prompts.content, userPrompt: prompts.userPrompt })
@@ -49,7 +74,7 @@ export async function GET(
 
   const currentPromptsHash = hashPromptContents(promptRows.map((p) => [p.content, p.userPrompt].filter(Boolean).join("")));
 
-  return NextResponse.json({ placeholders: rows, currentPromptsHash });
+  return NextResponse.json({ placeholders: enrichedRows, currentPromptsHash });
 }
 
 export async function PATCH(
