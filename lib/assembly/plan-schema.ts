@@ -89,30 +89,37 @@ export function validateAssemblyPlan(
   const fragmentIdSet = new Set(ctx.fragmentIds);
   const sectionIds = new Set(parsed.sections.map((s) => s.id));
 
-  // Validate mustCover completeness — every contract index must appear exactly once
-  const contractIndices = parsed.mustCover.map((mc) => mc.contractIndex);
-  // Check duplicates first
-  const seen = new Set<number>();
-  for (const idx of contractIndices) {
-    if (seen.has(idx)) {
-      throw new Error(`mustCover contains duplicate contractIndex ${idx}`);
+  // Validate mustCover completeness — every contract index must appear exactly once.
+  // When mustCover is empty (v3 editorial brief, no chapter contracts), skip
+  // validation entirely and strip any LLM-hallucinated mustCover items from the plan.
+  if (ctx.mustCover.length > 0) {
+    const contractIndices = parsed.mustCover.map((mc) => mc.contractIndex);
+    // Check duplicates first
+    const seen = new Set<number>();
+    for (const idx of contractIndices) {
+      if (seen.has(idx)) {
+        throw new Error(`mustCover contains duplicate contractIndex ${idx}`);
+      }
+      seen.add(idx);
     }
-    seen.add(idx);
-  }
-  // Check missing indices
-  for (let i = 0; i < ctx.mustCover.length; i++) {
-    if (!seen.has(i)) {
-      throw new Error(`mustCover contractIndex ${i} is missing from the plan`);
+    // Check missing indices
+    for (let i = 0; i < ctx.mustCover.length; i++) {
+      if (!seen.has(i)) {
+        throw new Error(`mustCover contractIndex ${i} is missing from the plan`);
+      }
     }
-  }
 
-  // Validate mustCover item text matches contract
-  for (const mc of parsed.mustCover) {
-    if (ctx.mustCover[mc.contractIndex] !== mc.item) {
-      throw new Error(
-        `mustCover contractIndex ${mc.contractIndex} item "${mc.item}" does not match contract item "${ctx.mustCover[mc.contractIndex]}"`,
-      );
+    // Validate mustCover item text matches contract
+    for (const mc of parsed.mustCover) {
+      if (ctx.mustCover[mc.contractIndex] !== mc.item) {
+        throw new Error(
+          `mustCover contractIndex ${mc.contractIndex} item "${mc.item}" does not match contract item "${ctx.mustCover[mc.contractIndex]}"`,
+        );
+      }
     }
+  } else {
+    // v3 brief: no contracts → strip any mustCover items the LLM may have hallucinated
+    parsed.mustCover = [];
   }
 
   // Validate all referenced fragment IDs exist
