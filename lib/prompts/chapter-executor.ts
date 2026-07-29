@@ -9,6 +9,35 @@ import { sanitizeError } from '@/lib/sanitize-error';
 import { applyPlaceholders, stripPlaceholderWrappers } from './placeholder-transform';
 
 // ---------------------------------------------------------------------------
+// Narrative context instruction stripping
+// ---------------------------------------------------------------------------
+
+/**
+ * Template 5.20 embeds a `[CONTEXTO_NARRATIVO]` output instruction in prompt
+ * content — the LLM is told to append a metadata block with narrative fields.
+ *
+ * This instruction leaks into fragment content when:
+ * 1. The LLM follows the instruction literally and appends the block.
+ * 2. The post-generation `extractMetadataBlocks` fails to strip it (e.g.
+ *    parser mismatch or trigger version lag).
+ *
+ * Stripping the instruction from the prompt before generation prevents the leak
+ * at the source.  The narrative context feature (cross-chapter continuity via
+ * `loadPreviousChaptersContext`) relies on the *output*, not the instruction —
+ * so removing the instruction from the prompt is safe as long as the block
+ * format is preserved in the template for future use.
+ *
+ * Matches the paragraph containing `[CONTEXTO_NARRATIVO]` followed by a list
+ * of backtick-quoted field names, anchored to the end of the content.
+ */
+const NARRATIVE_INSTRUCTION_RE =
+  /\n{1,2}Al final de tu respuesta,\s*incluye una sección\s+`\[CONTEXTO_NARRATIVO\]`[\s\S]*$/;
+
+function stripNarrativeContextInstruction(text: string): string {
+  return text.replace(NARRATIVE_INSTRUCTION_RE, '').trimEnd();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -79,8 +108,14 @@ export async function executeChapterPrompt(
     );
   }
 
-  const localContent = version.content;
-  const localUserPrompt = version.userPrompt;
+  // Strip [CONTEXTO_NARRATIVO] output instruction from prompt content before
+  // sending to the LLM. Template 5.20 embeds this instruction in the prompt
+  // so the LLM extracts narrative context for cross-chapter continuity.
+  // Leaking it into the LLM output pollutes fragment content.
+  const localContent = stripNarrativeContextInstruction(version.content);
+  const localUserPrompt = version.userPrompt
+    ? stripNarrativeContextInstruction(version.userPrompt)
+    : version.userPrompt;
 
   // 2. Build effective system + user messages.
   //    - If local prompt HAS userPrompt: both system and user from local — no external resolution.
